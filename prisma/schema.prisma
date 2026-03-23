@@ -1,0 +1,104 @@
+// -----------------------------------------------------------------------------
+// Multi-chain payment gateway schema
+// - Users own callback URLs for payment notifications
+// - Wallets: one row per (user, chain); EVM chains may share the same address
+// - Transactions: indexed for idempotency and reconciliation
+// - ScannerState: last processed block height per chain (worker cursor)
+// -----------------------------------------------------------------------------
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Chain {
+  ETH
+  BNB
+  POLYGON
+  ARBITRUM
+  OPTIMISM
+  TRON
+  BTC
+  TON
+}
+
+enum TxStatus {
+  pending
+  success
+  failed
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  callbackUrl  String?  @map("callback_url")
+  /// Set by POST /api/deposit-address — echoed on webhooks so clients map payments to their users.
+  merchantRef     String?  @map("merchant_ref")
+  externalUserId  String?  @map("external_user_id")
+  /// Monotonic HD slot shared across all chains for this user (BIP44 address index).
+  accountIndex Int      @unique @default(autoincrement()) @map("account_index")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  wallets Wallet[]
+
+  @@map("users")
+}
+
+model Wallet {
+  id               String   @id @default(cuid())
+  userId           String   @map("user_id")
+  address          String
+  chain            Chain
+  derivationIndex  Int      @map("derivation_index")
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+
+  @@unique([userId, chain])
+  @@index([chain, address])
+  @@index([address])
+  @@map("wallets")
+}
+
+model Transaction {
+  id             String    @id @default(cuid())
+  walletId       String    @map("wallet_id")
+  txHash         String    @map("tx_hash")
+  fromAddress    String    @map("from_address")
+  toAddress      String    @map("to_address")
+  /// Amount in smallest unit (wei, sun, satoshi) as string to avoid float loss.
+  amount         String
+  tokenSymbol    String    @map("token_symbol")
+  chain          Chain
+  status         TxStatus  @default(pending)
+  confirmations  Int       @default(0)
+  blockNumber    BigInt?   @map("block_number")
+  /// EVM log index for ERC20; -1 for native / non-EVM.
+  logIndex       Int       @default(-1) @map("log_index")
+  tokenDecimals  Int       @default(18) @map("token_decimals")
+  /// Set when outbound webhook succeeded — prevents duplicate callbacks on worker retries.
+  callbackDeliveredAt DateTime? @map("callback_delivered_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+
+  wallet Wallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+
+  @@unique([txHash, chain, walletId, tokenSymbol, logIndex], name: "tx_dedupe")
+  @@index([toAddress, chain])
+  @@index([status])
+  @@map("transactions")
+}
+
+model ScannerState {
+  id         String   @id @default(cuid())
+  chain      Chain    @unique
+  lastBlock  BigInt   @default(0) @map("last_block")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  @@map("scanner_state")
+}
