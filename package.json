@@ -1,47 +1,21 @@
 {
-  "name": "crypto-payment-gateway",
-  "version": "1.0.0",
+  "name": "crypto-payment-gateway-monorepo",
   "private": true,
-  "description": "Production-grade multi-chain HD wallet payment system",
-  "main": "dist/index.js",
+  "workspaces": ["server", "client"],
   "scripts": {
-    "build": "tsc",
-    "start": "node dist/index.js",
-    "dev": "tsx watch src/index.ts",
-    "worker": "tsx src/worker-entry.ts",
-    "dev:worker": "tsx watch src/worker-entry.ts",
-    "prisma:generate": "prisma generate",
-    "prisma:migrate": "prisma migrate dev",
-    "prisma:studio": "prisma studio"
-  },
-  "engines": {
-    "node": ">=20"
-  },
-  "dependencies": {
-    "@prisma/client": "^6.5.0",
-    "@ton/core": "^0.63.1",
-    "@ton/crypto": "^3.3.0",
-    "@ton/ton": "^16.2.2",
-    "axios": "^1.8.4",
-    "bip32": "^5.0.0-rc.0",
-    "bip39": "^3.1.0",
-    "bitcoinjs-lib": "^6.1.7",
-    "cors": "^2.8.5",
-    "dotenv": "^16.4.7",
-    "ecpair": "^3.0.0",
-    "ethers": "^6.13.5",
-    "express": "^4.21.2",
-    "helmet": "^8.1.0",
-    "tiny-secp256k1": "^2.2.3",
-    "tronweb": "^6.0.2",
-    "winston": "^3.17.0"
+    "dev": "npm run dev -w server",
+    "dev:server": "npm run dev -w server",
+    "dev:client": "npm run dev -w client",
+    "dev:all": "concurrently \"npm run dev -w server\" \"npm run dev -w client\"",
+    "build": "npm run build -w server && npm run build -w client",
+    "prisma:generate": "npm run prisma:generate -w server",
+    "prisma:migrate": "npm run prisma:migrate -w server",
+    "prisma:reset": "npm run prisma:reset -w server",
+    "prisma:deploy": "npm run prisma:deploy -w server",
+    "prisma:studio": "npm run prisma:studio -w server",
+    "db:seed": "npm run db:seed -w server"
   },
   "devDependencies": {
-    "@types/cors": "^2.8.17",
-    "@types/express": "^5.0.1",
-    "@types/node": "^22.13.14",
-    "prisma": "^6.5.0",
-    "tsx": "^4.19.3",
-    "typescript": "^5.8.2"
+    "concurrently": "^9.1.2"
   }
 }

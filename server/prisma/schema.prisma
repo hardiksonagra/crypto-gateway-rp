@@ -1,0 +1,144 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Chain {
+  ETH
+  BNB
+  POLYGON
+  ARBITRUM
+  OPTIMISM
+  TRON
+  BTC
+  TON
+}
+
+enum TxStatus {
+  pending
+  success
+  failed
+}
+
+enum AdminRole {
+  ADMIN
+  MERCHANT
+}
+
+enum WithdrawalStatus {
+  pending
+  processing
+  completed
+  failed
+}
+
+/// Portal login: ADMIN (full ops) or MERCHANT (own data + API key for gateway).
+model AdminUser {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String    @map("password_hash")
+  role         AdminRole
+  displayName  String?   @map("display_name")
+  /// SHA-256 hex of full secret; MERCHANT only.
+  apiKeyHash   String?   @unique @map("api_key_hash")
+  apiKeyHint   String?   @map("api_key_hint")
+  callbackUrl   String?   @map("callback_url")
+  /// Supported default chains for gateway (deposit-address uses first when chain omitted).
+  defaultChains Chain[] @default([]) @map("default_chains")
+  isActive      Boolean @default(true) @map("is_active")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  endUsers    User[]
+  withdrawals Withdrawal[]
+
+  @@map("admin_users")
+}
+
+model User {
+  id             String    @id @default(cuid())
+  merchantId     String    @map("merchant_id")
+  merchant       AdminUser @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  externalUserId String    @map("external_user_id")
+  accountIndex   Int       @unique @default(autoincrement()) @map("account_index")
+  createdAt      DateTime  @default(now()) @map("created_at")
+
+  wallets Wallet[]
+
+  @@unique([merchantId, externalUserId])
+  @@map("users")
+}
+
+model Wallet {
+  id              String   @id @default(cuid())
+  userId          String   @map("user_id")
+  address         String
+  chain           Chain
+  derivationIndex Int      @map("derivation_index")
+  createdAt       DateTime @default(now()) @map("created_at")
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+
+  @@unique([userId, chain])
+  @@index([chain, address])
+  @@index([address])
+  @@map("wallets")
+}
+
+model Transaction {
+  id                  String    @id @default(cuid())
+  walletId            String    @map("wallet_id")
+  txHash              String    @map("tx_hash")
+  fromAddress         String    @map("from_address")
+  toAddress           String    @map("to_address")
+  amount              String
+  tokenSymbol         String    @map("token_symbol")
+  chain               Chain
+  status              TxStatus  @default(pending)
+  confirmations       Int       @default(0)
+  blockNumber         BigInt?   @map("block_number")
+  logIndex            Int       @default(-1) @map("log_index")
+  tokenDecimals       Int       @default(18) @map("token_decimals")
+  callbackDeliveredAt DateTime? @map("callback_delivered_at")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  updatedAt           DateTime  @updatedAt @map("updated_at")
+
+  wallet Wallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+
+  @@unique([txHash, chain, walletId, tokenSymbol, logIndex], name: "tx_dedupe")
+  @@index([toAddress, chain])
+  @@index([status])
+  @@map("transactions")
+}
+
+model Withdrawal {
+  id            String           @id @default(cuid())
+  merchantId    String           @map("merchant_id")
+  merchant      AdminUser        @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  chain         Chain
+  tokenSymbol   String           @map("token_symbol")
+  toAddress     String           @map("to_address")
+  amount        String
+  status        WithdrawalStatus @default(pending)
+  txHash        String?          @map("tx_hash")
+  failureReason String?          @map("failure_reason") @db.Text
+  createdAt     DateTime         @default(now()) @map("created_at")
+  updatedAt     DateTime         @updatedAt @map("updated_at")
+
+  @@index([merchantId, createdAt])
+  @@map("withdrawals")
+}
+
+model ScannerState {
+  id        String   @id @default(cuid())
+  chain     Chain    @unique
+  lastBlock BigInt   @default(0) @map("last_block")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("scanner_state")
+}

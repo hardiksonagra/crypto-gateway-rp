@@ -1,0 +1,33 @@
+---
+description: Forms use Formik+Yup; app code is JavaScript only (.js), no TS/TSX/JSX extensions
+alwaysApply: true
+---
+
+# Crypto wallet project conventions
+
+## Forms (React)
+
+- Every `<form>` (and any screen that behaves as a multi-field form) must be implemented with **Formik** for values, handlers, and submit flow.
+- Validation must use **Yup** schemas (shared in a `*Schemas.js` or similar module when reused).
+- Do not use ad-hoc `useState` + raw `<form onSubmit>` without Formik for those flows.
+
+## Language (Node + React)
+
+- Application source must be **JavaScript only**, files named **`.js`** (including React components with JSX inside `.js`). Do **not** use **`.ts`**, **`.tsx`**, or **`.jsx`** for app source.
+- Vite must compile JSX inside `src/**/*.js` (this repo sets `esbuild.include` + `loader: "jsx"` + `jsx: "automatic"` in `client/vite.config.js`).
+- Use **JSDoc** (`@param`, `@returns`, `@typedef`) where types help; avoid depending on the TypeScript compiler for app code.
+- Generated or third-party artifacts (e.g. Prisma Client under `node_modules`) are exempt.
+
+**Backend layout:** All gateway server source, Prisma schema/migrations, and server-specific docs live under **`server/`** only — no duplicate server build output at the monorepo root.
+
+## Create / update screens (React)
+
+- **Create** and **Edit** (update) pages must use the **full content width** of the shell (`w-full` / no `max-w-lg`-style narrow single column for the whole form).
+- Lay out fields in a **responsive CSS grid** (e.g. `grid grid-cols-1 gap-6 lg:grid-cols-2` with `lg:col-span-2` for full-width rows such as long URLs or action bars). Match existing glass/card styling on the form container.
+
+## Deletes and confirmations
+
+- **Data deletion** in this product is **soft delete** by default: prefer flags such as `isActive: false`, `deletedAt`, or equivalent — **do not** hard-delete user/merchant (or similar) rows from the database unless there is an explicit exception and migration story.
+- For **destructive or irreversible UI actions** (including “delete” that maps to deactivation), use an **in-app modal** component. **Do not** use `window.alert`, `window.confirm`, or `window.prompt` for those flows.
+
+When editing this repo, align new changes with these rules even if legacy files still violate them.
