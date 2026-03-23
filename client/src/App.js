@@ -14,6 +14,7 @@ import MerchantUsers from "./pages/merchant/Users";
 import MerchantTransactions from "./pages/merchant/Transactions";
 import MerchantWithdraw from "./pages/merchant/Withdraw";
 import MerchantSettings from "./pages/merchant/Settings";
+import GatewayApiDocs from "./pages/merchant/GatewayApiDocs";
 
 export default function App() {
   return (
@@ -34,6 +35,7 @@ export default function App() {
         <Route path="transactions" element={<MerchantTransactions />} />
         <Route path="withdraw" element={<MerchantWithdraw />} />
         <Route path="settings" element={<MerchantSettings />} />
+        <Route path="docs" element={<GatewayApiDocs />} />
       </Route>
       <Route path="/" element={<Navigate to="/login" replace />} />
       <Route path="*" element={<Navigate to="/login" replace />} />

@@ -29,7 +29,13 @@ export function createApp() {
       allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
     }),
   );
-  app.use(express.json({ limit: "512kb" }));
+  const jsonParser = express.json({ limit: "512kb" });
+  app.use((req, res, next) => {
+    if (["GET", "HEAD", "OPTIONS"].includes(req.method)) {
+      return next();
+    }
+    return jsonParser(req, res, next);
+  });
 
   app.get("/", (_req, res) => {
     res.json({

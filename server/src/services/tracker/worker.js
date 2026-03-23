@@ -1,9 +1,8 @@
-import { EVM_CHAINS } from "../../config/chains.js";
+import { SCANNED_EVM_CHAINS } from "../../config/chains.js";
 import { env } from "../../config/env.js";
 import { logger } from "../../lib/logger.js";
 import { scanEvmChain } from "./evm-tracker.js";
 import { scanTronChain } from "./tron-tracker.js";
-import { scanBtcChain } from "./btc-tracker.js";
 import { scanTonChain } from "./ton-tracker.js";
 import { maybeSweepTick } from "../sweep-service.js";
 import { retryStuckSuccessCallbacks } from "../callback-retry.js";
@@ -24,7 +23,7 @@ export function stopBlockchainWorker() {
 }
 
 async function runTick() {
-  for (const chain of EVM_CHAINS) {
+  for (const chain of SCANNED_EVM_CHAINS) {
     try {
       await scanEvmChain(chain);
     } catch (e) {
@@ -35,11 +34,6 @@ async function runTick() {
     await scanTronChain();
   } catch (e) {
     logger.error("tron scan failed", { err: String(e) });
-  }
-  try {
-    await scanBtcChain();
-  } catch (e) {
-    logger.error("btc scan failed", { err: String(e) });
   }
   try {
     await scanTonChain();

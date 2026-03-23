@@ -4,13 +4,21 @@ import { confirmationsForChain } from "../../config/chains.js";
 import { env, getTrc20Contracts } from "../../config/env.js";
 import { logger } from "../../lib/logger.js";
 import { nativeDecimalsForChain, nativeSymbolForChain } from "../native-symbols.js";
-import { loadWatchedAddresses, upsertIncomingTransaction } from "../payment/transaction-upsert.js";
+import { loadWalletsForChain, upsertIncomingTransaction } from "../payment/transaction-upsert.js";
 
 function tronAddrEq(a, b) {
   try {
     return utils.address.toHex(a) === utils.address.toHex(b);
   } catch {
     return a === b;
+  }
+}
+
+function tronGroupKey(address) {
+  try {
+    return utils.address.toHex(address);
+  } catch {
+    return address;
   }
 }
 
@@ -48,19 +56,39 @@ function lookupTrc20Meta(map, contract) {
 
 export async function scanTronChain() {
   const chain = Chain.TRON;
-  const watched = await loadWatchedAddresses(chain);
-  if (watched.size === 0) return;
+  const wallets = await loadWalletsForChain(chain);
+  if (wallets.length === 0) return;
 
   const base = env.tronFullNode.replace(/\/$/, "");
   const trc20Map = buildTrc20Lookup(getTrc20Contracts());
 
-  for (const { walletId, address } of watched.values()) {
-    await ingestTrxForAddress(base, address, walletId, chain);
-    await ingestTrc20ForAddress(base, address, walletId, chain, trc20Map);
+  const byHex = new Map();
+  for (const w of wallets) {
+    const k = tronGroupKey(w.address);
+    if (!byHex.has(k)) byHex.set(k, []);
+    byHex.get(k).push(w);
+  }
+
+  for (const group of byHex.values()) {
+    const address = group[0].address;
+    const trxTargets = group.filter((w) => w.currency === "TRX" && w.network === "TRON");
+    const usdtTargets = group.filter((w) => w.currency === "USDT" && w.network === "TRC20");
+    if (trxTargets.length) {
+      await ingestTrxForTargets(base, address, trxTargets, chain);
+    }
+    if (usdtTargets.length) {
+      await ingestTrc20ForTargets(base, address, usdtTargets, chain, trc20Map);
+    }
   }
 }
 
-async function ingestTrxForAddress(base, address, walletId, chain) {
+/**
+ * @param {string} base
+ * @param {string} address
+ * @param {Array<{ id: string }>} targets
+ * @param {import("@prisma/client").Chain} chain
+ */
+async function ingestTrxForTargets(base, address, targets, chain) {
   const url = `${base}/v1/accounts/${address}/transactions?only_confirmed=true&limit=50`;
   let data = {};
   try {
@@ -107,24 +135,33 @@ async function ingestTrxForAddress(base, address, walletId, chain) {
       }
       if (!tronAddrEq(String(v.to_address), address)) continue;
 
-      await upsertIncomingTransaction({
-        walletId,
-        txHash: txid,
-        fromAddress: v.owner_address ?? "",
-        toAddress: address,
-        amount: String(amt),
-        tokenSymbol: nativeSymbolForChain(chain),
-        tokenDecimals: nativeDecimalsForChain(chain),
-        chain,
-        confirmations: confirmationsForChain(chain),
-        blockNumber: null,
-        logIndex: -1,
-      });
+      for (const w of targets) {
+        await upsertIncomingTransaction({
+          walletId: w.id,
+          txHash: txid,
+          fromAddress: v.owner_address ?? "",
+          toAddress: address,
+          amount: String(amt),
+          tokenSymbol: nativeSymbolForChain(chain),
+          tokenDecimals: nativeDecimalsForChain(chain),
+          chain,
+          confirmations: confirmationsForChain(chain),
+          blockNumber: null,
+          logIndex: -1,
+        });
+      }
     }
   }
 }
 
-async function ingestTrc20ForAddress(base, address, walletId, chain, trc20Map) {
+/**
+ * @param {string} base
+ * @param {string} address
+ * @param {Array<{ id: string }>} targets
+ * @param {import("@prisma/client").Chain} chain
+ * @param {Map<string, { symbol: string, decimals: number }>} trc20Map
+ */
+async function ingestTrc20ForTargets(base, address, targets, chain, trc20Map) {
   const url = `${base}/v1/accounts/${address}/transactions/trc20?only_confirmed=true&limit=50`;
   let data = {};
   try {
@@ -165,19 +202,22 @@ async function ingestTrc20ForAddress(base, address, walletId, chain, trc20Map) {
     if (!contract) continue;
     const cfg = lookupTrc20Meta(trc20Map, contract);
     if (!cfg) continue;
+    if (String(cfg.symbol).toUpperCase() !== "USDT") continue;
 
-    await upsertIncomingTransaction({
-      walletId,
-      txHash: txid,
-      fromAddress: row.from ?? "",
-      toAddress: address,
-      amount: row.value,
-      tokenSymbol: cfg.symbol,
-      tokenDecimals: row.token_info?.decimals ?? cfg.decimals,
-      chain,
-      confirmations: confirmationsForChain(chain),
-      blockNumber: null,
-      logIndex: -1,
-    });
+    for (const w of targets) {
+      await upsertIncomingTransaction({
+        walletId: w.id,
+        txHash: txid,
+        fromAddress: row.from ?? "",
+        toAddress: address,
+        amount: row.value,
+        tokenSymbol: cfg.symbol,
+        tokenDecimals: row.token_info?.decimals ?? cfg.decimals,
+        chain,
+        confirmations: confirmationsForChain(chain),
+        blockNumber: null,
+        logIndex: -1,
+      });
+    }
   }
 }

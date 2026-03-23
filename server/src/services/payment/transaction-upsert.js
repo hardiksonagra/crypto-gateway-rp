@@ -2,6 +2,7 @@ import { Chain, TxStatus } from "@prisma/client";
 import { Address } from "@ton/core";
 import { prisma } from "../../lib/prisma.js";
 import { confirmationsForChain } from "../../config/chains.js";
+import { SCANNER_STATE_ROWS_BY_CHAIN } from "../../config/payment-rails.js";
 import { notifyPaymentSuccess } from "../callback-service.js";
 
 export async function upsertIncomingTransaction(input) {
@@ -46,17 +47,15 @@ export async function upsertIncomingTransaction(input) {
   }
 }
 
-export async function loadWatchedAddresses(chain) {
-  const wallets = await prisma.wallet.findMany({
+/**
+ * @param {import("@prisma/client").Chain} chain
+ * @returns {Promise<Array<{ id: string, address: string, currency: string, network: string }>>}
+ */
+export async function loadWalletsForChain(chain) {
+  return prisma.wallet.findMany({
     where: { chain },
-    select: { id: true, address: true },
+    select: { id: true, address: true, currency: true, network: true },
   });
-  const map = new Map();
-  for (const w of wallets) {
-    const key = normalizeMatchAddress(chain, w.address);
-    map.set(key, { walletId: w.id, address: w.address });
-  }
-  return map;
 }
 
 export function normalizeMatchAddress(chain, address) {
@@ -72,25 +71,50 @@ export function normalizeMatchAddress(chain, address) {
   return address.toLowerCase();
 }
 
+/**
+ * @param {import("@prisma/client").Chain} chain
+ * @param {bigint} tip
+ * @returns {Promise<bigint>}
+ */
 export async function getOrInitScannerBlock(chain, tip) {
-  const row = await prisma.scannerState.upsert({
-    where: { chain },
-    create: { chain, lastBlock: tip > 12n ? tip - 12n : 0n },
-    update: {},
-  });
-  if (row.lastBlock === 0n && tip > 0n) {
+  const spec = SCANNER_STATE_ROWS_BY_CHAIN[chain];
+  if (!spec || spec.length === 0) {
+    return tip > 12n ? tip - 12n : 0n;
+  }
+
+  let rows = await prisma.scannerState.findMany({ where: { chain } });
+  if (rows.length === 0) {
+    const warm = tip > 12n ? tip - 12n : 0n;
+    for (const { currency, network } of spec) {
+      await prisma.scannerState.create({
+        data: { currency, network, chain, lastBlock: warm },
+      });
+    }
+    rows = await prisma.scannerState.findMany({ where: { chain } });
+  }
+
+  const minBlock = rows.reduce(
+    (m, r) => (r.lastBlock < m ? r.lastBlock : m),
+    rows[0].lastBlock,
+  );
+
+  if (minBlock === 0n && tip > 0n) {
     const warm = tip > 100n ? tip - 100n : 0n;
-    await prisma.scannerState.update({
+    await prisma.scannerState.updateMany({
       where: { chain },
       data: { lastBlock: warm },
     });
     return warm;
   }
-  return row.lastBlock;
+  return minBlock;
 }
 
+/**
+ * @param {import("@prisma/client").Chain} chain
+ * @param {bigint} block
+ */
 export async function advanceScanner(chain, block) {
-  await prisma.scannerState.update({
+  await prisma.scannerState.updateMany({
     where: { chain },
     data: { lastBlock: block },
   });

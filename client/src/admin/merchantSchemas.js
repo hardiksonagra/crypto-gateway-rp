@@ -1,22 +1,31 @@
 import * as yup from "yup";
+import { DEPOSIT_RAIL_KEYS, DEPOSIT_RAIL_OPTIONS } from "./depositRailOptions.js";
 
-export const CHAIN_VALUES = [
-  "ETH",
-  "BNB",
-  "POLYGON",
-  "ARBITRUM",
-  "OPTIMISM",
-  "TRON",
-  "BTC",
-  "TON",
-];
+export const CHAIN_VALUES = ["TRON", "ETH", "BNB", "TON"];
 
-export const EVM_CHAIN_VALUES = ["ETH", "BNB", "POLYGON", "ARBITRUM", "OPTIMISM"];
+export const EVM_CHAIN_VALUES = ["ETH", "BNB"];
 
 const defaultChainsField = yup
   .array()
   .of(yup.string().oneOf([...CHAIN_VALUES], "Invalid chain"))
   .min(1, "Select at least one chain");
+
+const supportedDepositRailsField = yup
+  .array()
+  .of(yup.string().oneOf([...DEPOSIT_RAIL_KEYS], "Invalid currency / network"))
+  .min(1, "Select at least one currency / network")
+  .test(
+    "rail-chains",
+    "Each selected rail must match supported chains",
+    function railChains(rails) {
+      const chains = this.parent.default_chains;
+      if (!Array.isArray(rails) || !Array.isArray(chains)) return true;
+      return rails.every((key) => {
+        const opt = DEPOSIT_RAIL_OPTIONS.find((o) => o.key === key);
+        return Boolean(opt && chains.includes(opt.chain));
+      });
+    },
+  );
 
 const emptyToUndef = (v) => (v === "" || v === null ? undefined : v);
 
@@ -36,7 +45,11 @@ const optionalHttpsUrl = yup
   });
 
 export const merchantCreateSchema = yup.object({
-  email: yup.string().trim().required("Email is required").email("Invalid email"),
+  email: yup
+    .string()
+    .trim()
+    .required("Email is required")
+    .email("Invalid email"),
   password: yup
     .string()
     .transform((v) => emptyToUndef(v))
@@ -48,6 +61,7 @@ export const merchantCreateSchema = yup.object({
     .transform((v) => (v === "" ? undefined : v))
     .optional(),
   default_chains: defaultChainsField,
+  supported_deposit_rails: supportedDepositRailsField,
   callback_url: optionalHttpsUrl,
 });
 
@@ -59,6 +73,7 @@ export const merchantEditSchema = yup.object({
     .nullable()
     .optional(),
   default_chains: defaultChainsField,
+  supported_deposit_rails: supportedDepositRailsField,
   callback_url: optionalHttpsUrl.nullable(),
   password: yup
     .string()
@@ -73,7 +88,9 @@ export const merchantFilterSchema = yup.object({
   active: yup.string().oneOf(["", "true", "false"]),
 });
 
-const chainFilterField = yup.string().oneOf(["", ...CHAIN_VALUES], "Pick a chain");
+const chainFilterField = yup
+  .string()
+  .oneOf(["", ...CHAIN_VALUES], "Pick a chain");
 
 export const adminUsersFilterSchema = yup.object({
   q: yup.string(),
@@ -93,7 +110,9 @@ export const adminTransactionsFilterSchema = yup.object({
 export const adminWithdrawalsFilterSchema = yup.object({
   merchant_id: yup.string(),
   chain: chainFilterField,
-  status: yup.string().oneOf(["", "pending", "processing", "completed", "failed"]),
+  status: yup
+    .string()
+    .oneOf(["", "pending", "processing", "completed", "failed"]),
   token_symbol: yup.string(),
   to_address: yup.string(),
 });
@@ -111,19 +130,26 @@ export const merchantTransactionsFilterSchema = yup.object({
 
 export const merchantWithdrawalsListFilterSchema = yup.object({
   chain: chainFilterField,
-  status: yup.string().oneOf(["", "pending", "processing", "completed", "failed"]),
+  status: yup
+    .string()
+    .oneOf(["", "pending", "processing", "completed", "failed"]),
   token_symbol: yup.string(),
   to_address: yup.string(),
 });
 
 export const loginSchema = yup.object({
-  email: yup.string().trim().required("Email is required").email("Invalid email"),
+  email: yup
+    .string()
+    .trim()
+    .required("Email is required")
+    .email("Invalid email"),
   password: yup.string().required("Password is required"),
 });
 
 export const merchantSettingsSchema = yup.object({
   callback_url: optionalHttpsUrl.nullable(),
   default_chains: defaultChainsField,
+  supported_deposit_rails: supportedDepositRailsField,
 });
 
 export const merchantWithdrawSchema = yup.object({

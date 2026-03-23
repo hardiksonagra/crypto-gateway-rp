@@ -46,9 +46,17 @@ model AdminUser {
   /// SHA-256 hex of full secret; MERCHANT only.
   apiKeyHash   String?   @unique @map("api_key_hash")
   apiKeyHint   String?   @map("api_key_hint")
+  /// AES-256-GCM ciphertext (base64) of gateway API secret — shown to merchant in portal Doc.
+  apiKeyCipher String?   @map("api_key_cipher")
   callbackUrl   String?   @map("callback_url")
-  /// Supported default chains for gateway (deposit-address uses first when chain omitted).
+  /// Supported default chains for gateway (must include each rail’s underlying chain).
   defaultChains Chain[] @default([]) @map("default_chains")
+  /// Default `currency` when deposit-address omits currency/network (portal + API).
+  defaultCurrency String @default("USDT") @map("default_currency")
+  /// Default `network` when deposit-address omits currency/network.
+  defaultNetwork  String @default("TRC20") @map("default_network")
+  /// Non-empty = gateway only allows these `CURRENCY|NETWORK` rails (must match default_chains).
+  supportedDepositRails String[] @default([]) @map("supported_deposit_rails")
   isActive      Boolean @default(true) @map("is_active")
   createdAt    DateTime  @default(now()) @map("created_at")
   updatedAt    DateTime  @updatedAt @map("updated_at")
@@ -78,13 +86,17 @@ model Wallet {
   userId          String   @map("user_id")
   address         String
   chain           Chain
+  /// Asset the client chose for this deposit rail (e.g. USDT, TRX).
+  currency        String
+  /// Client-facing network label (e.g. TRC20, ERC20, BEP20, TON, TRON).
+  network         String
   derivationIndex Int      @map("derivation_index")
   createdAt       DateTime @default(now()) @map("created_at")
 
   user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   transactions Transaction[]
 
-  @@unique([userId, chain])
+  @@unique([userId, chain, currency, network])
   @@index([chain, address])
   @@index([address])
   @@map("wallets")
@@ -136,9 +148,14 @@ model Withdrawal {
 
 model ScannerState {
   id        String   @id @default(cuid())
-  chain     Chain    @unique
+  currency  String
+  network   String
+  /// Underlying chain RPC this cursor advances with (EVM: one cursor set per chain).
+  chain     Chain
   lastBlock BigInt   @default(0) @map("last_block")
   updatedAt DateTime @updatedAt @map("updated_at")
 
+  @@unique([currency, network])
+  @@index([chain])
   @@map("scanner_state")
 }

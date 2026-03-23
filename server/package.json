@@ -15,11 +15,11 @@
     "prisma:migrate": "dotenv -e ../.env -e .env -- prisma migrate dev",
     "prisma:reset": "dotenv -e ../.env -e .env -- prisma migrate reset --force",
     "prisma:deploy": "dotenv -e ../.env -e .env -- prisma migrate deploy",
-    "prisma:studio": "prisma studio",
-    "db:seed": "node prisma/seed.js"
+    "prisma:studio": "dotenv -e ../.env -e .env -- prisma studio",
+    "db:seed": "dotenv -e ../.env -e .env -- node prisma/seed.js"
   },
   "prisma": {
-    "seed": "node prisma/seed.js"
+    "seed": "dotenv -e ../.env -e .env -- node prisma/seed.js"
   },
   "engines": {
     "node": ">=20"

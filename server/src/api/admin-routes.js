@@ -11,8 +11,14 @@ import { prisma } from "../lib/prisma.js";
 import { requireAuth } from "../middleware/require-auth.js";
 import { parsePageQuery } from "../lib/pagination.js";
 import { generateApiKey, hashApiKey } from "../lib/api-key.js";
+import { encryptMerchantApiKey } from "../lib/merchant-api-key-cipher.js";
 import { logger } from "../lib/logger.js";
 import { parseDefaultChainsArray } from "../lib/default-chains.js";
+import { depositRailKey } from "../config/payment-rails.js";
+import {
+  parseSupportedDepositRailsInput,
+  pickMerchantDefaultPair,
+} from "../lib/merchant-default-pair.js";
 import crypto from "crypto";
 
 const router = Router();
@@ -44,7 +50,8 @@ router.get("/api/v1/admin/dashboard", async (_req, res) => {
 
 router.get("/api/v1/admin/merchants", async (req, res) => {
   const { skip, take, page, pageSize } = parsePageQuery(req.query);
-  const search = typeof req.query.search === "string" ? req.query.search.trim() : "";
+  const search =
+    typeof req.query.search === "string" ? req.query.search.trim() : "";
   const isActive =
     req.query.is_active === "true"
       ? true
@@ -77,6 +84,9 @@ router.get("/api/v1/admin/merchants", async (req, res) => {
         email: true,
         displayName: true,
         defaultChains: true,
+        defaultCurrency: true,
+        defaultNetwork: true,
+        supportedDepositRails: true,
         callbackUrl: true,
         apiKeyHash: true,
         apiKeyHint: true,
@@ -96,6 +106,9 @@ router.get("/api/v1/admin/merchants", async (req, res) => {
       email: m.email,
       display_name: m.displayName,
       default_chains: m.defaultChains,
+      default_currency: m.defaultCurrency,
+      default_network: m.defaultNetwork,
+      supported_deposit_rails: m.supportedDepositRails ?? [],
       callback_url: m.callbackUrl,
       api_key_hash: m.apiKeyHash,
       api_key_hint: m.apiKeyHint,
@@ -113,12 +126,41 @@ router.post("/api/v1/admin/merchants", async (req, res) => {
     res.status(400).json({ error: "email required" });
     return;
   }
-  const parsedChains = parseDefaultChainsArray(body.default_chains, { minOne: true });
+  const parsedChains = parseDefaultChainsArray(body.default_chains, {
+    minOne: true,
+  });
   if ("error" in parsedChains && parsedChains.error) {
     res.status(400).json({ error: parsedChains.error });
     return;
   }
-  const password = body.password?.trim() || crypto.randomBytes(12).toString("base64url");
+  let constraintKeys = null;
+  let supportedKeysToStore;
+  if (body.supported_deposit_rails !== undefined) {
+    const pr = parseSupportedDepositRailsInput(
+      body.supported_deposit_rails,
+      parsedChains.chains,
+    );
+    if ("error" in pr) {
+      res.status(400).json({ error: pr.error });
+      return;
+    }
+    constraintKeys = pr.keys;
+    supportedKeysToStore = pr.keys;
+  }
+  const picked = pickMerchantDefaultPair(
+    body,
+    parsedChains.chains,
+    constraintKeys,
+  );
+  if ("error" in picked && picked.error) {
+    res.status(400).json({ error: picked.error });
+    return;
+  }
+  if (supportedKeysToStore === undefined) {
+    supportedKeysToStore = [depositRailKey(picked.currency, picked.network)];
+  }
+  const password =
+    body.password?.trim() || crypto.randomBytes(12).toString("base64url");
   const apiSecret = generateApiKey();
   try {
     const row = await prisma.adminUser.create({
@@ -128,9 +170,13 @@ router.post("/api/v1/admin/merchants", async (req, res) => {
         role: AdminRole.MERCHANT,
         displayName: body.display_name?.trim() || null,
         defaultChains: parsedChains.chains,
+        defaultCurrency: picked.currency,
+        defaultNetwork: picked.network,
+        supportedDepositRails: supportedKeysToStore,
         callbackUrl: body.callback_url?.trim() || null,
         apiKeyHash: hashApiKey(apiSecret),
         apiKeyHint: apiSecret.slice(-6),
+        apiKeyCipher: encryptMerchantApiKey(apiSecret),
       },
     });
     res.status(201).json({
@@ -138,13 +184,20 @@ router.post("/api/v1/admin/merchants", async (req, res) => {
       email: row.email,
       display_name: row.displayName,
       default_chains: row.defaultChains,
+      default_currency: row.defaultCurrency,
+      default_network: row.defaultNetwork,
+      supported_deposit_rails: row.supportedDepositRails ?? [],
       callback_url: row.callbackUrl,
       temporary_password: body.password?.trim() ? undefined : password,
       api_key: apiSecret,
-      message: "Store api_key once; it cannot be retrieved later.",
+      message:
+        "Store api_key securely. The merchant can also view it in the portal Doc page while logged in.",
     });
   } catch (e) {
-    if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+    if (
+      e instanceof Prisma.PrismaClientKnownRequestError &&
+      e.code === "P2002"
+    ) {
       res.status(409).json({ error: "email_already_exists" });
       return;
     }
@@ -169,13 +222,71 @@ router.patch("/api/v1/admin/merchants/:id", async (req, res) => {
   if (body.display_name !== undefined) data.displayName = body.display_name;
   if (body.callback_url !== undefined) data.callbackUrl = body.callback_url;
   if (typeof body.is_active === "boolean") data.isActive = body.is_active;
+  let nextChains = existing.defaultChains ?? [];
   if (body.default_chains !== undefined) {
-    const parsedChains = parseDefaultChainsArray(body.default_chains, { minOne: true });
+    const parsedChains = parseDefaultChainsArray(body.default_chains, {
+      minOne: true,
+    });
     if ("error" in parsedChains) {
       res.status(400).json({ error: parsedChains.error });
       return;
     }
     data.defaultChains = parsedChains.chains;
+    nextChains = parsedChains.chains;
+  }
+
+  let nextSupported = existing.supportedDepositRails ?? [];
+  if (body.supported_deposit_rails !== undefined) {
+    const pr = parseSupportedDepositRailsInput(
+      body.supported_deposit_rails,
+      nextChains,
+    );
+    if ("error" in pr) {
+      res.status(400).json({ error: pr.error });
+      return;
+    }
+    data.supportedDepositRails = pr.keys;
+    nextSupported = pr.keys;
+  } else if (nextSupported.length > 0) {
+    const v = parseSupportedDepositRailsInput(nextSupported, nextChains);
+    if ("error" in v) {
+      res.status(400).json({ error: v.error });
+      return;
+    }
+    nextSupported = v.keys;
+  }
+
+  const constraintKeys = nextSupported.length > 0 ? nextSupported : null;
+  const needPairUpdate =
+    body.default_chains !== undefined ||
+    body.default_currency !== undefined ||
+    body.default_network !== undefined ||
+    body.supported_deposit_rails !== undefined;
+
+  if (needPairUpdate) {
+    const deriveDefaultFromSupported =
+      body.supported_deposit_rails !== undefined &&
+      body.default_currency === undefined &&
+      body.default_network === undefined;
+    const pairBody = deriveDefaultFromSupported
+      ? { default_currency: undefined, default_network: undefined }
+      : {
+          default_currency:
+            body.default_currency !== undefined
+              ? body.default_currency
+              : existing.defaultCurrency,
+          default_network:
+            body.default_network !== undefined
+              ? body.default_network
+              : existing.defaultNetwork,
+        };
+    const picked = pickMerchantDefaultPair(pairBody, nextChains, constraintKeys);
+    if ("error" in picked && picked.error) {
+      res.status(400).json({ error: picked.error });
+      return;
+    }
+    data.defaultCurrency = picked.currency;
+    data.defaultNetwork = picked.network;
   }
   if (body.password?.trim()) {
     data.passwordHash = await bcrypt.hash(body.password.trim(), 10);
@@ -184,6 +295,7 @@ router.patch("/api/v1/admin/merchants/:id", async (req, res) => {
     newApiKey = generateApiKey();
     data.apiKeyHash = hashApiKey(newApiKey);
     data.apiKeyHint = newApiKey.slice(-6);
+    data.apiKeyCipher = encryptMerchantApiKey(newApiKey);
   }
 
   const row = await prisma.adminUser.update({
@@ -194,6 +306,9 @@ router.patch("/api/v1/admin/merchants/:id", async (req, res) => {
       email: true,
       displayName: true,
       defaultChains: true,
+      defaultCurrency: true,
+      defaultNetwork: true,
+      supportedDepositRails: true,
       callbackUrl: true,
       apiKeyHint: true,
       isActive: true,
@@ -204,11 +319,16 @@ router.patch("/api/v1/admin/merchants/:id", async (req, res) => {
     email: row.email,
     display_name: row.displayName,
     default_chains: row.defaultChains,
+    default_currency: row.defaultCurrency,
+    default_network: row.defaultNetwork,
+    supported_deposit_rails: row.supportedDepositRails ?? [],
     callback_url: row.callbackUrl,
     api_key_hint: row.apiKeyHint,
     is_active: row.isActive,
     api_key: newApiKey,
-    message: newApiKey ? "New api_key returned once." : undefined,
+    message: newApiKey
+      ? "New api_key returned once; also visible to the merchant in portal Doc."
+      : undefined,
   });
 });
 
@@ -221,6 +341,9 @@ router.get("/api/v1/admin/merchants/:id", async (req, res) => {
       email: true,
       displayName: true,
       defaultChains: true,
+      defaultCurrency: true,
+      defaultNetwork: true,
+      supportedDepositRails: true,
       callbackUrl: true,
       apiKeyHint: true,
       isActive: true,
@@ -237,6 +360,9 @@ router.get("/api/v1/admin/merchants/:id", async (req, res) => {
     email: row.email,
     display_name: row.displayName,
     default_chains: row.defaultChains,
+    default_currency: row.defaultCurrency,
+    default_network: row.defaultNetwork,
+    supported_deposit_rails: row.supportedDepositRails ?? [],
     callback_url: row.callbackUrl,
     api_key_hint: row.apiKeyHint,
     is_active: row.isActive,
@@ -261,12 +387,18 @@ router.delete("/api/v1/admin/merchants/:id", async (req, res) => {
 router.get("/api/v1/admin/users", async (req, res) => {
   const { skip, take, page, pageSize } = parsePageQuery(req.query);
   const merchantId =
-    typeof req.query.merchant_id === "string" ? req.query.merchant_id.trim() : "";
+    typeof req.query.merchant_id === "string"
+      ? req.query.merchant_id.trim()
+      : "";
   const q = typeof req.query.q === "string" ? req.query.q.trim() : "";
   const from =
-    typeof req.query.created_from === "string" ? new Date(req.query.created_from) : null;
+    typeof req.query.created_from === "string"
+      ? new Date(req.query.created_from)
+      : null;
   const to =
-    typeof req.query.created_to === "string" ? new Date(req.query.created_to) : null;
+    typeof req.query.created_to === "string"
+      ? new Date(req.query.created_to)
+      : null;
 
   const where = {
     ...(merchantId ? { merchantId } : {}),
@@ -278,7 +410,9 @@ router.get("/api/v1/admin/users", async (req, res) => {
           ],
         }
       : {}),
-    ...(from && !Number.isNaN(from.getTime()) ? { createdAt: { gte: from } } : {}),
+    ...(from && !Number.isNaN(from.getTime())
+      ? { createdAt: { gte: from } }
+      : {}),
     ...(to && !Number.isNaN(to.getTime()) ? { createdAt: { lte: to } } : {}),
   };
 
@@ -313,12 +447,19 @@ router.get("/api/v1/admin/users", async (req, res) => {
 router.get("/api/v1/admin/transactions", async (req, res) => {
   const { skip, take, page, pageSize } = parsePageQuery(req.query);
   const merchantId =
-    typeof req.query.merchant_id === "string" ? req.query.merchant_id.trim() : "";
-  const chain = typeof req.query.chain === "string" ? req.query.chain.trim() : "";
-  const status = typeof req.query.status === "string" ? req.query.status.trim() : "";
+    typeof req.query.merchant_id === "string"
+      ? req.query.merchant_id.trim()
+      : "";
+  const chain =
+    typeof req.query.chain === "string" ? req.query.chain.trim() : "";
+  const status =
+    typeof req.query.status === "string" ? req.query.status.trim() : "";
   const token =
-    typeof req.query.token_symbol === "string" ? req.query.token_symbol.trim() : "";
-  const qAddr = typeof req.query.address === "string" ? req.query.address.trim() : "";
+    typeof req.query.token_symbol === "string"
+      ? req.query.token_symbol.trim()
+      : "";
+  const qAddr =
+    typeof req.query.address === "string" ? req.query.address.trim() : "";
 
   const where = {
     ...(merchantId || qAddr
@@ -351,7 +492,11 @@ router.get("/api/v1/admin/transactions", async (req, res) => {
         wallet: {
           include: {
             user: {
-              include: { merchant: { select: { id: true, email: true, displayName: true } } },
+              include: {
+                merchant: {
+                  select: { id: true, email: true, displayName: true },
+                },
+              },
             },
           },
         },
@@ -386,18 +531,26 @@ router.get("/api/v1/admin/transactions", async (req, res) => {
 router.get("/api/v1/admin/withdrawals", async (req, res) => {
   const { skip, take, page, pageSize } = parsePageQuery(req.query);
   const merchantId =
-    typeof req.query.merchant_id === "string" ? req.query.merchant_id.trim() : "";
-  const chain = typeof req.query.chain === "string" ? req.query.chain.trim() : "";
-  const status = typeof req.query.status === "string" ? req.query.status.trim() : "";
+    typeof req.query.merchant_id === "string"
+      ? req.query.merchant_id.trim()
+      : "";
+  const chain =
+    typeof req.query.chain === "string" ? req.query.chain.trim() : "";
+  const status =
+    typeof req.query.status === "string" ? req.query.status.trim() : "";
   const token =
-    typeof req.query.token_symbol === "string" ? req.query.token_symbol.trim() : "";
+    typeof req.query.token_symbol === "string"
+      ? req.query.token_symbol.trim()
+      : "";
   const toAddr =
     typeof req.query.to_address === "string" ? req.query.to_address.trim() : "";
 
   const where = {
     ...(merchantId ? { merchantId } : {}),
     ...(chain && CHAINS.has(chain) ? { chain } : {}),
-    ...(status && Object.values(WithdrawalStatus).includes(status) ? { status } : {}),
+    ...(status && Object.values(WithdrawalStatus).includes(status)
+      ? { status }
+      : {}),
     ...(token ? { tokenSymbol: { equals: token, mode: "insensitive" } } : {}),
     ...(toAddr
       ? {

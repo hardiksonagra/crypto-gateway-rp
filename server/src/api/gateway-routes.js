@@ -1,12 +1,17 @@
 import { Router } from "express";
-import { AdminRole, Chain } from "@prisma/client";
+import { AdminRole } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
 import { createOrGetWallet } from "../services/wallet/wallet-service.js";
 import { logger } from "../lib/logger.js";
 import { hashApiKey } from "../lib/api-key.js";
+import {
+  listMerchantSupportedCurrencyPairs,
+  merchantChainAllowsRail,
+  normalizeAssetPart,
+  resolveDepositRail,
+} from "../config/payment-rails.js";
 
 const router = Router();
-const CHAINS = new Set(Object.values(Chain));
 
 router.post("/api/v1/gateway/deposit-address", async (req, res) => {
   try {
@@ -27,10 +32,24 @@ router.post("/api/v1/gateway/deposit-address", async (req, res) => {
       return;
     }
 
-    const chains = merchant.defaultChains ?? [];
-    const chain = chains[0];
-    if (!chain || !CHAINS.has(chain)) {
-      res.status(500).json({ error: "merchant_default_chain_misconfigured" });
+    let currency = normalizeAssetPart(body.currency);
+    let network = normalizeAssetPart(body.network);
+    if (!currency || !network) {
+      currency = normalizeAssetPart(merchant.defaultCurrency);
+      network = normalizeAssetPart(merchant.defaultNetwork);
+    }
+    if (!currency || !network) {
+      res.status(500).json({ error: "merchant_default_pair_misconfigured" });
+      return;
+    }
+
+    const rail = resolveDepositRail(currency, network);
+    if (!rail) {
+      res.status(400).json({ error: "unsupported_currency_network" });
+      return;
+    }
+    if (!merchantChainAllowsRail(merchant, rail)) {
+      res.status(403).json({ error: "rail_not_enabled_for_merchant" });
       return;
     }
 
@@ -47,10 +66,17 @@ router.post("/api/v1/gateway/deposit-address", async (req, res) => {
       createdNewUser = true;
     }
 
-    const wallet = await createOrGetWallet(user.id, chain);
+    const wallet = await createOrGetWallet(
+      user.id,
+      rail.chain,
+      rail.currency,
+      rail.network,
+    );
     res.status(200).json({
       address: wallet.address,
       chain: wallet.chain,
+      currency: wallet.currency,
+      network: wallet.network,
       wallet_id: wallet.id,
       user_id: user.id,
       merchant_id: merchant.id,
@@ -62,19 +88,15 @@ router.post("/api/v1/gateway/deposit-address", async (req, res) => {
   }
 });
 
-router.post("/api/v1/gateway/create-wallet", async (req, res) => {
+router.post("/api/v1/gateway/supported-currency", async (req, res) => {
   try {
     const body = req.body ?? {};
     const apiKey = body.api_key?.trim();
-    const { user_id, chain } = body;
-    if (!apiKey || !user_id || !chain) {
-      res.status(400).json({ error: "api_key, user_id and chain are required" });
+    if (!apiKey) {
+      res.status(400).json({ error: "api_key is required" });
       return;
     }
-    if (!CHAINS.has(chain)) {
-      res.status(400).json({ error: `unsupported chain: ${chain}` });
-      return;
-    }
+
     const apiKeyHash = hashApiKey(apiKey);
     const merchant = await prisma.adminUser.findFirst({
       where: { apiKeyHash, role: AdminRole.MERCHANT, isActive: true },
@@ -83,17 +105,71 @@ router.post("/api/v1/gateway/create-wallet", async (req, res) => {
       res.status(401).json({ error: "invalid_api_key" });
       return;
     }
+
+    const pairs = listMerchantSupportedCurrencyPairs(merchant);
+    res.status(200).json({
+      pairs,
+      default_currency: normalizeAssetPart(merchant.defaultCurrency),
+      default_network: normalizeAssetPart(merchant.defaultNetwork),
+    });
+  } catch (e) {
+    logger.error("gateway supported-currency failed", { err: String(e) });
+    res.status(500).json({ error: "internal error" });
+  }
+});
+
+router.post("/api/v1/gateway/create-wallet", async (req, res) => {
+  try {
+    const body = req.body ?? {};
+    const apiKey = body.api_key?.trim();
+    const userId = body.user_id?.trim();
+    const currency = normalizeAssetPart(body.currency);
+    const network = normalizeAssetPart(body.network);
+    if (!apiKey || !userId || !currency || !network) {
+      res
+        .status(400)
+        .json({ error: "api_key, user_id, currency and network are required" });
+      return;
+    }
+
+    const rail = resolveDepositRail(currency, network);
+    if (!rail) {
+      res.status(400).json({ error: "unsupported_currency_network" });
+      return;
+    }
+
+    const apiKeyHash = hashApiKey(apiKey);
+    const merchant = await prisma.adminUser.findFirst({
+      where: { apiKeyHash, role: AdminRole.MERCHANT, isActive: true },
+    });
+    if (!merchant) {
+      res.status(401).json({ error: "invalid_api_key" });
+      return;
+    }
+    if (!merchantChainAllowsRail(merchant, rail)) {
+      res.status(403).json({ error: "rail_not_enabled_for_merchant" });
+      return;
+    }
+
     const user = await prisma.user.findFirst({
-      where: { id: user_id, merchantId: merchant.id },
+      where: { id: userId, merchantId: merchant.id },
     });
     if (!user) {
       res.status(404).json({ error: "user not found" });
       return;
     }
-    const wallet = await createOrGetWallet(user.id, chain);
+
+    const wallet = await createOrGetWallet(
+      user.id,
+      rail.chain,
+      rail.currency,
+      rail.network,
+    );
     res.status(200).json({
       address: wallet.address,
       chain: wallet.chain,
+      currency: wallet.currency,
+      network: wallet.network,
       wallet_id: wallet.id,
     });
   } catch (e) {
@@ -115,10 +191,22 @@ router.get("/api/v1/gateway/transactions", async (req, res) => {
     return;
   }
 
+  const currencyF = normalizeAssetPart(
+    typeof req.query.currency === "string" ? req.query.currency : "",
+  );
+  const networkF = normalizeAssetPart(
+    typeof req.query.network === "string" ? req.query.network : "",
+  );
+
   const wallets = await prisma.wallet.findMany({
-    where: address.startsWith("0x")
-      ? { address: { equals: address, mode: "insensitive" } }
-      : { address },
+    where: {
+      ...(address.startsWith("0x")
+        ? { address: { equals: address, mode: "insensitive" } }
+        : { address }),
+      ...(currencyF && networkF
+        ? { currency: currencyF, network: networkF }
+        : {}),
+    },
     select: { id: true },
   });
   if (wallets.length === 0) {
@@ -130,6 +218,9 @@ router.get("/api/v1/gateway/transactions", async (req, res) => {
     where: { walletId: { in: wallets.map((w) => w.id) } },
     orderBy: { createdAt: "desc" },
     take: 200,
+    include: {
+      wallet: { select: { currency: true, network: true } },
+    },
   });
 
   res.json({
@@ -142,6 +233,8 @@ router.get("/api/v1/gateway/transactions", async (req, res) => {
       token_symbol: t.tokenSymbol,
       token_decimals: t.tokenDecimals,
       chain: t.chain,
+      currency: t.wallet.currency,
+      network: t.wallet.network,
       status: t.status,
       confirmations: t.confirmations,
       block_number: t.blockNumber?.toString() ?? null,

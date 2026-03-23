@@ -47,10 +47,14 @@ export async function notifyPaymentSuccess(txId) {
 
   const u = tx.wallet.user;
   const body = {
+    transaction_id: tx.id,
+    wallet_id: tx.walletId,
     tx_hash: tx.txHash,
     amount: tx.amount,
     status: tx.status,
     chain: tx.chain,
+    currency: tx.wallet.currency,
+    network: tx.wallet.network,
     token_symbol: tx.tokenSymbol,
     wallet_address: tx.wallet.address,
     confirmations: tx.confirmations,

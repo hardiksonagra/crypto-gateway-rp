@@ -4,7 +4,7 @@ import { confirmationsForChain } from "../../config/chains.js";
 import { env, getTonJettonContracts } from "../../config/env.js";
 import { logger } from "../../lib/logger.js";
 import { nativeDecimalsForChain, nativeSymbolForChain } from "../native-symbols.js";
-import { loadWatchedAddresses, upsertIncomingTransaction } from "../payment/transaction-upsert.js";
+import { loadWalletsForChain, normalizeMatchAddress, upsertIncomingTransaction } from "../payment/transaction-upsert.js";
 
 function tonAddrEq(a, b) {
   try {
@@ -41,16 +41,32 @@ function tonHeaders() {
   return h;
 }
 
+/**
+ * @param {Array<{ id: string, address: string, currency: string, network: string }>} wallets
+ * @returns {Map<string, typeof wallets>}
+ */
+function groupTonWallets(wallets) {
+  const m = new Map();
+  for (const w of wallets) {
+    const k = normalizeMatchAddress(Chain.TON, w.address);
+    if (!m.has(k)) m.set(k, []);
+    m.get(k).push(w);
+  }
+  return m;
+}
+
 export async function scanTonChain() {
   const chain = Chain.TON;
-  const watched = await loadWatchedAddresses(chain);
-  if (watched.size === 0) return;
+  const wallets = await loadWalletsForChain(chain);
+  if (wallets.length === 0) return;
 
   const base = env.tonApiBase.replace(/\/$/, "");
   const jettonMeta = buildTonJettonMetaByRaw(getTonJettonContracts());
   const threshold = confirmationsForChain(chain);
+  const byRaw = groupTonWallets(wallets);
 
-  for (const { walletId, address } of watched.values()) {
+  for (const group of byRaw.values()) {
+    const address = group[0].address;
     const url = `${base}/v2/accounts/${encodeURIComponent(address.trim())}/events?limit=50`;
     let payload;
     try {
@@ -67,7 +83,7 @@ export async function scanTonChain() {
         continue;
       }
       if (!res.ok) {
-        logger.warn("ton: http error", {
+        logger.warn("ton http error", {
           address,
           status: res.status,
           body: text.slice(0, 300),
@@ -103,20 +119,25 @@ export async function scanTonChain() {
           if (!jAddr) continue;
           const meta = lookupJetton(jettonMeta, jAddr);
           if (!meta) continue;
-
-          await upsertIncomingTransaction({
-            walletId,
-            txHash,
-            fromAddress: jt.sender?.address ?? "",
-            toAddress: address,
-            amount: jt.amount,
-            tokenSymbol: meta.symbol,
-            tokenDecimals: jt.jetton?.decimals ?? meta.decimals,
-            chain,
-            confirmations: threshold,
-            blockNumber: null,
-            logIndex: ai,
-          });
+          const sym = String(meta.symbol).toUpperCase();
+          const jettonTargets = group.filter(
+            (w) => w.currency === sym && w.network === "TON",
+          );
+          for (const w of jettonTargets) {
+            await upsertIncomingTransaction({
+              walletId: w.id,
+              txHash,
+              fromAddress: jt.sender?.address ?? "",
+              toAddress: address,
+              amount: jt.amount,
+              tokenSymbol: meta.symbol,
+              tokenDecimals: jt.jetton?.decimals ?? meta.decimals,
+              chain,
+              confirmations: threshold,
+              blockNumber: null,
+              logIndex: ai,
+            });
+          }
           continue;
         }
 
@@ -126,19 +147,24 @@ export async function scanTonChain() {
           if (!rec || tt.amount === undefined || tt.amount === null) continue;
           if (!tonAddrEq(rec, address)) continue;
 
-          await upsertIncomingTransaction({
-            walletId,
-            txHash,
-            fromAddress: tt.sender?.address ?? "",
-            toAddress: address,
-            amount: String(tt.amount),
-            tokenSymbol: nativeSymbolForChain(chain),
-            tokenDecimals: nativeDecimalsForChain(chain),
-            chain,
-            confirmations: threshold,
-            blockNumber: null,
-            logIndex: ai,
-          });
+          const nativeTargets = group.filter(
+            (w) => w.currency === "TON" && w.network === "TON",
+          );
+          for (const w of nativeTargets) {
+            await upsertIncomingTransaction({
+              walletId: w.id,
+              txHash,
+              fromAddress: tt.sender?.address ?? "",
+              toAddress: address,
+              amount: String(tt.amount),
+              tokenSymbol: nativeSymbolForChain(chain),
+              tokenDecimals: nativeDecimalsForChain(chain),
+              chain,
+              confirmations: threshold,
+              blockNumber: null,
+              logIndex: ai,
+            });
+          }
         }
       }
     }

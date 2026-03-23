@@ -12,6 +12,10 @@ import { nativeSymbolForChain } from "../services/native-symbols.js";
 import { sendEvmNativeFromMerchantPool } from "../services/withdraw/evm-native-withdraw.js";
 import { logger } from "../lib/logger.js";
 import { parseDefaultChainsArray } from "../lib/default-chains.js";
+import {
+  parseSupportedDepositRailsInput,
+  pickMerchantDefaultPair,
+} from "../lib/merchant-default-pair.js";
 import { ethers } from "ethers";
 
 const CHAIN_SET = new Set(Object.values(Chain));
@@ -43,7 +47,9 @@ router.get("/api/v1/merchant/dashboard", async (req, res) => {
   });
   const [users, txs] = await Promise.all([
     prisma.user.count({ where: { merchantId: mid } }),
-    prisma.transaction.count({ where: { wallet: { user: { merchantId: mid } } } }),
+    prisma.transaction.count({
+      where: { wallet: { user: { merchantId: mid } } },
+    }),
   ]);
   res.json({
     balances,
@@ -110,10 +116,14 @@ router.get("/api/v1/merchant/transactions", async (req, res) => {
     return;
   }
   const { skip, take, page, pageSize } = parsePageQuery(req.query);
-  const chain = typeof req.query.chain === "string" ? req.query.chain.trim() : "";
-  const status = typeof req.query.status === "string" ? req.query.status.trim() : "";
+  const chain =
+    typeof req.query.chain === "string" ? req.query.chain.trim() : "";
+  const status =
+    typeof req.query.status === "string" ? req.query.status.trim() : "";
   const token =
-    typeof req.query.token_symbol === "string" ? req.query.token_symbol.trim() : "";
+    typeof req.query.token_symbol === "string"
+      ? req.query.token_symbol.trim()
+      : "";
   const qUser =
     typeof req.query.external_user_id === "string"
       ? req.query.external_user_id.trim()
@@ -124,7 +134,9 @@ router.get("/api/v1/merchant/transactions", async (req, res) => {
       is: {
         user: {
           merchantId: mid,
-          ...(qUser ? { externalUserId: { contains: qUser, mode: "insensitive" } } : {}),
+          ...(qUser
+            ? { externalUserId: { contains: qUser, mode: "insensitive" } }
+            : {}),
         },
       },
     },
@@ -175,17 +187,23 @@ router.get("/api/v1/merchant/withdrawals", async (req, res) => {
     return;
   }
   const { skip, take, page, pageSize } = parsePageQuery(req.query);
-  const chain = typeof req.query.chain === "string" ? req.query.chain.trim() : "";
-  const status = typeof req.query.status === "string" ? req.query.status.trim() : "";
+  const chain =
+    typeof req.query.chain === "string" ? req.query.chain.trim() : "";
+  const status =
+    typeof req.query.status === "string" ? req.query.status.trim() : "";
   const token =
-    typeof req.query.token_symbol === "string" ? req.query.token_symbol.trim() : "";
+    typeof req.query.token_symbol === "string"
+      ? req.query.token_symbol.trim()
+      : "";
   const toAddr =
     typeof req.query.to_address === "string" ? req.query.to_address.trim() : "";
 
   const where = {
     merchantId: mid,
     ...(chain && CHAIN_SET.has(chain) ? { chain } : {}),
-    ...(status && Object.values(WithdrawalStatus).includes(status) ? { status } : {}),
+    ...(status && Object.values(WithdrawalStatus).includes(status)
+      ? { status }
+      : {}),
     ...(token ? { tokenSymbol: { equals: token, mode: "insensitive" } } : {}),
     ...(toAddr
       ? {
@@ -220,7 +238,9 @@ router.post("/api/v1/merchant/withdrawals", async (req, res) => {
   const amountStr = body.amount?.trim();
   const tokenSymbol = body.token_symbol?.trim();
   if (!chainStr || !to || !amountStr || !tokenSymbol) {
-    res.status(400).json({ error: "chain, to_address, amount, token_symbol required" });
+    res
+      .status(400)
+      .json({ error: "chain, to_address, amount, token_symbol required" });
     return;
   }
   const CHAINS = new Set(Object.values(Chain));
@@ -251,7 +271,12 @@ router.post("/api/v1/merchant/withdrawals", async (req, res) => {
 
   const available = await merchantBalanceForAsset(mid, chain, expectedNative);
   if (available < amount) {
-    res.status(400).json({ error: "insufficient_balance", available_raw: available.toString() });
+    res
+      .status(400)
+      .json({
+        error: "insufficient_balance",
+        available_raw: available.toString(),
+      });
     return;
   }
 
@@ -304,7 +329,10 @@ router.post("/api/v1/merchant/withdrawals", async (req, res) => {
     if (wId) {
       await prisma.withdrawal.updateMany({
         where: { id: wId, merchantId: mid },
-        data: { status: WithdrawalStatus.failed, failureReason: msg.slice(0, 2000) },
+        data: {
+          status: WithdrawalStatus.failed,
+          failureReason: msg.slice(0, 2000),
+        },
       });
     }
     if (msg.includes("NO_FUNDED_WALLET")) {
@@ -315,7 +343,9 @@ router.post("/api/v1/merchant/withdrawals", async (req, res) => {
       });
       return;
     }
-    res.status(500).json({ error: "withdraw_failed", detail: msg.slice(0, 500) });
+    res
+      .status(500)
+      .json({ error: "withdraw_failed", detail: msg.slice(0, 500) });
   }
 });
 
@@ -326,16 +356,90 @@ router.patch("/api/v1/merchant/settings", async (req, res) => {
     return;
   }
   const body = req.body ?? {};
+  const existing = await prisma.adminUser.findUnique({
+    where: { id: mid },
+    select: {
+      defaultChains: true,
+      defaultCurrency: true,
+      defaultNetwork: true,
+      supportedDepositRails: true,
+    },
+  });
+  if (!existing) {
+    res.status(401).json({ error: "unauthorized" });
+    return;
+  }
+
   const data = {};
   if (body.callback_url !== undefined) data.callbackUrl = body.callback_url;
+
+  let nextChains = existing.defaultChains ?? [];
   if (body.default_chains !== undefined) {
-    const parsedChains = parseDefaultChainsArray(body.default_chains, { minOne: true });
+    const parsedChains = parseDefaultChainsArray(body.default_chains, {
+      minOne: true,
+    });
     if ("error" in parsedChains) {
       res.status(400).json({ error: parsedChains.error });
       return;
     }
     data.defaultChains = parsedChains.chains;
+    nextChains = parsedChains.chains;
   }
+
+  let nextSupported = existing.supportedDepositRails ?? [];
+  if (body.supported_deposit_rails !== undefined) {
+    const pr = parseSupportedDepositRailsInput(
+      body.supported_deposit_rails,
+      nextChains,
+    );
+    if ("error" in pr) {
+      res.status(400).json({ error: pr.error });
+      return;
+    }
+    data.supportedDepositRails = pr.keys;
+    nextSupported = pr.keys;
+  } else if (nextSupported.length > 0) {
+    const v = parseSupportedDepositRailsInput(nextSupported, nextChains);
+    if ("error" in v) {
+      res.status(400).json({ error: v.error });
+      return;
+    }
+    nextSupported = v.keys;
+  }
+
+  const constraintKeys = nextSupported.length > 0 ? nextSupported : null;
+  const needPairUpdate =
+    body.default_chains !== undefined ||
+    body.default_currency !== undefined ||
+    body.default_network !== undefined ||
+    body.supported_deposit_rails !== undefined;
+
+  if (needPairUpdate) {
+    const deriveDefaultFromSupported =
+      body.supported_deposit_rails !== undefined &&
+      body.default_currency === undefined &&
+      body.default_network === undefined;
+    const pairBody = deriveDefaultFromSupported
+      ? { default_currency: undefined, default_network: undefined }
+      : {
+          default_currency:
+            body.default_currency !== undefined
+              ? body.default_currency
+              : existing.defaultCurrency,
+          default_network:
+            body.default_network !== undefined
+              ? body.default_network
+              : existing.defaultNetwork,
+        };
+    const picked = pickMerchantDefaultPair(pairBody, nextChains, constraintKeys);
+    if ("error" in picked && picked.error) {
+      res.status(400).json({ error: picked.error });
+      return;
+    }
+    data.defaultCurrency = picked.currency;
+    data.defaultNetwork = picked.network;
+  }
+
   if (Object.keys(data).length === 0) {
     res.status(400).json({ error: "no_updates" });
     return;

@@ -1,6 +1,7 @@
 import { PrismaClient, AdminRole, Chain } from "@prisma/client";
 import bcrypt from "bcrypt";
 import crypto from "crypto";
+import { encryptMerchantApiKey } from "../src/lib/merchant-api-key-cipher.js";
 
 const prisma = new PrismaClient();
 
@@ -41,6 +42,7 @@ async function main() {
       displayName: "Demo Merchant",
       apiKeyHash: apiHash,
       apiKeyHint: apiSecret.slice(-6),
+      apiKeyCipher: encryptMerchantApiKey(apiSecret),
       defaultChains: [Chain.TRON],
       callbackUrl: process.env.SEED_MERCHANT_CALLBACK_URL ?? null,
     },
@@ -48,6 +50,7 @@ async function main() {
       passwordHash: merchHash,
       apiKeyHash: apiHash,
       apiKeyHint: apiSecret.slice(-6),
+      apiKeyCipher: encryptMerchantApiKey(apiSecret),
       defaultChains: [Chain.TRON],
     },
   });

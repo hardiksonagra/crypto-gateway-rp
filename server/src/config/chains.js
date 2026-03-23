@@ -10,6 +10,9 @@ export const EVM_CHAINS = [
   Chain.OPTIMISM,
 ];
 
+/** Worker only scans these EVM chains (gateway USDT ERC20 / BEP20). */
+export const SCANNED_EVM_CHAINS = [Chain.ETH, Chain.BNB];
+
 export function isEvmChain(chain) {
   return EVM_CHAINS.includes(chain);
 }

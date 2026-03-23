@@ -7,9 +7,17 @@ import { deriveTronAddress } from "./tron-wallet.js";
 import { deriveBtcAddress } from "./btc-wallet.js";
 import { deriveTonAddress } from "./ton-wallet.js";
 
-export async function createOrGetWallet(userId, chain) {
+/**
+ * @param {string} userId
+ * @param {import("@prisma/client").Chain} chain
+ * @param {string} currency
+ * @param {string} network
+ */
+export async function createOrGetWallet(userId, chain, currency, network) {
   const hit = await prisma.wallet.findUnique({
-    where: { userId_chain: { userId, chain } },
+    where: {
+      userId_chain_currency_network: { userId, chain, currency, network },
+    },
   });
   if (hit) return hit;
 
@@ -27,6 +35,8 @@ export async function createOrGetWallet(userId, chain) {
       data: {
         userId,
         chain,
+        currency,
+        network,
         address: evmExisting.address,
         derivationIndex: evmExisting.derivationIndex,
       },
@@ -50,6 +60,8 @@ export async function createOrGetWallet(userId, chain) {
     data: {
       userId,
       chain,
+      currency,
+      network,
       address,
       derivationIndex: accountIndex,
     },

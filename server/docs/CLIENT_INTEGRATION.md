@@ -2,6 +2,8 @@
 
 Share your **HTTPS base URL** (e.g. `https://payments.example.com`) with integrators. All paths below are **relative** to that base.
 
+**Merchants** using the portal and integrating their backend should also read **[MERCHANT_API_INTEGRATION.md](./MERCHANT_API_INTEGRATION.md)** (JWT login vs `api_key`, settings, rails).
+
 ---
 
 ## 1. Overview
@@ -11,22 +13,22 @@ Share your **HTTPS base URL** (e.g. `https://payments.example.com`) with integra
 | **Purpose** | Issue **per-customer deposit addresses**, detect incoming transfers, and **POST webhooks** to the merchant’s configured callback URL when a payment is confirmed. |
 | **Format** | JSON over HTTPS (`Content-Type: application/json`) |
 | **Authentication** | **`api_key`** on gateway routes identifies the **merchant**. Keys are created in the **admin portal** when a merchant is provisioned (shown **once**). |
-| **Chain & webhook** | **`chain`** and **`callback_url` are not passed** on `deposit-address`. The merchant sets **default chain** and **callback URL** in the **merchant portal** (or an admin updates them). |
+| **Rails** | Deposits are identified by **`currency`** + **`network`** (e.g. `USDT` + `TRC20`). Merchants configure **supported chains** and **supported rails** in the portal; if omitted on `deposit-address`, the merchant’s **default** pair is used (first supported rail). |
 
 ---
 
 ## 2. Flow
 
-1. Merchant configures **callback URL** and **default chain** in the portal (`/m/settings`).
-2. Integrator calls **`POST /api/v1/gateway/deposit-address`** with `api_key` + `external_user_id` (the payer’s id on the integrator’s system).
-3. Response includes `address` on the merchant’s **default chain** (idempotent per customer).
-4. Optional: **`POST /api/v1/gateway/create-wallet`** with `api_key`, `user_id`, and another `chain` to add wallets on other networks.
+1. Merchant configures **callback URL**, **supported chains**, and **supported currency/network rails** in the portal (`/m/settings`).
+2. Integrator calls **`POST /api/v1/gateway/deposit-address`** with `api_key` + `external_user_id`, and optionally `currency` + `network`.
+3. Response includes `address`, `chain`, `currency`, `network` (idempotent per customer + rail).
+4. Optional: **`POST /api/v1/gateway/create-wallet`** with `api_key`, `user_id`, `currency`, and `network` for another rail for the same user.
 5. User sends crypto to the shown address on the **correct network**.
 6. When confirmations pass, the gateway POSTs **`payment.success`** to the merchant **callback URL**.
 
 ---
 
-## 3. Supported `chain` values
+## 3. Supported `chain` values (response / internal)
 
 | `chain` | Network |
 |---------|---------|
@@ -39,13 +41,27 @@ Share your **HTTPS base URL** (e.g. `https://payments.example.com`) with integra
 | `BTC` | Bitcoin |
 | `TON` | TON |
 
-**EVM note:** The same **0x address** may repeat across EVM chains; the integrator **must** match the `chain` returned to the network shown to the end user.
+**EVM note:** The same **0x address** may repeat across EVM chains; the integrator **must** match the `chain` / `network` returned to what the end user is shown.
 
 ---
 
-## 4. API reference
+## 4. Supported gateway rails (`currency` + `network`)
 
-### 4.1 Health
+| `currency` | `network` | `chain` |
+|------------|-----------|---------|
+| `USDT` | `TRC20` | TRON |
+| `USDT` | `ERC20` | ETH |
+| `USDT` | `TON` | TON |
+| `USDT` | `BEP20` | BNB |
+| `TRX` | `TRON` | TRON |
+
+Merchants may restrict which of these are allowed via portal settings.
+
+---
+
+## 5. API reference
+
+### 5.1 Health
 
 ```http
 GET /health
@@ -55,9 +71,7 @@ GET /health
 
 ---
 
-### 4.2 Get or create deposit address
-
-Creates an **end user** under the merchant if needed, then returns the deposit address for the merchant’s **configured default chain**.
+### 5.2 Get or create deposit address
 
 ```http
 POST /api/v1/gateway/deposit-address
@@ -68,6 +82,8 @@ Content-Type: application/json
 |-------|------|----------|-------------|
 | `api_key` | string | Yes | Merchant API secret (`cpg_live_…`). |
 | `external_user_id` | string | Yes | Stable unique id of the payer on **your** system. |
+| `currency` | string | No | Upper-case token symbol (e.g. `USDT`). Defaults to merchant default. |
+| `network` | string | No | Network label (e.g. `TRC20`). Defaults to merchant default. |
 
 **200**
 
@@ -75,6 +91,8 @@ Content-Type: application/json
 {
   "address": "T… or 0x…",
   "chain": "TRON",
+  "currency": "USDT",
+  "network": "TRC20",
   "wallet_id": "cl…",
   "user_id": "cl…",
   "merchant_id": "cl…",
@@ -85,11 +103,13 @@ Content-Type: application/json
 | Error | HTTP | Meaning |
 |-------|------|---------|
 | `invalid_api_key` | 401 | Unknown or inactive merchant key. |
+| `rail_not_enabled_for_merchant` | 403 | Rail not in merchant’s supported list. |
+| `unsupported_currency_network` | 400 | Unknown pair. |
 | Missing fields | 400 | `api_key` and `external_user_id` required. |
 
 ---
 
-### 4.3 Create wallet (another chain)
+### 5.3 Create wallet (another rail)
 
 ```http
 POST /api/v1/gateway/create-wallet
@@ -100,25 +120,28 @@ Content-Type: application/json
 |-------|------|----------|-------------|
 | `api_key` | string | Yes | Merchant API secret. |
 | `user_id` | string | Yes | From `deposit-address` response. |
-| `chain` | string | Yes | One of §3. |
+| `currency` | string | Yes | e.g. `USDT` |
+| `network` | string | Yes | e.g. `ERC20` |
 
-**200** — `{ "address": "…", "chain": "ETH", "wallet_id": "cl…" }`
+**200** — `{ "address": "…", "chain": "ETH", "currency": "USDT", "network": "ERC20", "wallet_id": "cl…" }`
 
 **404** — `user not found` if `user_id` does not belong to this merchant.
 
 ---
 
-### 4.4 Transaction history (by deposit address)
+### 5.4 Transaction history (by deposit address)
 
 ```http
 GET /api/v1/gateway/transactions?address={deposit_address}
 ```
 
-Same semantics as before: up to **200** recent rows; `amount` is in **smallest units**; use `token_decimals` for display.
+Optional: `currency` and `network` query params (both required to filter by rail).
+
+Up to **200** recent rows; `amount` is in **smallest units**; use `token_decimals` for display.
 
 ---
 
-## 5. Webhooks (`payment.success`)
+## 6. Webhooks (`payment.success`)
 
 When a row reaches **`success`**, the gateway POSTs once (with retries until `2xx`) to the merchant’s **`callback_url`**.
 
@@ -150,7 +173,7 @@ X-Webhook-Event: payment.success
 
 ---
 
-## 6. Default development credentials
+## 7. Default development credentials
 
 After migration + seed (see operator runbook):
 
@@ -165,7 +188,7 @@ After migration + seed (see operator runbook):
 
 ---
 
-## 7. Portal routes (human UI)
+## 8. Portal routes (human UI)
 
 | Audience | Base path | Use |
 |----------|-----------|-----|
@@ -180,6 +203,6 @@ REST for the SPA (Bearer JWT after `POST /api/v1/auth/login`):
 
 ---
 
-## 8. Versioning
+## 9. Versioning
 
 Integrators should target **`/api/v1/...`** prefixes. Breaking changes will bump the major version or be announced in advance.

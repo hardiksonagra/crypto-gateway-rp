@@ -38,11 +38,15 @@ export default function AdminShell() {
 
   return (
     <div className="mesh-bg flex min-h-screen">
-      <aside className="flex w-60 flex-col border-r border-white/5 bg-black/20 p-4 backdrop-blur-md">
+      <aside className="sticky top-0 flex h-screen max-h-screen w-60 shrink-0 flex-col overflow-y-auto border-r border-white/5 bg-black/20 p-4 backdrop-blur-md">
         <div className="mb-10 px-2">
-          <p className="text-xs font-semibold tracking-widest text-cyan-400/90 uppercase">Paython</p>
+          <p className="text-xs font-semibold tracking-widest text-cyan-400/90 uppercase">
+            Paython
+          </p>
           <p className="text-lg font-semibold text-white">Admin</p>
-          {email ? <p className="truncate text-xs text-white/45">{email}</p> : null}
+          {email ? (
+            <p className="truncate text-xs text-white/45">{email}</p>
+          ) : null}
         </div>
         <nav className="flex flex-1 flex-col gap-1">
           {nav.map((l) => (
@@ -66,7 +70,7 @@ export default function AdminShell() {
           Log out
         </button>
       </aside>
-      <main className="flex-1 overflow-auto p-8">
+      <main className="min-h-0 flex-1 overflow-auto p-8">
         <Outlet />
       </main>
     </div>

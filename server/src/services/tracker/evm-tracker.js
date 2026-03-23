@@ -1,12 +1,16 @@
 import { ethers } from "ethers";
 import { chainToRpcUrl, chainToStaticNetwork, isEvmChain } from "../../config/chains.js";
 import { getErc20Contracts } from "../../config/env.js";
+import {
+  walletAcceptsEvmErc20,
+  walletAcceptsEvmNative,
+} from "../../config/payment-rails.js";
 import { logger } from "../../lib/logger.js";
 import { nativeDecimalsForChain, nativeSymbolForChain } from "../native-symbols.js";
 import {
   advanceScanner,
   getOrInitScannerBlock,
-  loadWatchedAddresses,
+  loadWalletsForChain,
   normalizeMatchAddress,
   upsertIncomingTransaction,
 } from "../payment/transaction-upsert.js";
@@ -20,6 +24,21 @@ function chainConfigKey(chain) {
   return chain;
 }
 
+/**
+ * @param {import("@prisma/client").Chain} chain
+ * @param {Array<{ id: string, address: string, currency: string, network: string }>} wallets
+ * @returns {Map<string, typeof wallets>}
+ */
+function groupWalletsByNormalizedAddress(chain, wallets) {
+  const m = new Map();
+  for (const w of wallets) {
+    const k = normalizeMatchAddress(chain, w.address);
+    if (!m.has(k)) m.set(k, []);
+    m.get(k).push(w);
+  }
+  return m;
+}
+
 export async function scanEvmChain(chain) {
   if (!isEvmChain(chain)) return;
 
@@ -31,11 +50,13 @@ export async function scanEvmChain(chain) {
   let cursor = await getOrInitScannerBlock(chain, tip);
   if (cursor >= tip) return;
 
-  const watched = await loadWatchedAddresses(chain);
-  if (watched.size === 0) {
+  const walletRows = await loadWalletsForChain(chain);
+  if (walletRows.length === 0) {
     await advanceScanner(chain, tip);
     return;
   }
+
+  const byAddr = groupWalletsByNormalizedAddress(chain, walletRows);
 
   const rawErc20 = getErc20Contracts()[chainConfigKey(chain)] ?? {};
   const erc20Map = {};
@@ -61,24 +82,28 @@ export async function scanEvmChain(chain) {
     for (const tx of txs) {
       if (!tx || tx.to == null) continue;
       const to = normalizeMatchAddress(chain, tx.to);
-      const hit = watched.get(to);
-      if (!hit) continue;
+      const group = byAddr.get(to);
+      if (!group?.length) continue;
       const val = tx.value ?? 0n;
       if (val <= 0n) continue;
 
-      await upsertIncomingTransaction({
-        walletId: hit.walletId,
-        txHash: tx.hash,
-        fromAddress: tx.from ?? "",
-        toAddress: hit.address,
-        amount: val.toString(),
-        tokenSymbol: nativeSymbolForChain(chain),
-        tokenDecimals: nativeDecimalsForChain(chain),
-        chain,
-        confirmations: Number(tip - b + 1n),
-        blockNumber: b,
-        logIndex: -1,
-      });
+      const sym = nativeSymbolForChain(chain);
+      for (const w of group) {
+        if (!walletAcceptsEvmNative(chain, w)) continue;
+        await upsertIncomingTransaction({
+          walletId: w.id,
+          txHash: tx.hash,
+          fromAddress: tx.from ?? "",
+          toAddress: w.address,
+          amount: val.toString(),
+          tokenSymbol: sym,
+          tokenDecimals: nativeDecimalsForChain(chain),
+          chain,
+          confirmations: Number(tip - b + 1n),
+          blockNumber: b,
+          logIndex: -1,
+        });
+      }
     }
 
     let logs = [];
@@ -105,23 +130,27 @@ export async function scanEvmChain(chain) {
       }
       if (!parsed || parsed.name !== "Transfer") continue;
       const toAddr = normalizeMatchAddress(chain, String(parsed.args.to));
-      const hit = watched.get(toAddr);
-      if (!hit) continue;
+      const group = byAddr.get(toAddr);
+      if (!group?.length) continue;
       const amount = parsed.args.value;
+      const tokenSym = String(meta.symbol).toUpperCase();
 
-      await upsertIncomingTransaction({
-        walletId: hit.walletId,
-        txHash: log.transactionHash,
-        fromAddress: String(parsed.args.from),
-        toAddress: hit.address,
-        amount: amount.toString(),
-        tokenSymbol: meta.symbol,
-        tokenDecimals: meta.decimals,
-        chain,
-        confirmations: Number(tip - b + 1n),
-        blockNumber: b,
-        logIndex: log.index,
-      });
+      for (const w of group) {
+        if (!walletAcceptsEvmErc20(chain, w, tokenSym)) continue;
+        await upsertIncomingTransaction({
+          walletId: w.id,
+          txHash: log.transactionHash,
+          fromAddress: String(parsed.args.from),
+          toAddress: w.address,
+          amount: amount.toString(),
+          tokenSymbol: meta.symbol,
+          tokenDecimals: meta.decimals,
+          chain,
+          confirmations: Number(tip - b + 1n),
+          blockNumber: b,
+          logIndex: log.index,
+        });
+      }
     }
 
     await advanceScanner(chain, b);

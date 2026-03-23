@@ -2,12 +2,13 @@ import { Chain } from "@prisma/client";
 import { env } from "../../config/env.js";
 import { logger } from "../../lib/logger.js";
 import { nativeDecimalsForChain, nativeSymbolForChain } from "../native-symbols.js";
-import { loadWatchedAddresses, upsertIncomingTransaction } from "../payment/transaction-upsert.js";
+import { loadWalletsForChain, upsertIncomingTransaction } from "../payment/transaction-upsert.js";
 
 export async function scanBtcChain() {
   const chain = Chain.BTC;
-  const watched = await loadWatchedAddresses(chain);
-  if (watched.size === 0) return;
+  const wallets = await loadWalletsForChain(chain);
+  const targets = wallets.filter((w) => w.currency === "BTC" && w.network === "BTC");
+  if (targets.length === 0) return;
 
   const base = env.btcExplorerApiBase.replace(/\/$/, "");
   let tip = 0;
@@ -19,7 +20,7 @@ export async function scanBtcChain() {
     return;
   }
 
-  for (const { walletId, address } of watched.values()) {
+  for (const { walletId, address } of targets) {
     let txs = [];
     try {
       const res = await fetch(`${base}/address/${encodeURIComponent(address)}/txs`);

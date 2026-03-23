@@ -4,6 +4,7 @@ import { useState } from "react";
 import { api } from "../../api";
 import { merchantCreateSchema } from "../../admin/merchantSchemas";
 import ChainMultiSelectField from "../../components/ChainMultiSelectField";
+import DepositRailsMultiSelectField from "../../components/DepositRailsMultiSelectField";
 
 const input =
   "w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none ring-cyan-500/30 focus:ring-1";
@@ -14,6 +15,7 @@ const initial = {
   password: "",
   display_name: "",
   default_chains: ["TRON"],
+  supported_deposit_rails: ["USDT|TRC20"],
   callback_url: "",
 };
 
@@ -24,13 +26,17 @@ export default function MerchantCreate() {
   return (
     <div className="w-full max-w-none">
       <div className="mb-6 flex flex-wrap items-center gap-3">
-        <Link to="/admin/merchants" className="text-sm text-white/50 hover:text-cyan-400">
+        <Link
+          to="/admin/merchants"
+          className="text-sm text-white/50 hover:text-cyan-400"
+        >
           ← Merchants
         </Link>
       </div>
       <h1 className="text-2xl font-semibold text-white">Create merchant</h1>
       <p className="mt-1 text-sm text-white/50">
-        New portal user + API key (shown once after save). Merchants are created active by default.
+        New portal user + API key (shown once after save). Merchants are created
+        active by default.
       </p>
 
       <div className="glass glow-border mt-8 w-full rounded-2xl p-6 lg:p-8">
@@ -49,6 +55,7 @@ export default function MerchantCreate() {
                   password: values.password?.trim() || undefined,
                   display_name: values.display_name?.trim() || undefined,
                   default_chains: values.default_chains,
+                  supported_deposit_rails: values.supported_deposit_rails,
                   callback_url: values.callback_url?.trim() || undefined,
                 },
               });
@@ -69,30 +76,82 @@ export default function MerchantCreate() {
                 <label className={label} htmlFor="email">
                   Email
                 </label>
-                <Field id="email" name="email" type="email" className={input} autoComplete="off" />
-                <ErrorMessage name="email" component="p" className="mt-1 text-xs text-rose-400" />
+                <Field
+                  id="email"
+                  name="email"
+                  type="email"
+                  className={input}
+                  autoComplete="off"
+                />
+                <ErrorMessage
+                  name="email"
+                  component="p"
+                  className="mt-1 text-xs text-rose-400"
+                />
               </div>
               <div>
                 <label className={label} htmlFor="password">
                   Password (optional — auto-generated if empty)
                 </label>
-                <Field id="password" name="password" type="password" className={input} autoComplete="new-password" />
-                <ErrorMessage name="password" component="p" className="mt-1 text-xs text-rose-400" />
+                <Field
+                  id="password"
+                  name="password"
+                  type="password"
+                  className={input}
+                  autoComplete="new-password"
+                />
+                <ErrorMessage
+                  name="password"
+                  component="p"
+                  className="mt-1 text-xs text-rose-400"
+                />
               </div>
               <div>
                 <label className={label} htmlFor="display_name">
                   Display name
                 </label>
-                <Field id="display_name" name="display_name" type="text" className={input} />
-                <ErrorMessage name="display_name" component="p" className="mt-1 text-xs text-rose-400" />
+                <Field
+                  id="display_name"
+                  name="display_name"
+                  type="text"
+                  className={input}
+                />
+                <ErrorMessage
+                  name="display_name"
+                  component="p"
+                  className="mt-1 text-xs text-rose-400"
+                />
               </div>
               <div className="lg:col-span-2">
-                <span className={label}>Default chains</span>
+                <span className={label}>Supported chains</span>
                 <p className="mb-2 text-xs text-white/40">
-                  First chain is used when the gateway omits <span className="font-mono">chain</span> on deposit-address.
+                  The gateway only issues addresses for rails whose underlying
+                  chain is selected here.
                 </p>
                 <ChainMultiSelectField name="default_chains" />
-                <ErrorMessage name="default_chains" component="p" className="mt-1 text-xs text-rose-400" />
+                <ErrorMessage
+                  name="default_chains"
+                  component="p"
+                  className="mt-1 text-xs text-rose-400"
+                />
+              </div>
+              <div className="lg:col-span-2">
+                <span className={label}>Supported currency / network</span>
+                <p className="mb-2 text-xs text-white/40">
+                  Integrators may only use these rails (within the chains above).
+                </p>
+                <DepositRailsMultiSelectField name="supported_deposit_rails" />
+                <p className="mt-1 text-xs text-white/35">
+                  When the client omits <span className="font-mono">currency</span> and{" "}
+                  <span className="font-mono">network</span> on{" "}
+                  <span className="font-mono">POST /api/v1/gateway/deposit-address</span>, the{" "}
+                  <strong className="text-white/50">first</strong> rail selected above is used.
+                </p>
+                <ErrorMessage
+                  name="supported_deposit_rails"
+                  component="p"
+                  className="mt-1 text-xs text-rose-400"
+                />
               </div>
               <div className="lg:col-span-2">
                 <label className={label} htmlFor="callback_url">
@@ -105,7 +164,11 @@ export default function MerchantCreate() {
                   className={input}
                   placeholder="https://…"
                 />
-                <ErrorMessage name="callback_url" component="p" className="mt-1 text-xs text-rose-400" />
+                <ErrorMessage
+                  name="callback_url"
+                  component="p"
+                  className="mt-1 text-xs text-rose-400"
+                />
               </div>
               {status ? (
                 <p className="text-sm text-rose-400 lg:col-span-2">{status}</p>
@@ -133,13 +196,21 @@ export default function MerchantCreate() {
       {secretModal ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
           <div className="glass w-full max-w-lg rounded-2xl p-6">
-            <h3 className="text-lg font-semibold text-white">Save these credentials</h3>
-            <p className="mt-2 text-sm text-amber-200/90">They are not shown again.</p>
+            <h3 className="text-lg font-semibold text-white">
+              Save these credentials
+            </h3>
+            <p className="mt-2 text-sm text-amber-200/90">
+              They are not shown again.
+            </p>
             {secretModal.api_key ? (
-              <p className="mt-3 break-all font-mono text-xs text-cyan-300">{secretModal.api_key}</p>
+              <p className="mt-3 break-all font-mono text-xs text-cyan-300">
+                {secretModal.api_key}
+              </p>
             ) : null}
             {secretModal.temporary_password ? (
-              <p className="mt-2 font-mono text-sm text-amber-200">Password: {secretModal.temporary_password}</p>
+              <p className="mt-2 font-mono text-sm text-amber-200">
+                Password: {secretModal.temporary_password}
+              </p>
             ) : null}
             <button
               type="button"
