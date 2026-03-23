@@ -1,5 +1,8 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import LoginPage from "./pages/LoginPage";
+import ForgotPasswordPage from "./pages/ForgotPasswordPage";
+import ResetPasswordPage from "./pages/ResetPasswordPage";
+import Profile from "./pages/Profile";
 import AdminShell from "./layouts/AdminShell";
 import MerchantShell from "./layouts/MerchantShell";
 import AdminDashboard from "./pages/admin/Dashboard";
@@ -20,6 +23,8 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+      <Route path="/reset-password" element={<ResetPasswordPage />} />
       <Route path="/admin" element={<AdminShell />}>
         <Route index element={<AdminDashboard />} />
         <Route path="merchants/new" element={<MerchantCreate />} />
@@ -28,6 +33,7 @@ export default function App() {
         <Route path="users" element={<AdminUsers />} />
         <Route path="transactions" element={<AdminTransactions />} />
         <Route path="withdrawals" element={<AdminWithdrawals />} />
+        <Route path="profile" element={<Profile />} />
       </Route>
       <Route path="/m" element={<MerchantShell />}>
         <Route index element={<MerchantDashboard />} />
@@ -36,6 +42,7 @@ export default function App() {
         <Route path="withdraw" element={<MerchantWithdraw />} />
         <Route path="settings" element={<MerchantSettings />} />
         <Route path="docs" element={<GatewayApiDocs />} />
+        <Route path="profile" element={<Profile />} />
       </Route>
       <Route path="/" element={<Navigate to="/login" replace />} />
       <Route path="*" element={<Navigate to="/login" replace />} />

@@ -1,13 +1,12 @@
 @import "tailwindcss";
 
 @theme {
-  --font-sans: "Instrument Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Syne", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, monospace;
-  --color-void: #07080f;
-  --color-surface: #0f111a;
-  --color-surface2: #16192a;
-  --color-accent: #22d3ee;
-  --color-accent2: #a78bfa;
+  --color-void: #050506;
+  --color-surface: #0c0c0e;
+  --color-surface2: #141416;
 }
 
 html {
@@ -19,22 +18,29 @@ body {
   min-height: 100vh;
   font-family: var(--font-sans);
   background: var(--color-void);
-  color: #e8e9ef;
+  color: #e8e9ed;
+  letter-spacing: 0.01em;
 }
 
+.font-display {
+  font-family: var(--font-display);
+}
+
+/* Neutral backdrop — no colored washes across the whole UI */
 .mesh-bg {
   background-color: var(--color-void);
   background-image:
-    radial-gradient(ellipse 120% 80% at 10% -20%, rgba(34, 211, 238, 0.18), transparent 50%),
-    radial-gradient(ellipse 100% 60% at 90% 10%, rgba(167, 139, 250, 0.15), transparent 45%),
-    radial-gradient(ellipse 60% 40% at 50% 100%, rgba(34, 211, 238, 0.08), transparent 50%);
+    linear-gradient(rgba(255, 255, 255, 0.018) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.018) 1px, transparent 1px);
+  background-size: 28px 28px;
+  background-position: center;
 }
 
 .glass {
-  background: linear-gradient(145deg, rgba(22, 25, 42, 0.85), rgba(15, 17, 26, 0.65));
+  background: linear-gradient(160deg, rgba(22, 22, 26, 0.88), rgba(12, 12, 14, 0.92));
   backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
 }
 
 .glow-border {
@@ -46,10 +52,117 @@ body {
   inset: -1px;
   border-radius: inherit;
   padding: 1px;
-  background: linear-gradient(135deg, rgba(34, 211, 238, 0.35), rgba(167, 139, 250, 0.25));
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.04));
   -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
   mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
   -webkit-mask-composite: xor;
   mask-composite: exclude;
   pointer-events: none;
+}
+
+/* Primary actions only — avoid spreading accent across tables/chips */
+.btn-primary {
+  background: #e2e2e8;
+  color: #0a0a0c;
+  font-weight: 600;
+  transition: background 0.15s ease, opacity 0.15s ease;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: #f0f0f4;
+}
+
+.btn-primary:disabled {
+  opacity: 0.5;
+}
+
+/** Alias — same as .btn-primary (legacy class names in JSX) */
+.btn-primary-gradient {
+  background: #e2e2e8;
+  color: #0a0a0c;
+  font-weight: 600;
+  transition: background 0.15s ease, opacity 0.15s ease;
+}
+
+.btn-primary-gradient:hover:not(:disabled) {
+  background: #f0f0f4;
+}
+
+.btn-primary-gradient:disabled {
+  opacity: 0.5;
+}
+
+/* List / detail tables */
+.data-table-surface {
+  border-radius: 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  background: rgba(12, 12, 14, 0.92);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+  line-height: 1.45;
+}
+
+.data-table thead {
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.data-table th {
+  padding: 0.65rem 1rem;
+  text-align: left;
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.4);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.09);
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.data-table td {
+  padding: 0.75rem 1rem;
+  vertical-align: middle;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.055);
+  color: rgba(255, 255, 255, 0.86);
+}
+
+.data-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.data-table tbody tr:hover td {
+  background: rgba(255, 255, 255, 0.028);
+}
+
+.data-table td.text-muted,
+.data-table .text-muted {
+  color: rgba(255, 255, 255, 0.48);
+}
+
+/* Neutral filter / meta chips (shared look) */
+.filter-chip {
+  display: inline-flex;
+  max-width: 100%;
+  align-items: center;
+  gap: 0.25rem;
+  border-radius: 0.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  padding: 0.35rem 0.65rem 0.35rem 0.75rem;
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.filter-chip-label {
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.38);
 }

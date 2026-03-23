@@ -89,7 +89,7 @@ export default function AdminWithdrawals() {
     <div>
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
-          <h1 className="text-2xl font-semibold text-white">Withdrawals</h1>
+          <h1 className="font-display text-2xl font-semibold text-white">Withdrawals</h1>
           <p className="mt-1 text-sm text-white/50">All merchant payout requests across the gateway.</p>
         </div>
         <ListFilterToolbar
@@ -102,8 +102,8 @@ export default function AdminWithdrawals() {
       {hasFilterChips ? (
         <ListActiveFiltersChips>
           {applied.merchant_id.trim() ? (
-            <span className="inline-flex max-w-full items-center gap-1 rounded-xl border border-violet-400/25 bg-violet-500/[0.12] px-2.5 py-1.5 pl-3 text-xs text-violet-50">
-              <span className="text-[10px] font-semibold tracking-wide text-violet-300/80 uppercase">Merchant</span>
+            <span className="filter-chip max-w-full">
+              <span className="filter-chip-label">Merchant</span>
               <span className="truncate font-mono" title={applied.merchant_id}>
                 {applied.merchant_id}
               </span>
@@ -118,8 +118,8 @@ export default function AdminWithdrawals() {
             </span>
           ) : null}
           {applied.chain ? (
-            <span className="inline-flex items-center gap-1 rounded-xl border border-cyan-400/25 bg-cyan-500/[0.12] px-2.5 py-1.5 pl-3 text-xs text-cyan-50">
-              <span className="text-[10px] font-semibold tracking-wide text-cyan-300/80 uppercase">Chain</span>
+            <span className="filter-chip">
+              <span className="filter-chip-label">Chain</span>
               <span>{applied.chain}</span>
               <button
                 type="button"
@@ -132,8 +132,8 @@ export default function AdminWithdrawals() {
             </span>
           ) : null}
           {applied.status ? (
-            <span className="inline-flex items-center gap-1 rounded-xl border border-emerald-400/25 bg-emerald-500/[0.12] px-2.5 py-1.5 pl-3 text-xs text-emerald-50">
-              <span className="text-[10px] font-semibold tracking-wide text-emerald-300/80 uppercase">Status</span>
+            <span className="filter-chip">
+              <span className="filter-chip-label">Status</span>
               <span>{applied.status}</span>
               <button
                 type="button"
@@ -146,8 +146,8 @@ export default function AdminWithdrawals() {
             </span>
           ) : null}
           {applied.token_symbol.trim() ? (
-            <span className="inline-flex max-w-full items-center gap-1 rounded-xl border border-amber-400/25 bg-amber-500/[0.12] px-2.5 py-1.5 pl-3 text-xs text-amber-50">
-              <span className="text-[10px] font-semibold tracking-wide text-amber-300/80 uppercase">Token</span>
+            <span className="filter-chip max-w-full">
+              <span className="filter-chip-label">Token</span>
               <span className="truncate font-mono">{applied.token_symbol}</span>
               <button
                 type="button"
@@ -176,9 +176,9 @@ export default function AdminWithdrawals() {
             </span>
           ) : null}
           {hasNonDefaultPageSize ? (
-            <span className="inline-flex items-center gap-1 rounded-xl border border-violet-400/25 bg-violet-500/[0.12] px-2.5 py-1.5 pl-3 text-xs text-violet-50">
-              <span className="text-[10px] font-semibold tracking-wide text-violet-300/80 uppercase">Page size</span>
-              <span className="font-mono">{applied.pageSize}</span>
+            <span className="filter-chip">
+              <span className="filter-chip-label">Page size</span>
+              <span className="font-mono text-white/65">{applied.pageSize}</span>
               <button
                 type="button"
                 className={listFilterChipCloseClass}
@@ -316,46 +316,46 @@ export default function AdminWithdrawals() {
       </ListFilterDrawer>
 
       <div className="mt-10 space-y-4">
-        <div className="glass overflow-x-auto rounded-2xl">
-          <table className="w-full min-w-[960px] text-left text-sm">
-            <thead className="border-b border-white/10 bg-white/5 text-xs text-white/50 uppercase">
+        <div className="data-table-surface">
+          <table className="data-table min-w-[960px]">
+            <thead>
               <tr>
-                <th className="px-3 py-3">When</th>
-                <th className="px-3 py-3">Merchant</th>
-                <th className="px-3 py-3">Chain</th>
-                <th className="px-3 py-3">Token</th>
-                <th className="px-3 py-3">Amount</th>
-                <th className="px-3 py-3">To</th>
-                <th className="px-3 py-3">Status</th>
-                <th className="px-3 py-3">Tx</th>
+                <th>When</th>
+                <th>Merchant</th>
+                <th>Chain</th>
+                <th>Token</th>
+                <th>Amount</th>
+                <th>To</th>
+                <th>Status</th>
+                <th>Tx</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-white/5">
+            <tbody>
               {res.isLoading ? (
                 <tr>
-                  <td colSpan={8} className="px-3 py-8 text-center text-sm text-white/45">
+                  <td colSpan={8} className="!py-12 text-center text-sm text-white/40">
                     Loading…
                   </td>
                 </tr>
               ) : null}
               {showEmpty ? (
                 <tr>
-                  <td colSpan={8} className="px-3 py-8 text-center text-sm text-white/50">
+                  <td colSpan={8} className="!py-12 text-center text-sm text-white/45">
                     No record found.
                   </td>
                 </tr>
               ) : null}
               {!res.isLoading &&
                 rows.map((w) => (
-                  <tr key={w.id} className="text-white/85">
-                    <td className="px-3 py-2 text-xs text-white/50">{w.created_at.slice(0, 19)}</td>
-                    <td className="max-w-[140px] truncate px-3 py-2 text-xs">{w.merchant.email}</td>
-                    <td className="px-3 py-2">{w.chain}</td>
-                    <td className="px-3 py-2">{w.token_symbol}</td>
-                    <td className="px-3 py-2 font-mono text-xs">{w.amount}</td>
-                    <td className="max-w-[120px] truncate px-3 py-2 font-mono text-[10px]">{w.to_address}</td>
-                    <td className="px-3 py-2 text-xs">{w.status}</td>
-                    <td className="max-w-[120px] truncate px-3 py-2 font-mono text-[10px] text-cyan-300/80">
+                  <tr key={w.id}>
+                    <td className="text-xs text-white/45">{w.created_at.slice(0, 19)}</td>
+                    <td className="max-w-[140px] truncate text-xs">{w.merchant.email}</td>
+                    <td>{w.chain}</td>
+                    <td>{w.token_symbol}</td>
+                    <td className="font-mono text-xs">{w.amount}</td>
+                    <td className="max-w-[120px] truncate font-mono text-[10px] text-white/50">{w.to_address}</td>
+                    <td className="text-xs">{w.status}</td>
+                    <td className="max-w-[120px] truncate font-mono text-[10px] text-white/50">
                       {w.tx_hash ?? "—"}
                     </td>
                   </tr>

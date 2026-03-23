@@ -41,6 +41,7 @@
     "express": "^4.21.2",
     "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.2",
+    "nodemailer": "^6.10.1",
     "tiny-secp256k1": "^2.2.3",
     "tronweb": "^6.0.2",
     "winston": "^3.17.0"

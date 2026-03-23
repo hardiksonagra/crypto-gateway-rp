@@ -58,6 +58,9 @@ model AdminUser {
   /// Non-empty = gateway only allows these `CURRENCY|NETWORK` rails (must match default_chains).
   supportedDepositRails String[] @default([]) @map("supported_deposit_rails")
   isActive      Boolean @default(true) @map("is_active")
+  /// SHA-256 hex of one-time password-reset token (plain token only in email).
+  passwordResetTokenHash   String?   @map("password_reset_token_hash")
+  passwordResetExpiresAt    DateTime? @map("password_reset_expires_at")
   createdAt    DateTime  @default(now()) @map("created_at")
   updatedAt    DateTime  @updatedAt @map("updated_at")
 

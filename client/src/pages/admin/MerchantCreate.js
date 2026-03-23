@@ -7,7 +7,7 @@ import ChainMultiSelectField from "../../components/ChainMultiSelectField";
 import DepositRailsMultiSelectField from "../../components/DepositRailsMultiSelectField";
 
 const input =
-  "w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none ring-cyan-500/30 focus:ring-1";
+  "w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none ring-white/20 focus:ring-1";
 const label = "mb-1 block text-xs font-medium text-white/60";
 
 const initial = {
@@ -28,18 +28,18 @@ export default function MerchantCreate() {
       <div className="mb-6 flex flex-wrap items-center gap-3">
         <Link
           to="/admin/merchants"
-          className="text-sm text-white/50 hover:text-cyan-400"
+          className="text-sm text-white/50 hover:text-white"
         >
           ← Merchants
         </Link>
       </div>
-      <h1 className="text-2xl font-semibold text-white">Create merchant</h1>
+      <h1 className="font-display text-2xl font-semibold text-white">Create merchant</h1>
       <p className="mt-1 text-sm text-white/50">
         New portal user + API key (shown once after save). Merchants are created
         active by default.
       </p>
 
-      <div className="glass glow-border mt-8 w-full rounded-2xl p-6 lg:p-8">
+      <div className="glass mt-8 w-full rounded-2xl p-6 lg:p-8">
         <Formik
           initialValues={initial}
           validationSchema={merchantCreateSchema}
@@ -177,7 +177,7 @@ export default function MerchantCreate() {
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="rounded-lg bg-cyan-500/90 px-4 py-2 text-sm font-medium text-slate-950 disabled:opacity-50"
+                  className="btn-primary rounded-lg px-4 py-2 text-sm"
                 >
                   {isSubmitting ? "Creating…" : "Create merchant"}
                 </button>
@@ -203,7 +203,7 @@ export default function MerchantCreate() {
               They are not shown again.
             </p>
             {secretModal.api_key ? (
-              <p className="mt-3 break-all font-mono text-xs text-cyan-300">
+              <p className="mt-3 break-all font-mono text-xs text-white/55">
                 {secretModal.api_key}
               </p>
             ) : null}

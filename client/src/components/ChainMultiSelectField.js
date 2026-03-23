@@ -22,7 +22,7 @@ export default function ChainMultiSelectField({ name, description }) {
                   key={c}
                   className={`cursor-pointer select-none rounded-lg border px-2.5 py-1.5 text-xs font-medium transition ${
                     selected
-                      ? "border-cyan-400/50 bg-cyan-500/20 text-cyan-100"
+                      ? "border-white/35 bg-white/10 text-white"
                       : "border-white/15 text-white/55 hover:border-white/25 hover:text-white/75"
                   }`}
                 >

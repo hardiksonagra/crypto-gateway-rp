@@ -37,7 +37,7 @@ export default function ListPaginationBar({ page, setPage, total, pageSize, setP
               setPageSize(n);
               setPage(1);
             }}
-            className="rounded-lg border border-white/15 bg-black/40 px-2 py-1.5 text-sm text-white outline-none ring-cyan-500/30 focus:ring-1"
+            className="rounded-lg border border-white/15 bg-black/40 px-2 py-1.5 text-sm text-white outline-none ring-white/20 focus:ring-1"
           >
             {LIST_PAGE_SIZE_OPTIONS.map((n) => (
               <option key={n} value={n}>
@@ -76,7 +76,7 @@ export default function ListPaginationBar({ page, setPage, total, pageSize, setP
               onClick={() => setPage(item)}
               className={`min-w-[2.25rem] rounded-lg px-2 py-1.5 text-sm ${
                 item === page
-                  ? "bg-cyan-500/25 font-semibold text-cyan-200 ring-1 ring-cyan-500/40"
+                  ? "bg-white/12 font-semibold text-white ring-1 ring-white/25"
                   : "text-white/65 hover:bg-white/5"
               }`}
             >

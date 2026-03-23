@@ -103,12 +103,12 @@ export default function MerchantSettings() {
 
   return (
     <div>
-      <h1 className="text-2xl font-semibold text-white">
+      <h1 className="font-display text-2xl font-semibold text-white">
         Gateway &amp; webhooks
       </h1>
       <p className="mt-1 text-sm text-white/50">
         Callback URL, supported chains, and deposit rails for{" "}
-        <span className="font-mono text-violet-300/80">
+        <span className="font-mono text-white/55">
           POST /api/v1/gateway/deposit-address
         </span>
         .
@@ -128,7 +128,7 @@ export default function MerchantSettings() {
         <div className="mt-2 flex items-stretch gap-2">
           <div
             id="merchant-api-key-display"
-            className="min-h-[42px] flex-1 select-all rounded-lg border border-white/10 bg-black/30 px-3 py-2 font-mono text-sm text-violet-200/90 break-all content-center"
+            className="min-h-[42px] flex-1 select-all rounded-lg border border-white/10 bg-black/30 px-3 py-2 font-mono text-sm text-white/70 break-all content-center"
           >
             {apiKeyDisplayed}
           </div>
@@ -244,7 +244,7 @@ export default function MerchantSettings() {
             <button
               type="submit"
               disabled={isSubmitting}
-              className="rounded-lg bg-violet-500/90 px-4 py-2 text-sm font-medium text-slate-950 disabled:opacity-50 lg:col-span-2"
+              className="btn-primary rounded-lg px-4 py-2 text-sm lg:col-span-2"
             >
               Save
             </button>

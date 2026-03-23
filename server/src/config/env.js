@@ -41,6 +41,17 @@ export const env = {
   ),
   encryptionKey: optional("ENCRYPTION_KEY"),
 
+  /** Base URL of the browser app (for password-reset links), e.g. https://portal.example.com */
+  appPublicUrl: optional("APP_PUBLIC_URL", "http://localhost:5173"),
+  passwordResetTtlMinutes: intEnv("PASSWORD_RESET_TTL_MINUTES", 60),
+
+  smtpHost: optional("SMTP_HOST"),
+  smtpPort: intEnv("SMTP_PORT", 587),
+  smtpSecure: optional("SMTP_SECURE", "false") === "true",
+  smtpUser: optional("SMTP_USER"),
+  smtpPass: optional("SMTP_PASS"),
+  smtpFrom: optional("SMTP_FROM", "noreply@localhost"),
+
   confirmationsEvm: intEnv("CONFIRMATIONS_EVM", 12),
   confirmationsTron: intEnv("CONFIRMATIONS_TRON", 20),
   confirmationsBtc: intEnv("CONFIRMATIONS_BTC", 3),

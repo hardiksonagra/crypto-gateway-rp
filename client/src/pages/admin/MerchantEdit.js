@@ -9,7 +9,7 @@ import DepositRailsMultiSelectField from "../../components/DepositRailsMultiSele
 import { depositRailsForChains, railKeyFromParts } from "../../admin/depositRailOptions.js";
 
 const input =
-  "w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none ring-cyan-500/30 focus:ring-1";
+  "w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none ring-white/20 focus:ring-1";
 const label = "mb-1 block text-xs font-medium text-white/60";
 
 export default function MerchantEdit() {
@@ -35,7 +35,7 @@ export default function MerchantEdit() {
   if (q.isError || !q.data) {
     return (
       <div>
-        <Link to="/admin/merchants" className="text-sm text-cyan-400">
+        <Link to="/admin/merchants" className="text-sm text-white/60 hover:text-white">
           ← Back
         </Link>
         <p className="mt-4 text-rose-400">Merchant not found.</p>
@@ -70,18 +70,18 @@ export default function MerchantEdit() {
       <div className="mb-6">
         <Link
           to="/admin/merchants"
-          className="text-sm text-white/50 hover:text-cyan-400"
+          className="text-sm text-white/50 hover:text-white"
         >
           ← Merchants
         </Link>
       </div>
-      <h1 className="text-2xl font-semibold text-white">Edit merchant</h1>
+      <h1 className="font-display text-2xl font-semibold text-white">Edit merchant</h1>
       <p className="mt-1 font-mono text-sm text-white/45">{m.email}</p>
       <p className="text-xs text-white/40">
         Users: {m.end_users_count} · API key hint: …{m.api_key_hint ?? "—"}
       </p>
 
-      <div className="glass glow-border mt-8 w-full rounded-2xl p-6 lg:p-8">
+      <div className="glass mt-8 w-full rounded-2xl p-6 lg:p-8">
         <Formik
           key={m.id}
           initialValues={initial}
@@ -237,7 +237,7 @@ export default function MerchantEdit() {
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="rounded-lg bg-cyan-500/90 px-4 py-2 text-sm font-medium text-slate-950 disabled:opacity-50"
+                  className="btn-primary rounded-lg px-4 py-2 text-sm"
                 >
                   {isSubmitting ? "Saving…" : "Save changes"}
                 </button>
@@ -257,7 +257,7 @@ export default function MerchantEdit() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
           <div className="glass w-full max-w-lg rounded-2xl p-6">
             <h3 className="text-lg font-semibold text-white">New API key</h3>
-            <p className="mt-3 break-all font-mono text-xs text-cyan-300">
+            <p className="mt-3 break-all font-mono text-xs text-white/55">
               {newKeyModal}
             </p>
             <button

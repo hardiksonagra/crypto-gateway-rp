@@ -110,14 +110,14 @@ export default function MerchantWithdraw() {
 
   return (
     <div>
-      <h1 className="text-2xl font-semibold text-white">Withdraw</h1>
+      <h1 className="font-display text-2xl font-semibold text-white">Withdraw</h1>
       <p className="mt-1 max-w-2xl text-sm text-white/50">
         Native EVM withdrawals only: sends from the first deposit wallet on the selected chain that has
         enough balance for the payout plus gas. Token (USDT, etc.) pooling is not automated here.
       </p>
 
       <div className="mt-10 flex flex-wrap items-center justify-between gap-4">
-        <h2 className="text-sm font-semibold tracking-wide text-violet-300/90 uppercase">Withdrawal history</h2>
+        <h2 className="text-sm font-semibold tracking-wide text-white/40 uppercase">Withdrawal history</h2>
         <ListFilterToolbar
           onOpenDrawer={() => setHistoryDrawerOpen(true)}
           onReset={resetHistoryFilters}
@@ -128,8 +128,8 @@ export default function MerchantWithdraw() {
       {hasHistoryFilterChips ? (
         <ListActiveFiltersChips>
           {historyFilters.chain ? (
-            <span className="inline-flex items-center gap-1 rounded-xl border border-cyan-400/25 bg-cyan-500/[0.12] px-2.5 py-1.5 pl-3 text-xs text-cyan-50">
-              <span className="text-[10px] font-semibold tracking-wide text-cyan-300/80 uppercase">Chain</span>
+            <span className="filter-chip">
+              <span className="filter-chip-label">Chain</span>
               <span>{historyFilters.chain}</span>
               <button
                 type="button"
@@ -142,8 +142,8 @@ export default function MerchantWithdraw() {
             </span>
           ) : null}
           {historyFilters.status ? (
-            <span className="inline-flex items-center gap-1 rounded-xl border border-emerald-400/25 bg-emerald-500/[0.12] px-2.5 py-1.5 pl-3 text-xs text-emerald-50">
-              <span className="text-[10px] font-semibold tracking-wide text-emerald-300/80 uppercase">Status</span>
+            <span className="filter-chip">
+              <span className="filter-chip-label">Status</span>
               <span>{historyFilters.status}</span>
               <button
                 type="button"
@@ -156,8 +156,8 @@ export default function MerchantWithdraw() {
             </span>
           ) : null}
           {historyFilters.token_symbol.trim() ? (
-            <span className="inline-flex items-center gap-1 rounded-xl border border-amber-400/25 bg-amber-500/[0.12] px-2.5 py-1.5 pl-3 text-xs text-amber-50">
-              <span className="text-[10px] font-semibold tracking-wide text-amber-300/80 uppercase">Token</span>
+            <span className="filter-chip">
+              <span className="filter-chip-label">Token</span>
               <span className="font-mono">{historyFilters.token_symbol}</span>
               <button
                 type="button"
@@ -170,8 +170,8 @@ export default function MerchantWithdraw() {
             </span>
           ) : null}
           {historyFilters.to_address.trim() ? (
-            <span className="inline-flex max-w-full items-center gap-1 rounded-xl border border-white/20 bg-white/[0.08] px-2.5 py-1.5 pl-3 text-xs text-white/85">
-              <span className="text-[10px] font-semibold tracking-wide text-white/50 uppercase">To</span>
+            <span className="filter-chip max-w-full">
+              <span className="filter-chip-label">To</span>
               <span className="max-w-[min(240px,50vw)] truncate font-mono text-[10px]" title={historyFilters.to_address}>
                 {historyFilters.to_address}
               </span>
@@ -186,9 +186,9 @@ export default function MerchantWithdraw() {
             </span>
           ) : null}
           {hasNonDefaultHistoryPageSize ? (
-            <span className="inline-flex items-center gap-1 rounded-xl border border-violet-400/25 bg-violet-500/[0.12] px-2.5 py-1.5 pl-3 text-xs text-violet-50">
-              <span className="text-[10px] font-semibold tracking-wide text-violet-300/80 uppercase">Page size</span>
-              <span className="font-mono">{historyFilters.pageSize}</span>
+            <span className="filter-chip">
+              <span className="filter-chip-label">Page size</span>
+              <span className="font-mono text-white/65">{historyFilters.pageSize}</span>
               <button
                 type="button"
                 className={listFilterChipCloseClass}
@@ -306,44 +306,44 @@ export default function MerchantWithdraw() {
       </ListFilterDrawer>
 
       <div className="mt-4 space-y-4">
-        <div className="glass overflow-x-auto rounded-2xl">
-          <table className="w-full min-w-[640px] text-left text-sm">
-            <thead className="border-b border-white/10 bg-white/5 text-xs text-white/50 uppercase">
+        <div className="data-table-surface">
+          <table className="data-table min-w-[640px]">
+            <thead>
               <tr>
-                <th className="px-3 py-2">When</th>
-                <th className="px-3 py-2">Chain</th>
-                <th className="px-3 py-2">Token</th>
-                <th className="px-3 py-2">Amount</th>
-                <th className="px-3 py-2">To</th>
-                <th className="px-3 py-2">Status</th>
-                <th className="px-3 py-2">Tx</th>
+                <th>When</th>
+                <th>Chain</th>
+                <th>Token</th>
+                <th>Amount</th>
+                <th>To</th>
+                <th>Status</th>
+                <th>Tx</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-white/5">
+            <tbody>
               {listQ.isLoading ? (
                 <tr>
-                  <td colSpan={7} className="px-3 py-8 text-center text-sm text-white/45">
+                  <td colSpan={7} className="!py-12 text-center text-sm text-white/40">
                     Loading…
                   </td>
                 </tr>
               ) : null}
               {showEmpty ? (
                 <tr>
-                  <td colSpan={7} className="px-3 py-8 text-center text-sm text-white/50">
+                  <td colSpan={7} className="!py-12 text-center text-sm text-white/45">
                     No record found.
                   </td>
                 </tr>
               ) : null}
               {!listQ.isLoading &&
                 withdrawals.map((w) => (
-                  <tr key={w.id} className="text-white/85">
-                    <td className="px-3 py-2 text-xs text-white/50">{w.createdAt.slice(0, 19)}</td>
-                    <td className="px-3 py-2">{w.chain}</td>
-                    <td className="px-3 py-2">{w.tokenSymbol}</td>
-                    <td className="px-3 py-2 font-mono text-xs">{w.amount}</td>
-                    <td className="max-w-[140px] truncate px-3 py-2 font-mono text-[10px]">{w.toAddress}</td>
-                    <td className="px-3 py-2 text-xs">{w.status}</td>
-                    <td className="max-w-[120px] truncate px-3 py-2 font-mono text-[10px] text-cyan-300/80">
+                  <tr key={w.id}>
+                    <td className="text-xs text-white/45">{w.createdAt.slice(0, 19)}</td>
+                    <td>{w.chain}</td>
+                    <td>{w.tokenSymbol}</td>
+                    <td className="font-mono text-xs">{w.amount}</td>
+                    <td className="max-w-[140px] truncate font-mono text-[10px] text-white/50">{w.toAddress}</td>
+                    <td className="text-xs">{w.status}</td>
+                    <td className="max-w-[120px] truncate font-mono text-[10px] text-white/50">
                       {w.txHash ?? "—"}
                     </td>
                   </tr>
@@ -361,9 +361,7 @@ export default function MerchantWithdraw() {
         />
       </div>
 
-      <h2 className="mt-12 text-sm font-semibold tracking-wide text-violet-300/90 uppercase">
-        New withdrawal
-      </h2>
+      <h2 className="mt-12 text-sm font-semibold tracking-wide text-white/40 uppercase">New withdrawal</h2>
       <div className="mt-3 grid gap-8 lg:grid-cols-2">
         <Formik
           initialValues={initialWithdraw}
@@ -396,7 +394,7 @@ export default function MerchantWithdraw() {
           }}
         >
           {({ isSubmitting }) => (
-            <Form className="glass glow-border space-y-4 rounded-2xl p-6">
+            <Form className="glass space-y-4 rounded-2xl p-6">
               <div>
                 <label className="text-xs text-white/50" htmlFor="chain">
                   EVM chain
@@ -444,7 +442,7 @@ export default function MerchantWithdraw() {
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="w-full rounded-xl bg-gradient-to-r from-violet-500 to-cyan-500 py-3 text-sm font-semibold text-slate-950 disabled:opacity-50"
+                className="btn-primary w-full rounded-xl py-3 text-sm"
               >
                 {isSubmitting ? "Submitting…" : "Withdraw"}
               </button>
@@ -463,7 +461,7 @@ export default function MerchantWithdraw() {
                   <span className="text-white/60">
                     {b.chain} {b.token_symbol}
                   </span>
-                  <span className="text-cyan-200/90">{b.balance_raw}</span>
+                  <span className="text-white/70">{b.balance_raw}</span>
                 </li>
               ))}
             {(!dash.data?.balances?.length ||

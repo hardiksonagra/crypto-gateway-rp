@@ -25,7 +25,7 @@ export default function MerchantDashboard() {
 
   return (
     <div>
-      <h1 className="text-2xl font-semibold text-white">Dashboard</h1>
+      <h1 className="font-display text-2xl font-semibold text-white">Dashboard</h1>
       <p className="mt-1 text-sm text-white/50">
         Balances reflect successful deposits minus completed withdrawals (per asset).
       </p>
@@ -41,13 +41,13 @@ export default function MerchantDashboard() {
         </div>
       </div>
 
-      <h2 className="mt-10 text-sm font-semibold tracking-wide text-violet-300/90 uppercase">Balances</h2>
+      <h2 className="mt-10 text-sm font-semibold tracking-wide text-white/40 uppercase">Balances</h2>
       <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {data.balances.length === 0 ? (
           <p className="text-sm text-white/45">No settled balance yet.</p>
         ) : (
           data.balances.map((b) => (
-            <div key={`${b.chain}-${b.token_symbol}`} className="glass glow-border rounded-xl p-4">
+            <div key={`${b.chain}-${b.token_symbol}`} className="glass rounded-xl p-4">
               <p className="text-xs text-white/45">
                 {b.chain} · {b.token_symbol}
               </p>
@@ -58,31 +58,31 @@ export default function MerchantDashboard() {
         )}
       </div>
 
-      <h2 className="mt-10 text-sm font-semibold tracking-wide text-violet-300/90 uppercase">Recent (7d)</h2>
-      <div className="glass mt-3 overflow-hidden rounded-2xl">
-        <table className="w-full text-left text-sm">
-          <thead className="border-b border-white/10 text-xs text-white/50 uppercase">
+      <h2 className="mt-10 text-sm font-semibold tracking-wide text-white/40 uppercase">Recent (7d)</h2>
+      <div className="data-table-surface mt-3">
+        <table className="data-table">
+          <thead>
             <tr>
-              <th className="px-4 py-2">When</th>
-              <th className="px-4 py-2">Chain</th>
-              <th className="px-4 py-2">Token</th>
-              <th className="px-4 py-2">Status</th>
+              <th>When</th>
+              <th>Chain</th>
+              <th>Token</th>
+              <th>Status</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-white/5">
+          <tbody>
             {data.recent_transactions.length === 0 ? (
               <tr>
-                <td colSpan={4} className="px-4 py-8 text-center text-sm text-white/50">
+                <td colSpan={4} className="!py-12 text-center text-sm text-white/45">
                   No record found.
                 </td>
               </tr>
             ) : (
               data.recent_transactions.map((t) => (
-                <tr key={t.id} className="text-white/80">
-                  <td className="px-4 py-2 text-xs">{t.created_at.slice(0, 19)}</td>
-                  <td className="px-4 py-2">{t.chain}</td>
-                  <td className="px-4 py-2">{t.token_symbol}</td>
-                  <td className="px-4 py-2 text-xs">{t.status}</td>
+                <tr key={t.id}>
+                  <td className="text-xs text-white/45">{t.created_at.slice(0, 19)}</td>
+                  <td>{t.chain}</td>
+                  <td>{t.token_symbol}</td>
+                  <td className="text-xs">{t.status}</td>
                 </tr>
               ))
             )}

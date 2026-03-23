@@ -69,7 +69,7 @@ export default function ConfirmModal({
             className={`rounded-xl px-4 py-2.5 text-sm font-semibold transition disabled:opacity-50 ${
               danger
                 ? "bg-rose-600/90 text-white hover:bg-rose-600"
-                : "bg-gradient-to-r from-cyan-500 to-violet-500 text-slate-950"
+                : "btn-primary"
             }`}
           >
             {isLoading ? "Please wait…" : confirmLabel}

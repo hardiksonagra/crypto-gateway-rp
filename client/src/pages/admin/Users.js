@@ -75,7 +75,7 @@ export default function AdminUsers() {
     <div>
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
-          <h1 className="text-2xl font-semibold text-white">Users</h1>
+          <h1 className="font-display text-2xl font-semibold text-white">Users</h1>
           <p className="mt-1 text-sm text-white/50">Every payer identity created through the gateway API.</p>
         </div>
         <ListFilterToolbar
@@ -88,9 +88,9 @@ export default function AdminUsers() {
       {hasFilterChips ? (
         <ListActiveFiltersChips>
           {applied.q.trim() ? (
-            <span className="inline-flex max-w-full items-center gap-1 rounded-xl border border-cyan-400/25 bg-cyan-500/[0.12] px-2.5 py-1.5 pl-3 text-xs text-cyan-50">
-              <span className="text-[10px] font-semibold tracking-wide text-cyan-300/80 uppercase">Search</span>
-              <span className="max-w-[min(220px,45vw)] truncate font-mono text-cyan-100/95" title={applied.q}>
+            <span className="filter-chip max-w-full">
+              <span className="filter-chip-label">Search</span>
+              <span className="max-w-[min(220px,45vw)] truncate font-mono text-white/65" title={applied.q}>
                 {applied.q}
               </span>
               <button
@@ -104,8 +104,8 @@ export default function AdminUsers() {
             </span>
           ) : null}
           {applied.merchant_id.trim() ? (
-            <span className="inline-flex max-w-full items-center gap-1 rounded-xl border border-violet-400/25 bg-violet-500/[0.12] px-2.5 py-1.5 pl-3 text-xs text-violet-50">
-              <span className="text-[10px] font-semibold tracking-wide text-violet-300/80 uppercase">Merchant</span>
+            <span className="filter-chip max-w-full">
+              <span className="filter-chip-label">Merchant</span>
               <span className="max-w-[min(220px,45vw)] truncate font-mono" title={applied.merchant_id}>
                 {applied.merchant_id}
               </span>
@@ -148,9 +148,9 @@ export default function AdminUsers() {
             </span>
           ) : null}
           {hasNonDefaultPageSize ? (
-            <span className="inline-flex items-center gap-1 rounded-xl border border-violet-400/25 bg-violet-500/[0.12] px-2.5 py-1.5 pl-3 text-xs text-violet-50">
-              <span className="text-[10px] font-semibold tracking-wide text-violet-300/80 uppercase">Page size</span>
-              <span className="font-mono">{applied.pageSize}</span>
+            <span className="filter-chip">
+              <span className="filter-chip-label">Page size</span>
+              <span className="font-mono text-white/65">{applied.pageSize}</span>
               <button
                 type="button"
                 className={listFilterChipCloseClass}
@@ -252,38 +252,38 @@ export default function AdminUsers() {
       </ListFilterDrawer>
 
       <div className="mt-10 space-y-4">
-        <div className="glass overflow-hidden rounded-2xl">
-          <table className="w-full text-left text-sm">
-            <thead className="border-b border-white/10 bg-white/5 text-xs text-white/50 uppercase">
+        <div className="data-table-surface">
+          <table className="data-table min-w-[560px]">
+            <thead>
               <tr>
-                <th className="px-4 py-3">External id</th>
-                <th className="px-4 py-3">Merchant</th>
-                <th className="px-4 py-3">Wallets</th>
-                <th className="px-4 py-3">Created</th>
+                <th>External id</th>
+                <th>Merchant</th>
+                <th>Wallets</th>
+                <th>Created</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-white/5">
+            <tbody>
               {res.isLoading ? (
                 <tr>
-                  <td colSpan={4} className="px-4 py-8 text-center text-sm text-white/45">
+                  <td colSpan={4} className="!py-12 text-center text-sm text-white/40">
                     Loading…
                   </td>
                 </tr>
               ) : null}
               {showEmpty ? (
                 <tr>
-                  <td colSpan={4} className="px-4 py-8 text-center text-sm text-white/50">
+                  <td colSpan={4} className="!py-12 text-center text-sm text-white/45">
                     No record found.
                   </td>
                 </tr>
               ) : null}
               {!res.isLoading &&
                 users.map((u) => (
-                  <tr key={u.id} className="text-white/85">
-                    <td className="px-4 py-3 font-mono text-xs">{u.external_user_id}</td>
-                    <td className="px-4 py-3 text-xs">{u.merchant.email}</td>
-                    <td className="px-4 py-3">{u.wallets_count}</td>
-                    <td className="px-4 py-3 text-xs text-white/50">{u.created_at.slice(0, 10)}</td>
+                  <tr key={u.id}>
+                    <td className="font-mono text-xs text-white/75">{u.external_user_id}</td>
+                    <td className="text-xs text-white/65">{u.merchant.email}</td>
+                    <td>{u.wallets_count}</td>
+                    <td className="text-xs text-white/45">{u.created_at.slice(0, 10)}</td>
                   </tr>
                 ))}
             </tbody>

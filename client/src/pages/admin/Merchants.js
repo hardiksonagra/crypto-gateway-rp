@@ -159,7 +159,7 @@ export default function AdminMerchants() {
     <div>
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
-          <h1 className="text-2xl font-semibold text-white">Merchants</h1>
+          <h1 className="font-display text-2xl font-semibold text-white">Merchants</h1>
           <p className="mt-1 text-sm text-white/50">
             List, create, edit, delete (deactivates — soft delete).
           </p>
@@ -167,7 +167,7 @@ export default function AdminMerchants() {
         <div className="flex flex-shrink-0 flex-wrap items-center justify-end gap-2">
           <Link
             to="/admin/merchants/new"
-            className="rounded-xl bg-gradient-to-r from-cyan-500 to-violet-500 px-4 py-2.5 text-sm font-semibold text-slate-950 shadow-lg shadow-cyan-500/15"
+            className="btn-primary rounded-xl px-4 py-2.5 text-sm"
           >
             + Create merchant
           </Link>
@@ -182,12 +182,10 @@ export default function AdminMerchants() {
       {hasFilterChips ? (
         <ListActiveFiltersChips>
           {applied.search.trim() ? (
-            <span className="inline-flex max-w-full items-center gap-1 rounded-xl border border-cyan-400/25 bg-cyan-500/[0.12] px-2.5 py-1.5 pl-3 text-xs text-cyan-50 shadow-sm backdrop-blur-sm">
-              <span className="text-[10px] font-semibold tracking-wide text-cyan-300/80 uppercase">
-                Search
-              </span>
+            <span className="filter-chip max-w-full">
+              <span className="filter-chip-label">Search</span>
               <span
-                className="max-w-[min(280px,50vw)] truncate font-mono text-cyan-100/95"
+                className="max-w-[min(280px,50vw)] truncate font-mono text-white/65"
                 title={applied.search}
               >
                 {applied.search}
@@ -203,11 +201,9 @@ export default function AdminMerchants() {
             </span>
           ) : null}
           {applied.active === "true" ? (
-            <span className="inline-flex items-center gap-1 rounded-xl border border-emerald-400/25 bg-emerald-500/[0.12] px-2.5 py-1.5 pl-3 text-xs text-emerald-50">
-              <span className="text-[10px] font-semibold tracking-wide text-emerald-300/80 uppercase">
-                Status
-              </span>
-              <span>Active only</span>
+            <span className="filter-chip">
+              <span className="filter-chip-label">Status</span>
+              <span className="text-white/70">Active only</span>
               <button
                 type="button"
                 className={listFilterChipCloseClass}
@@ -219,11 +215,9 @@ export default function AdminMerchants() {
             </span>
           ) : null}
           {applied.active === "false" ? (
-            <span className="inline-flex items-center gap-1 rounded-xl border border-amber-400/25 bg-amber-500/[0.12] px-2.5 py-1.5 pl-3 text-xs text-amber-50">
-              <span className="text-[10px] font-semibold tracking-wide text-amber-300/80 uppercase">
-                Status
-              </span>
-              <span>Inactive only</span>
+            <span className="filter-chip">
+              <span className="filter-chip-label">Status</span>
+              <span className="text-white/70">Inactive only</span>
               <button
                 type="button"
                 className={listFilterChipCloseClass}
@@ -235,11 +229,9 @@ export default function AdminMerchants() {
             </span>
           ) : null}
           {hasNonDefaultPageSize ? (
-            <span className="inline-flex items-center gap-1 rounded-xl border border-violet-400/25 bg-violet-500/[0.12] px-2.5 py-1.5 pl-3 text-xs text-violet-50">
-              <span className="text-[10px] font-semibold tracking-wide text-violet-300/80 uppercase">
-                Page size
-              </span>
-              <span className="font-mono">{applied.pageSize}</span>
+            <span className="filter-chip">
+              <span className="filter-chip-label">Page size</span>
+              <span className="font-mono text-white/65">{applied.pageSize}</span>
               <button
                 type="button"
                 className={listFilterChipCloseClass}
@@ -359,7 +351,7 @@ export default function AdminMerchants() {
       >
         <p>
           This will <strong className="text-white/85">deactivate</strong>{" "}
-          <span className="font-mono text-cyan-200/90">
+          <span className="font-mono text-white/70">
             {deleteModal?.email}
           </span>
           . The account is not removed from the database; you can turn it active
@@ -371,51 +363,43 @@ export default function AdminMerchants() {
       </ConfirmModal>
 
       <div className="mt-10 space-y-4">
-        <div className="glass overflow-hidden rounded-2xl">
-          <table className="w-full text-left text-sm">
-            <thead className="border-b border-white/10 bg-white/5 text-xs text-white/50 uppercase">
+        <div className="data-table-surface">
+          <table className="data-table min-w-[720px]">
+            <thead>
               <tr>
-                <th className="px-4 py-3">Email</th>
-                <th className="px-4 py-3">Chains</th>
-                <th className="px-4 py-3">Rails</th>
-                <th className="px-4 py-3">Users</th>
-                <th className="px-4 py-3">Active</th>
-                <th className="w-[1%] whitespace-nowrap px-4 py-3 text-right">
-                  Actions
-                </th>
+                <th>Email</th>
+                <th>Chains</th>
+                <th>Rails</th>
+                <th>Users</th>
+                <th>Active</th>
+                <th className="w-[1%] whitespace-nowrap text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-white/5">
+            <tbody>
               {q.isLoading ? (
                 <tr>
-                  <td
-                    colSpan={6}
-                    className="px-4 py-8 text-center text-sm text-white/45"
-                  >
+                  <td colSpan={6} className="!py-12 text-center text-sm text-white/40">
                     Loading…
                   </td>
                 </tr>
               ) : null}
               {showEmpty ? (
                 <tr>
-                  <td
-                    colSpan={6}
-                    className="px-4 py-8 text-center text-sm text-white/50"
-                  >
+                  <td colSpan={6} className="!py-12 text-center text-sm text-white/45">
                     No record found.
                   </td>
                 </tr>
               ) : null}
               {!q.isLoading &&
                 merchants.map((m) => (
-                  <tr key={m.id} className="text-white/85">
-                    <td className="px-4 py-3 font-mono text-xs">{m.email}</td>
-                    <td className="max-w-[200px] px-4 py-3 text-xs text-white/75">
+                  <tr key={m.id}>
+                    <td className="font-mono text-xs text-white/80">{m.email}</td>
+                    <td className="max-w-[200px] text-xs text-white/55">
                       {(m.default_chains ?? []).length
                         ? m.default_chains.join(", ")
                         : "—"}
                     </td>
-                    <td className="max-w-[240px] px-4 py-3 font-mono text-[11px] leading-snug text-white/70">
+                    <td className="max-w-[240px] font-mono text-[11px] leading-snug text-white/50">
                       {m.supported_deposit_rails?.length
                         ? m.supported_deposit_rails
                             .map((k) => k.split("|").join(" · "))
@@ -424,8 +408,8 @@ export default function AdminMerchants() {
                           ? `${m.default_currency} · ${m.default_network} (all on chains)`
                           : "—"}
                     </td>
-                    <td className="px-4 py-3">{m.end_users_count}</td>
-                    <td className="px-4 py-3">
+                    <td>{m.end_users_count}</td>
+                    <td>
                       <button
                         type="button"
                         role="switch"
@@ -443,7 +427,7 @@ export default function AdminMerchants() {
                             is_active: !m.is_active,
                           });
                         }}
-                        className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/50 disabled:opacity-50 ${
+                        className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-white/25 disabled:opacity-50 ${
                           m.is_active ? "bg-emerald-600/90" : "bg-white/20"
                         }`}
                       >
@@ -457,11 +441,11 @@ export default function AdminMerchants() {
                         {m.is_active ? "Active" : "Inactive"}
                       </span>
                     </td>
-                    <td className="whitespace-nowrap px-4 py-3">
+                    <td className="whitespace-nowrap">
                       <div className="flex shrink-0 flex-nowrap items-center justify-end gap-1.5">
                         <Link
                           to={`/admin/merchants/${m.id}/edit`}
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-cyan-400/30 bg-cyan-500/10 px-2.5 py-1.5 text-xs font-medium text-cyan-100 shadow-sm backdrop-blur-sm transition-colors hover:border-cyan-400/50 hover:bg-cyan-500/18 focus:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500/40"
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-white/12 bg-white/5 px-2.5 py-1.5 text-xs font-medium text-white/75 transition-colors hover:border-white/20 hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
                         >
                           <PencilIcon className="h-3.5 w-3.5 shrink-0 opacity-90" />
                           Edit

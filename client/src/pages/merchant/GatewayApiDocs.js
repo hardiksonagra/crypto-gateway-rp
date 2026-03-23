@@ -16,7 +16,7 @@ const API_EXAMPLE_BASE =
 
 /** Shared style for copy actions in this page */
 const COPY_BTN_CLASS =
-  "shrink-0 rounded-md border border-white/15 bg-white/5 px-2.5 py-1 text-[10px] font-medium uppercase tracking-wide text-white/70 transition hover:bg-white/10 hover:text-white/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-violet-400/60";
+  "shrink-0 rounded-md border border-white/15 bg-white/5 px-2.5 py-1 text-[10px] font-medium uppercase tracking-wide text-white/70 transition hover:bg-white/10 hover:text-white/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/25";
 
 /**
  * Path like `/api/v1/gateway/foo` → full URL when `VITE_API_ORIGIN` is set, else path only.
@@ -66,7 +66,7 @@ function EndpointRow({ textToCopy, children, breakAll }) {
   return (
     <div className="mt-1 flex flex-wrap items-center gap-2">
       <p
-        className={`min-w-0 flex-1 font-mono text-sm text-violet-300/80 ${breakAll ? "break-all" : ""}`}
+        className={`min-w-0 flex-1 font-mono text-sm text-white/60 ${breakAll ? "break-all" : ""}`}
       >
         {children}
       </p>
@@ -153,7 +153,7 @@ function Pre({ children, breakAll }) {
       </div>
       <pre
         ref={preRef}
-        className={`overflow-x-auto p-4 text-xs leading-relaxed text-violet-100/90 ${breakAll ? "break-all whitespace-pre-wrap" : ""}`}
+        className={`overflow-x-auto p-4 text-xs leading-relaxed text-zinc-200/90 ${breakAll ? "break-all whitespace-pre-wrap" : ""}`}
       >
         {children}
       </pre>
@@ -201,7 +201,7 @@ export default function GatewayApiDocs() {
   return (
     <div className="w-full space-y-8">
       <div>
-        <h1 className="text-2xl font-semibold text-white">Gateway API docs</h1>
+        <h1 className="font-display text-2xl font-semibold text-white">Gateway API docs</h1>
         <p className="mt-2 text-xs text-white/40">
           Example base URL for this environment:{" "}
           <span className="font-mono text-white/60">{API_EXAMPLE_BASE}</span>
@@ -212,7 +212,7 @@ export default function GatewayApiDocs() {
         <h2 className="text-lg font-semibold text-white">
           Authenticate gateway calls
         </h2>
-        <p className="mt-1 text-xs font-mono text-violet-300/70">
+        <p className="mt-1 text-xs font-mono text-white/45">
           All /api/v1/gateway/* requests
         </p>
         <p className="mt-3 text-sm text-white/55">
@@ -227,35 +227,30 @@ export default function GatewayApiDocs() {
 
       <section className="glass w-full rounded-2xl p-6 lg:p-8">
         <h2 className="text-lg font-semibold text-white">Supported Currency</h2>
-        <div className="mt-4 overflow-x-auto">
+        <div className="mt-4">
           {railRows === null ? (
             <p className="text-sm text-white/45">Loading…</p>
           ) : railRows.length === 0 ? (
             <p className="text-sm text-white/45">No pairs to show.</p>
           ) : (
-            <table className="w-full min-w-md border-collapse text-left text-sm text-white/80">
-              <thead>
-                <tr className="border-b border-white/10 text-xs text-white/45">
-                  <th className="py-2 pr-4 font-medium">currency</th>
-                  <th className="py-2 font-medium">network</th>
-                </tr>
-              </thead>
-              <tbody className="font-mono text-xs text-violet-200/90">
-                {railRows.map((row, i) => (
-                  <tr
-                    key={`${row.currency}|${row.network}`}
-                    className={
-                      i < railRows.length - 1
-                        ? "border-b border-white/5"
-                        : undefined
-                    }
-                  >
-                    <td className="py-2 pr-4">{row.currency}</td>
-                    <td className="py-2">{row.network}</td>
+            <div className="data-table-surface">
+              <table className="data-table font-mono text-xs">
+                <thead>
+                  <tr>
+                    <th>currency</th>
+                    <th>network</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {railRows.map((row) => (
+                    <tr key={`${row.currency}|${row.network}`}>
+                      <td>{row.currency}</td>
+                      <td>{row.network}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </div>
       </section>
@@ -269,7 +264,7 @@ export default function GatewayApiDocs() {
             "/api/v1/gateway/supported-currency",
           )}
         >
-          <span className="text-emerald-300/90">POST</span>{" "}
+          <span className="text-white/55">POST</span>{" "}
           /api/v1/gateway/supported-currency
         </EndpointRow>
         <p className="mt-3 text-sm text-white/55">
@@ -281,7 +276,7 @@ export default function GatewayApiDocs() {
         <p className="mt-3 text-xs font-medium text-white/45">Body</p>
         <ul className="mt-1 list-inside list-disc text-sm text-white/55">
           <li>
-            <span className="font-mono text-violet-200/80">api_key</span>{" "}
+            <span className="font-mono text-white/60">api_key</span>{" "}
             (required)
           </li>
         </ul>
@@ -314,7 +309,7 @@ Content-Type: application/json
             "/api/v1/gateway/deposit-address",
           )}
         >
-          <span className="text-emerald-300/90">POST</span>{" "}
+          <span className="text-white/55">POST</span>{" "}
           /api/v1/gateway/deposit-address
         </EndpointRow>
         <p className="mt-3 text-sm text-white/55">
@@ -326,18 +321,18 @@ Content-Type: application/json
         <p className="mt-3 text-xs font-medium text-white/45">Body</p>
         <ul className="mt-1 list-inside list-disc text-sm text-white/55">
           <li>
-            <span className="font-mono text-violet-200/80">api_key</span>{" "}
+            <span className="font-mono text-white/60">api_key</span>{" "}
             (required)
           </li>
           <li>
-            <span className="font-mono text-violet-200/80">
+            <span className="font-mono text-white/60">
               external_user_id
             </span>{" "}
             (required) — your user id
           </li>
           <li>
-            <span className="font-mono text-violet-200/80">currency</span>,{" "}
-            <span className="font-mono text-violet-200/80">network</span>{" "}
+            <span className="font-mono text-white/60">currency</span>,{" "}
+            <span className="font-mono text-white/60">network</span>{" "}
             (optional — default pair if omitted)
           </li>
         </ul>
@@ -439,7 +434,7 @@ GET /api/v1/gateway/transactions?address=0x…&currency=USDT&network=ERC20`}</Pr
         <p className="mt-3 text-sm text-white/55">
           When a deposit reaches success, the gateway POSTs once (retries until
           2xx) to the webhook URL from{" "}
-          <span className="font-mono text-violet-300/80">
+          <span className="font-mono text-white/60">
             Gateway &amp; webhooks
           </span>{" "}
           (same URL as above when configured). Payloads are not signed by

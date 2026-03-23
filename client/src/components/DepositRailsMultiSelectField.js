@@ -37,7 +37,7 @@ export default function DepositRailsMultiSelectField({
                       key={o.key}
                       className={`cursor-pointer select-none rounded-lg border px-2.5 py-1.5 text-xs font-medium transition ${
                         isOn
-                          ? "border-violet-400/50 bg-violet-500/20 text-violet-100"
+                          ? "border-white/35 bg-white/10 text-white"
                           : "border-white/15 text-white/55 hover:border-white/25 hover:text-white/75"
                       }`}
                     >
