@@ -117,6 +117,32 @@ export const adminWithdrawalsFilterSchema = yup.object({
   to_address: yup.string(),
 });
 
+/** Filters for transactions on merchant detail (merchant id is fixed in the page). */
+export const merchantDetailTransactionsFilterSchema = yup.object({
+  chain: chainFilterField,
+  status: yup.string().oneOf(["", "pending", "success", "failed"]),
+  token_symbol: yup.string(),
+  address: yup.string(),
+});
+
+/** Filters for wallets on merchant detail (merchant id is fixed in the page). */
+export const merchantDetailWalletsFilterSchema = yup.object({
+  chain: chainFilterField,
+  address: yup.string(),
+  currency: yup.string(),
+  network: yup.string(),
+  q: yup.string(),
+  created_from: yup.string(),
+  created_to: yup.string(),
+});
+
+/** Filters for end users on merchant detail (merchant id is fixed in the page). */
+export const merchantDetailUsersFilterSchema = yup.object({
+  q: yup.string(),
+  created_from: yup.string(),
+  created_to: yup.string(),
+});
+
 export const merchantUsersFilterSchema = yup.object({
   q: yup.string(),
 });

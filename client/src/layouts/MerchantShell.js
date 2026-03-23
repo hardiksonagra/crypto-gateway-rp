@@ -1,6 +1,12 @@
 import { Outlet, useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
-import { api, getToken, setToken } from "../api";
+import {
+  api,
+  clearImpersonationAdminToken,
+  getImpersonationAdminToken,
+  getToken,
+  setToken,
+} from "../api";
 import { useSidebarLayout } from "../hooks/useSidebarLayout.js";
 import { ShellNavLink } from "./ShellNavLink.js";
 import {
@@ -33,6 +39,9 @@ const settingsNav = [
 export default function MerchantShell() {
   const navigate = useNavigate();
   const [email, setEmail] = useState(null);
+  const [adminImpersonation, setAdminImpersonation] = useState(() =>
+    Boolean(getImpersonationAdminToken()),
+  );
   const { collapsed, toggleCollapsed, mobileOpen, setMobileOpen, closeMobile } =
     useSidebarLayout("merchant");
 
@@ -44,18 +53,30 @@ export default function MerchantShell() {
     api("/api/v1/auth/me")
       .then((u) => {
         if (u.role !== "MERCHANT") {
+          clearImpersonationAdminToken();
           setToken(null);
           navigate("/login", { replace: true });
           return;
         }
         setEmail(u.email);
+        setAdminImpersonation(Boolean(getImpersonationAdminToken()));
       })
       .catch(() => navigate("/login", { replace: true }));
   }, [navigate]);
 
   function logout() {
+    clearImpersonationAdminToken();
     setToken(null);
     navigate("/login");
+  }
+
+  function backToAdmin() {
+    const adminTok = getImpersonationAdminToken();
+    if (!adminTok) return;
+    clearImpersonationAdminToken();
+    setToken(adminTok);
+    setAdminImpersonation(false);
+    navigate("/admin", { replace: true });
   }
 
   return (
@@ -174,6 +195,21 @@ export default function MerchantShell() {
           <span className="font-display text-sm font-semibold text-white">Merchant</span>
         </header>
         <main className="min-h-0 flex-1 overflow-auto p-5 sm:p-8 lg:p-10">
+          {adminImpersonation ? (
+            <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-400/25 bg-amber-500/10 px-4 py-3 text-sm text-amber-100/95">
+              <p className="min-w-0 text-pretty">
+                You are signed in to the <span className="font-medium text-white">merchant</span> portal
+                from an admin session.
+              </p>
+              <button
+                type="button"
+                onClick={backToAdmin}
+                className="shrink-0 rounded-lg border border-amber-300/35 bg-white/10 px-3 py-1.5 text-xs font-semibold tracking-wide text-white uppercase transition hover:bg-white/15"
+              >
+                Back to admin
+              </button>
+            </div>
+          ) : null}
           <Outlet />
         </main>
       </div>

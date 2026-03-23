@@ -1,8 +1,9 @@
 import { Formik, Form, Field, ErrorMessage } from "formik";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
-import { Link } from "react-router-dom";
-import { api } from "../../api";
+import { createPortal } from "react-dom";
+import { useEffect, useLayoutEffect, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { api, getToken, setImpersonationAdminToken, setToken } from "../../api";
 import ListPaginationBar, {
   DEFAULT_LIST_PAGE_SIZE,
   LIST_PAGE_SIZE_OPTIONS,
@@ -22,7 +23,48 @@ import ConfirmModal from "../../components/ConfirmModal";
 
 const DEFAULT_PAGE_SIZE = DEFAULT_LIST_PAGE_SIZE;
 
-function PencilIcon({ className }) {
+function DotsVerticalIcon({ className }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      fill="none"
+      viewBox="0 0 24 24"
+      strokeWidth={1.5}
+      stroke="currentColor"
+      className={className}
+      aria-hidden
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M12 6.75a.75.75 0 0 1 0-1.5.75.75 0 0 1 0 1.5ZM12 12.75a.75.75 0 0 1 0-1.5.75.75 0 0 1 0 1.5ZM12 18.75a.75.75 0 0 1 0-1.5.75.75 0 0 1 0 1.5Z"
+      />
+    </svg>
+  );
+}
+
+function MenuEyeIcon({ className }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      fill="none"
+      viewBox="0 0 24 24"
+      strokeWidth={1.5}
+      stroke="currentColor"
+      className={className}
+      aria-hidden
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z"
+      />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+    </svg>
+  );
+}
+
+function MenuPencilIcon({ className }) {
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
@@ -42,7 +84,27 @@ function PencilIcon({ className }) {
   );
 }
 
-function TrashIcon({ className }) {
+function MenuLoginAsIcon({ className }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      fill="none"
+      viewBox="0 0 24 24"
+      strokeWidth={1.5}
+      stroke="currentColor"
+      className={className}
+      aria-hidden
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75"
+      />
+    </svg>
+  );
+}
+
+function MenuTrashIcon({ className }) {
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
@@ -62,8 +124,14 @@ function TrashIcon({ className }) {
   );
 }
 
+const menuIconClass = "h-4 w-4 shrink-0 text-white/50";
+
+const merchantActionsMenuItemClass =
+  "flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs font-medium text-white/80 transition-colors hover:bg-white/10 focus:bg-white/10 focus:outline-none";
+
 export default function AdminMerchants() {
   const qc = useQueryClient();
+  const nav = useNavigate();
 
   const toggleActiveMut = useMutation({
     mutationFn: async ({ id, is_active }) => {
@@ -87,6 +155,64 @@ export default function AdminMerchants() {
   const [deleteModal, setDeleteModal] = useState(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [deleteError, setDeleteError] = useState("");
+  const [openActionsId, setOpenActionsId] = useState(null);
+  const [impersonateError, setImpersonateError] = useState("");
+  const [impersonatingId, setImpersonatingId] = useState(null);
+  const [menuPlacement, setMenuPlacement] = useState({ top: 0, right: 0 });
+
+  useLayoutEffect(() => {
+    if (!openActionsId) return;
+    function updatePlacement() {
+      const el = document.querySelector(`[data-merchant-actions-anchor="${openActionsId}"]`);
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      setMenuPlacement({ top: r.bottom + 6, right: window.innerWidth - r.right });
+    }
+    updatePlacement();
+    window.addEventListener("resize", updatePlacement);
+    window.addEventListener("scroll", updatePlacement, true);
+    return () => {
+      window.removeEventListener("resize", updatePlacement);
+      window.removeEventListener("scroll", updatePlacement, true);
+    };
+  }, [openActionsId]);
+
+  useEffect(() => {
+    if (!openActionsId) return;
+    function onDocMouseDown(e) {
+      if (!(e.target instanceof Element)) return;
+      if (e.target.closest("[data-merchant-row-actions]")) return;
+      if (e.target.closest("[data-merchant-actions-menu]")) return;
+      setOpenActionsId(null);
+    }
+    function onKey(e) {
+      if (e.key === "Escape") setOpenActionsId(null);
+    }
+    document.addEventListener("mousedown", onDocMouseDown);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDocMouseDown);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [openActionsId]);
+
+  async function loginAsMerchant(id) {
+    setImpersonateError("");
+    setOpenActionsId(null);
+    setImpersonatingId(id);
+    try {
+      const adminTok = getToken();
+      if (!adminTok) throw new Error("Not signed in");
+      const r = await api(`/api/v1/admin/merchants/${id}/impersonate`, { method: "POST" });
+      setImpersonationAdminToken(adminTok);
+      setToken(r.token);
+      nav("/m", { replace: true });
+    } catch (e) {
+      setImpersonateError(String(e));
+    } finally {
+      setImpersonatingId(null);
+    }
+  }
 
   const q = useQuery({
     queryKey: [
@@ -109,6 +235,7 @@ export default function AdminMerchants() {
 
   const total = q.data?.total ?? 0;
   const merchants = q.data?.merchants ?? [];
+  const actionMenuMerchant = merchants.find((row) => row.id === openActionsId) ?? null;
   const showEmpty = !q.isLoading && merchants.length === 0;
 
   function resetAll() {
@@ -163,6 +290,9 @@ export default function AdminMerchants() {
           <p className="mt-1 text-sm text-white/50">
             List, create, edit, delete (deactivates — soft delete).
           </p>
+          {impersonateError ? (
+            <p className="mt-3 text-sm text-rose-400">{impersonateError}</p>
+          ) : null}
         </div>
         <div className="flex flex-shrink-0 flex-wrap items-center justify-end gap-2">
           <Link
@@ -441,25 +571,18 @@ export default function AdminMerchants() {
                         {m.is_active ? "Active" : "Inactive"}
                       </span>
                     </td>
-                    <td className="whitespace-nowrap">
-                      <div className="flex shrink-0 flex-nowrap items-center justify-end gap-1.5">
-                        <Link
-                          to={`/admin/merchants/${m.id}/edit`}
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-white/12 bg-white/5 px-2.5 py-1.5 text-xs font-medium text-white/75 transition-colors hover:border-white/20 hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
-                        >
-                          <PencilIcon className="h-3.5 w-3.5 shrink-0 opacity-90" />
-                          Edit
-                        </Link>
+                    <td className="whitespace-nowrap text-right">
+                      <div className="relative inline-block text-left" data-merchant-row-actions>
                         <button
                           type="button"
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-white/12 bg-white/[0.06] px-2.5 py-1.5 text-xs font-medium text-white/60 shadow-sm backdrop-blur-sm transition-colors hover:border-rose-400/40 hover:bg-rose-500/12 hover:text-rose-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-rose-500/35"
-                          onClick={() => {
-                            setDeleteError("");
-                            setDeleteModal({ id: m.id, email: m.email });
-                          }}
+                          data-merchant-actions-anchor={m.id}
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-white/12 bg-white/5 text-white/70 transition hover:border-white/20 hover:bg-white/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/20"
+                          aria-haspopup="menu"
+                          aria-expanded={openActionsId === m.id}
+                          aria-label={`Actions for ${m.email}`}
+                          onClick={() => setOpenActionsId((cur) => (cur === m.id ? null : m.id))}
                         >
-                          <TrashIcon className="h-3.5 w-3.5 shrink-0 opacity-90" />
-                          Delete
+                          <DotsVerticalIcon className="h-5 w-5" />
                         </button>
                       </div>
                     </td>
@@ -477,6 +600,67 @@ export default function AdminMerchants() {
           setPageSize={(n) => setApplied((a) => ({ ...a, pageSize: n }))}
         />
       </div>
+
+      {actionMenuMerchant
+        ? createPortal(
+            <div
+              data-merchant-actions-menu
+              className="fixed z-[70] min-w-[13.5rem] rounded-xl border border-white/12 bg-surface2 py-1 shadow-xl shadow-black/50"
+              style={{ top: menuPlacement.top, right: menuPlacement.right }}
+              role="menu"
+              aria-label="Merchant actions"
+            >
+              <Link
+                to={`/admin/merchants/${actionMenuMerchant.id}`}
+                role="menuitem"
+                className={merchantActionsMenuItemClass}
+                onClick={() => setOpenActionsId(null)}
+              >
+                <MenuEyeIcon className={menuIconClass} />
+                View details
+              </Link>
+              <Link
+                to={`/admin/merchants/${actionMenuMerchant.id}/edit`}
+                role="menuitem"
+                className={merchantActionsMenuItemClass}
+                onClick={() => setOpenActionsId(null)}
+              >
+                <MenuPencilIcon className={menuIconClass} />
+                Edit
+              </Link>
+              <button
+                type="button"
+                role="menuitem"
+                disabled={!actionMenuMerchant.is_active || impersonatingId === actionMenuMerchant.id}
+                title={!actionMenuMerchant.is_active ? "Activate the merchant first" : undefined}
+                className={`${merchantActionsMenuItemClass} disabled:cursor-not-allowed disabled:opacity-40`}
+                onClick={() => void loginAsMerchant(actionMenuMerchant.id)}
+              >
+                <MenuLoginAsIcon className={menuIconClass} />
+                {impersonatingId === actionMenuMerchant.id ? "Opening…" : "Log in as merchant"}
+              </button>
+              <div className="mt-1 border-t border-white/10 pt-1">
+                <button
+                  type="button"
+                  role="menuitem"
+                  className={`${merchantActionsMenuItemClass} text-rose-200 hover:bg-rose-500/15`}
+                  onClick={() => {
+                    setOpenActionsId(null);
+                    setDeleteError("");
+                    setDeleteModal({
+                      id: actionMenuMerchant.id,
+                      email: actionMenuMerchant.email,
+                    });
+                  }}
+                >
+                  <MenuTrashIcon className={`${menuIconClass} text-rose-300/80`} />
+                  Delete (deactivate)
+                </button>
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   );
 }

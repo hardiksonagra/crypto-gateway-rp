@@ -1,6 +1,6 @@
 import { Formik, Form, Field, ErrorMessage } from "formik";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { api, setToken } from "../api";
+import { api, clearImpersonationAdminToken, setToken } from "../api";
 import { loginSchema } from "../admin/merchantSchemas";
 
 const initial = { email: "", password: "" };
@@ -68,6 +68,7 @@ export default function LoginPage() {
                   method: "POST",
                   json: { email: values.email.trim().toLowerCase(), password: values.password },
                 });
+                clearImpersonationAdminToken();
                 setToken(r.token);
                 nav(r.role === "ADMIN" ? "/admin" : "/m", { replace: true });
               } catch (e) {

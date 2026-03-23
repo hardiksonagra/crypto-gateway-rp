@@ -9,6 +9,7 @@ import AdminDashboard from "./pages/admin/Dashboard";
 import AdminMerchants from "./pages/admin/Merchants";
 import MerchantCreate from "./pages/admin/MerchantCreate";
 import MerchantEdit from "./pages/admin/MerchantEdit";
+import MerchantDetail from "./pages/admin/MerchantDetail";
 import AdminUsers from "./pages/admin/Users";
 import AdminTransactions from "./pages/admin/Transactions";
 import AdminWithdrawals from "./pages/admin/Withdrawals";
@@ -29,6 +30,7 @@ export default function App() {
         <Route index element={<AdminDashboard />} />
         <Route path="merchants/new" element={<MerchantCreate />} />
         <Route path="merchants/:id/edit" element={<MerchantEdit />} />
+        <Route path="merchants/:id" element={<MerchantDetail />} />
         <Route path="merchants" element={<AdminMerchants />} />
         <Route path="users" element={<AdminUsers />} />
         <Route path="transactions" element={<AdminTransactions />} />

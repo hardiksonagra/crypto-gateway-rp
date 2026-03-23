@@ -1,4 +1,6 @@
 const TOKEN_KEY = "cpg_token";
+/** Saved while an admin uses “Log in as merchant”; restored on “Back to admin”. */
+const IMPERSONATION_ADMIN_TOKEN_KEY = "cpg_impersonation_admin_token";
 
 const API_BASE = String(import.meta.env.VITE_API_ORIGIN ?? "").replace(/\/$/, "");
 
@@ -15,6 +17,20 @@ export function getToken() {
 export function setToken(t) {
   if (t) localStorage.setItem(TOKEN_KEY, t);
   else localStorage.removeItem(TOKEN_KEY);
+}
+
+export function getImpersonationAdminToken() {
+  return localStorage.getItem(IMPERSONATION_ADMIN_TOKEN_KEY);
+}
+
+/** @param {string | null | undefined} t */
+export function setImpersonationAdminToken(t) {
+  if (t) localStorage.setItem(IMPERSONATION_ADMIN_TOKEN_KEY, t);
+  else localStorage.removeItem(IMPERSONATION_ADMIN_TOKEN_KEY);
+}
+
+export function clearImpersonationAdminToken() {
+  localStorage.removeItem(IMPERSONATION_ADMIN_TOKEN_KEY);
 }
 
 export async function api(path, init) {

@@ -8,6 +8,7 @@ import {
   WithdrawalStatus,
 } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
+import { signAuthToken } from "../lib/auth-jwt.js";
 import { requireAuth } from "../middleware/require-auth.js";
 import { parsePageQuery } from "../lib/pagination.js";
 import { generateApiKey, hashApiKey } from "../lib/api-key.js";
@@ -371,6 +372,36 @@ router.get("/api/v1/admin/merchants/:id", async (req, res) => {
   });
 });
 
+/** Admin-only: issue a portal JWT for the merchant (same shape as POST /auth/login). */
+router.post("/api/v1/admin/merchants/:id/impersonate", async (req, res) => {
+  const id = String(req.params.id ?? "");
+  const row = await prisma.adminUser.findFirst({
+    where: { id, role: AdminRole.MERCHANT },
+    select: {
+      id: true,
+      email: true,
+      displayName: true,
+      role: true,
+      isActive: true,
+    },
+  });
+  if (!row) {
+    res.status(404).json({ error: "not_found" });
+    return;
+  }
+  if (!row.isActive) {
+    res.status(403).json({ error: "merchant_inactive" });
+    return;
+  }
+  const token = signAuthToken({ sub: row.id, role: row.role });
+  res.json({
+    token,
+    role: row.role,
+    email: row.email,
+    display_name: row.displayName,
+  });
+});
+
 router.delete("/api/v1/admin/merchants/:id", async (req, res) => {
   const id = String(req.params.id ?? "");
   const hit = await prisma.adminUser.findFirst({
@@ -524,6 +555,110 @@ router.get("/api/v1/admin/transactions", async (req, res) => {
       external_user_id: t.wallet.user.externalUserId,
       merchant: t.wallet.user.merchant,
       created_at: t.createdAt,
+    })),
+  });
+});
+
+router.get("/api/v1/admin/wallets", async (req, res) => {
+  const { skip, take, page, pageSize } = parsePageQuery(req.query);
+  const merchantId =
+    typeof req.query.merchant_id === "string"
+      ? req.query.merchant_id.trim()
+      : "";
+  const chain =
+    typeof req.query.chain === "string" ? req.query.chain.trim() : "";
+  const addressQ =
+    typeof req.query.address === "string" ? req.query.address.trim() : "";
+  const currency =
+    typeof req.query.currency === "string" ? req.query.currency.trim() : "";
+  const network =
+    typeof req.query.network === "string" ? req.query.network.trim() : "";
+  const q = typeof req.query.q === "string" ? req.query.q.trim() : "";
+  const from =
+    typeof req.query.created_from === "string"
+      ? new Date(req.query.created_from)
+      : null;
+  const to =
+    typeof req.query.created_to === "string"
+      ? new Date(req.query.created_to)
+      : null;
+
+  const userWhere = {
+    ...(merchantId ? { merchantId } : {}),
+    ...(q
+      ? {
+          OR: [
+            { externalUserId: { contains: q, mode: "insensitive" } },
+            { id: { contains: q, mode: "insensitive" } },
+          ],
+        }
+      : {}),
+  };
+
+  const hasUserScope = merchantId || q;
+  /** @type {Record<string, unknown>} */
+  const createdAtCond = {};
+  if (from && !Number.isNaN(from.getTime())) createdAtCond.gte = from;
+  if (to && !Number.isNaN(to.getTime())) {
+    const end = new Date(to);
+    end.setHours(23, 59, 59, 999);
+    createdAtCond.lte = end;
+  }
+  const hasCreatedAt =
+    Object.prototype.hasOwnProperty.call(createdAtCond, "gte") ||
+    Object.prototype.hasOwnProperty.call(createdAtCond, "lte");
+
+  const where = {
+    ...(hasUserScope ? { user: userWhere } : {}),
+    ...(chain && CHAINS.has(chain) ? { chain } : {}),
+    ...(addressQ
+      ? {
+          address: addressQ.startsWith("0x")
+            ? { equals: addressQ, mode: "insensitive" }
+            : { contains: addressQ, mode: "insensitive" },
+        }
+      : {}),
+    ...(currency
+      ? { currency: { equals: currency, mode: "insensitive" } }
+      : {}),
+    ...(network
+      ? { network: { equals: network, mode: "insensitive" } }
+      : {}),
+    ...(hasCreatedAt ? { createdAt: createdAtCond } : {}),
+  };
+
+  const [total, rows] = await Promise.all([
+    prisma.wallet.count({ where }),
+    prisma.wallet.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      skip,
+      take,
+      include: {
+        user: {
+          include: {
+            merchant: { select: { id: true, email: true, displayName: true } },
+          },
+        },
+      },
+    }),
+  ]);
+
+  res.json({
+    page,
+    pageSize,
+    total,
+    wallets: rows.map((w) => ({
+      id: w.id,
+      address: w.address,
+      chain: w.chain,
+      currency: w.currency,
+      network: w.network,
+      derivation_index: w.derivationIndex,
+      end_user_id: w.user.id,
+      external_user_id: w.user.externalUserId,
+      merchant: w.user.merchant,
+      created_at: w.createdAt,
     })),
   });
 });
