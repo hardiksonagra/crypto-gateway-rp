@@ -148,6 +148,7 @@ export default function AdminMerchants() {
   const [applied, setApplied] = useState({
     search: "",
     active: "",
+    list_scope: "",
     pageSize: DEFAULT_PAGE_SIZE,
   });
 
@@ -220,6 +221,7 @@ export default function AdminMerchants() {
       page,
       applied.search,
       applied.active,
+      applied.list_scope,
       applied.pageSize,
     ],
     queryFn: () => {
@@ -228,7 +230,10 @@ export default function AdminMerchants() {
         pageSize: String(applied.pageSize),
       });
       if (applied.search.trim()) p.set("search", applied.search.trim());
-      if (applied.active) p.set("is_active", applied.active);
+      if (applied.active === "true") p.set("is_active", "true");
+      if (applied.active === "false") p.set("is_active", "false");
+      if (applied.list_scope === "all") p.set("list_scope", "all");
+      if (applied.list_scope === "deleted") p.set("list_scope", "deleted");
       return api(`/api/v1/admin/merchants?${p}`);
     },
   });
@@ -239,7 +244,12 @@ export default function AdminMerchants() {
   const showEmpty = !q.isLoading && merchants.length === 0;
 
   function resetAll() {
-    setApplied({ search: "", active: "", pageSize: DEFAULT_PAGE_SIZE });
+    setApplied({
+      search: "",
+      active: "",
+      list_scope: "",
+      pageSize: DEFAULT_PAGE_SIZE,
+    });
     setPage(1);
     setDrawerOpen(false);
   }
@@ -261,7 +271,13 @@ export default function AdminMerchants() {
     }
   }
 
-  const hasActiveFilters = Boolean(applied.search.trim() || applied.active);
+  const hasActiveFilters = Boolean(
+    applied.search.trim() ||
+      applied.active === "true" ||
+      applied.active === "false" ||
+      applied.list_scope === "all" ||
+      applied.list_scope === "deleted",
+  );
   const hasNonDefaultPageSize = applied.pageSize !== DEFAULT_PAGE_SIZE;
   const hasFilterChips = hasActiveFilters || hasNonDefaultPageSize;
 
@@ -277,6 +293,11 @@ export default function AdminMerchants() {
     setPage(1);
   }
 
+  function removeListScopeFilter() {
+    setApplied((a) => ({ ...a, list_scope: "" }));
+    setPage(1);
+  }
+
   function removePageSizeFilter() {
     setApplied((a) => ({ ...a, pageSize: DEFAULT_PAGE_SIZE }));
     setPage(1);
@@ -288,7 +309,9 @@ export default function AdminMerchants() {
         <div className="min-w-0 flex-1">
           <h1 className="font-display text-2xl font-semibold text-white">Merchants</h1>
           <p className="mt-1 text-sm text-white/50">
-            List, create, edit, delete (deactivates — soft delete).
+            Inactive merchants stay visible. Soft delete sets{" "}
+            <span className="font-mono text-white/55">deleted_at</span> — those
+            rows are hidden unless you include deleted in filters.
           </p>
           {impersonateError ? (
             <p className="mt-3 text-sm text-rose-400">{impersonateError}</p>
@@ -358,6 +381,34 @@ export default function AdminMerchants() {
               </button>
             </span>
           ) : null}
+          {applied.list_scope === "all" ? (
+            <span className="filter-chip">
+              <span className="filter-chip-label">List</span>
+              <span className="text-white/70">Including deleted</span>
+              <button
+                type="button"
+                className={listFilterChipCloseClass}
+                onClick={removeListScopeFilter}
+                aria-label="Remove list filter"
+              >
+                ×
+              </button>
+            </span>
+          ) : null}
+          {applied.list_scope === "deleted" ? (
+            <span className="filter-chip">
+              <span className="filter-chip-label">List</span>
+              <span className="text-white/70">Deleted only</span>
+              <button
+                type="button"
+                className={listFilterChipCloseClass}
+                onClick={removeListScopeFilter}
+                aria-label="Remove list filter"
+              >
+                ×
+              </button>
+            </span>
+          ) : null}
           {hasNonDefaultPageSize ? (
             <span className="filter-chip">
               <span className="filter-chip-label">Page size</span>
@@ -379,7 +430,11 @@ export default function AdminMerchants() {
         {drawerOpen ? (
           <Formik
             enableReinitialize
-            initialValues={{ search: applied.search, active: applied.active }}
+            initialValues={{
+              search: applied.search,
+              active: applied.active,
+              list_scope: applied.list_scope,
+            }}
             validationSchema={merchantFilterSchema}
             validateOnBlur
             validateOnChange={false}
@@ -388,6 +443,7 @@ export default function AdminMerchants() {
                 ...a,
                 search: vals.search,
                 active: vals.active,
+                list_scope: vals.list_scope,
               }));
               setPage(1);
               setDrawerOpen(false);
@@ -430,12 +486,35 @@ export default function AdminMerchants() {
                         as="select"
                         className={listFilterInputClass}
                       >
-                        <option value="">All</option>
-                        <option value="true">Active</option>
-                        <option value="false">Inactive</option>
+                        <option value="">All (active + inactive)</option>
+                        <option value="true">Active only</option>
+                        <option value="false">Inactive only</option>
                       </Field>
                       <ErrorMessage
                         name="active"
+                        component="p"
+                        className="mt-1 text-xs text-rose-400"
+                      />
+                    </div>
+                    <div>
+                      <label
+                        className={listFilterLabelClass}
+                        htmlFor="flt-list-scope"
+                      >
+                        Soft delete (<span className="font-mono">deleted_at</span>)
+                      </label>
+                      <Field
+                        id="flt-list-scope"
+                        name="list_scope"
+                        as="select"
+                        className={listFilterInputClass}
+                      >
+                        <option value="">Hide deleted (default)</option>
+                        <option value="all">Include deleted rows</option>
+                        <option value="deleted">Deleted only</option>
+                      </Field>
+                      <ErrorMessage
+                        name="list_scope"
                         component="p"
                         className="mt-1 text-xs text-rose-400"
                       />
@@ -449,7 +528,9 @@ export default function AdminMerchants() {
                   <button
                     type="button"
                     onClick={() =>
-                      resetForm({ values: { search: "", active: "" } })
+                      resetForm({
+                        values: { search: "", active: "", list_scope: "" },
+                      })
                     }
                     className={listFilterSecondaryButtonClass}
                   >
@@ -480,12 +561,14 @@ export default function AdminMerchants() {
         onConfirm={confirmMerchantDelete}
       >
         <p>
-          This will <strong className="text-white/85">deactivate</strong>{" "}
+          This will <strong className="text-white/85">soft-delete</strong>{" "}
           <span className="font-mono text-white/70">
             {deleteModal?.email}
           </span>
-          . The account is not removed from the database; you can turn it active
-          again with the Active switch in this list.
+          : <span className="font-mono text-white/60">deleted_at</span> is set,
+          the merchant cannot log in or use the gateway, and the row disappears
+          from the default list. Inactive (<span className="font-mono">is_active</span>)
+          is separate — use the Active toggle for that.
         </p>
         {deleteError ? (
           <p className="mt-3 text-sm text-rose-400">{deleteError}</p>
@@ -500,7 +583,8 @@ export default function AdminMerchants() {
                 <th>Email</th>
                 <th>Chains</th>
                 <th>Rails</th>
-                <th>Users</th>
+                <th className="text-xs">Users (live)</th>
+                <th className="text-xs">Users (sandbox)</th>
                 <th>Active</th>
                 <th className="w-[1%] whitespace-nowrap text-right">Actions</th>
               </tr>
@@ -508,22 +592,31 @@ export default function AdminMerchants() {
             <tbody>
               {q.isLoading ? (
                 <tr>
-                  <td colSpan={6} className="!py-12 text-center text-sm text-white/40">
+                  <td colSpan={7} className="!py-12 text-center text-sm text-white/40">
                     Loading…
                   </td>
                 </tr>
               ) : null}
               {showEmpty ? (
                 <tr>
-                  <td colSpan={6} className="!py-12 text-center text-sm text-white/45">
+                  <td colSpan={7} className="!py-12 text-center text-sm text-white/45">
                     No record found.
                   </td>
                 </tr>
               ) : null}
               {!q.isLoading &&
-                merchants.map((m) => (
+                merchants.map((m) => {
+                  const isDeleted = Boolean(m.deleted_at);
+                  return (
                   <tr key={m.id}>
-                    <td className="font-mono text-xs text-white/80">{m.email}</td>
+                    <td className="font-mono text-xs text-white/80">
+                      <span className="block">{m.email}</span>
+                      {isDeleted ? (
+                        <span className="mt-0.5 inline-block rounded bg-rose-500/20 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide text-rose-200/90">
+                          Deleted
+                        </span>
+                      ) : null}
+                    </td>
                     <td className="max-w-[200px] text-xs text-white/55">
                       {(m.default_chains ?? []).length
                         ? m.default_chains.join(", ")
@@ -538,20 +631,23 @@ export default function AdminMerchants() {
                           ? `${m.default_currency} · ${m.default_network} (all on chains)`
                           : "—"}
                     </td>
-                    <td>{m.end_users_count}</td>
+                    <td className="font-mono text-xs">{m.end_users_live ?? 0}</td>
+                    <td className="font-mono text-xs">{m.end_users_sandbox ?? 0}</td>
                     <td>
                       <button
                         type="button"
                         role="switch"
                         aria-checked={m.is_active}
                         aria-label={
-                          m.is_active
-                            ? "Active — click to deactivate"
-                            : "Inactive — click to activate"
+                          isDeleted
+                            ? "Soft-deleted — cannot change"
+                            : m.is_active
+                              ? "Active — click to deactivate"
+                              : "Inactive — click to activate"
                         }
-                        disabled={toggleActiveMut.isPending}
+                        disabled={toggleActiveMut.isPending || isDeleted}
                         onClick={() => {
-                          if (toggleActiveMut.isPending) return;
+                          if (toggleActiveMut.isPending || isDeleted) return;
                           toggleActiveMut.mutate({
                             id: m.id,
                             is_active: !m.is_active,
@@ -568,7 +664,11 @@ export default function AdminMerchants() {
                         />
                       </button>
                       <span className="ml-2 text-xs text-white/45">
-                        {m.is_active ? "Active" : "Inactive"}
+                        {isDeleted
+                          ? "Removed"
+                          : m.is_active
+                            ? "Active"
+                            : "Inactive"}
                       </span>
                     </td>
                     <td className="whitespace-nowrap text-right">
@@ -587,7 +687,8 @@ export default function AdminMerchants() {
                       </div>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
             </tbody>
           </table>
         </div>
@@ -619,20 +720,41 @@ export default function AdminMerchants() {
                 <MenuEyeIcon className={menuIconClass} />
                 View details
               </Link>
-              <Link
-                to={`/admin/merchants/${actionMenuMerchant.id}/edit`}
-                role="menuitem"
-                className={merchantActionsMenuItemClass}
-                onClick={() => setOpenActionsId(null)}
-              >
-                <MenuPencilIcon className={menuIconClass} />
-                Edit
-              </Link>
+              {actionMenuMerchant.deleted_at ? (
+                <span
+                  role="menuitem"
+                  className={`${merchantActionsMenuItemClass} cursor-not-allowed opacity-40`}
+                  title="Soft-deleted merchant cannot be edited"
+                >
+                  <MenuPencilIcon className={menuIconClass} />
+                  Edit
+                </span>
+              ) : (
+                <Link
+                  to={`/admin/merchants/${actionMenuMerchant.id}/edit`}
+                  role="menuitem"
+                  className={merchantActionsMenuItemClass}
+                  onClick={() => setOpenActionsId(null)}
+                >
+                  <MenuPencilIcon className={menuIconClass} />
+                  Edit
+                </Link>
+              )}
               <button
                 type="button"
                 role="menuitem"
-                disabled={!actionMenuMerchant.is_active || impersonatingId === actionMenuMerchant.id}
-                title={!actionMenuMerchant.is_active ? "Activate the merchant first" : undefined}
+                disabled={
+                  Boolean(actionMenuMerchant.deleted_at) ||
+                  !actionMenuMerchant.is_active ||
+                  impersonatingId === actionMenuMerchant.id
+                }
+                title={
+                  actionMenuMerchant.deleted_at
+                    ? "Soft-deleted merchant"
+                    : !actionMenuMerchant.is_active
+                      ? "Activate the merchant first"
+                      : undefined
+                }
                 className={`${merchantActionsMenuItemClass} disabled:cursor-not-allowed disabled:opacity-40`}
                 onClick={() => void loginAsMerchant(actionMenuMerchant.id)}
               >
@@ -643,8 +765,15 @@ export default function AdminMerchants() {
                 <button
                   type="button"
                   role="menuitem"
-                  className={`${merchantActionsMenuItemClass} text-rose-200 hover:bg-rose-500/15`}
+                  disabled={Boolean(actionMenuMerchant.deleted_at)}
+                  title={
+                    actionMenuMerchant.deleted_at
+                      ? "Already soft-deleted"
+                      : undefined
+                  }
+                  className={`${merchantActionsMenuItemClass} text-rose-200 hover:bg-rose-500/15 disabled:cursor-not-allowed disabled:opacity-40`}
                   onClick={() => {
+                    if (actionMenuMerchant.deleted_at) return;
                     setOpenActionsId(null);
                     setDeleteError("");
                     setDeleteModal({
@@ -654,7 +783,7 @@ export default function AdminMerchants() {
                   }}
                 >
                   <MenuTrashIcon className={`${menuIconClass} text-rose-300/80`} />
-                  Delete (deactivate)
+                  Delete (soft)
                 </button>
               </div>
             </div>,

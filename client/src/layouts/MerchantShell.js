@@ -1,5 +1,5 @@
-import { Outlet, useNavigate } from "react-router-dom";
-import { useEffect, useState } from "react";
+import { Link, Outlet, useNavigate } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
 import {
   api,
   clearImpersonationAdminToken,
@@ -8,10 +8,12 @@ import {
   setToken,
 } from "../api";
 import { useSidebarLayout } from "../hooks/useSidebarLayout.js";
+import { useMerchantPortalEnvironment } from "../hooks/useMerchantPortalEnvironment.js";
 import { ShellNavLink } from "./ShellNavLink.js";
 import {
   IconDashboard,
   IconDoc,
+  IconKey,
   IconLogout,
   IconMenu,
   IconPanelClose,
@@ -20,18 +22,21 @@ import {
   IconSettings,
   IconTransactions,
   IconUsers,
+  IconWallet,
   IconWithdraw,
 } from "./shellNavIcons.js";
 
 const primaryNav = [
   { to: "/m", label: "Dashboard", end: true, Icon: IconDashboard },
   { to: "/m/users", label: "Users", Icon: IconUsers },
+  { to: "/m/wallets", label: "Wallets", Icon: IconWallet },
   { to: "/m/transactions", label: "Transactions", Icon: IconTransactions },
   { to: "/m/withdraw", label: "Withdraw", Icon: IconWithdraw },
 ];
 
 const settingsNav = [
   { to: "/m/profile", label: "Profile", Icon: IconProfile },
+  { to: "/m/api-key", label: "API key", Icon: IconKey },
   { to: "/m/settings", label: "Gateway & webhooks", Icon: IconSettings },
   { to: "/m/docs", label: "Doc", Icon: IconDoc },
 ];
@@ -44,6 +49,17 @@ export default function MerchantShell() {
   );
   const { collapsed, toggleCollapsed, mobileOpen, setMobileOpen, closeMobile } =
     useSidebarLayout("merchant");
+  const {
+    environment: portalEnvironment,
+    sandboxGatewayEnabled,
+    flagsLoading: portalEnvFlagsLoading,
+  } = useMerchantPortalEnvironment();
+
+  const primaryNavItems = useMemo(() => {
+    const hideWithdraw = !portalEnvFlagsLoading && portalEnvironment === "sandbox";
+    if (!hideWithdraw) return primaryNav;
+    return primaryNav.filter((l) => l.to !== "/m/withdraw");
+  }, [portalEnvironment, portalEnvFlagsLoading]);
 
   useEffect(() => {
     if (!getToken()) {
@@ -133,7 +149,7 @@ export default function MerchantShell() {
         ) : null}
 
         <nav className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto" aria-label="Main">
-          {primaryNav.map((l) => (
+          {primaryNavItems.map((l) => (
             <ShellNavLink
               key={l.to}
               to={l.to}
@@ -208,6 +224,23 @@ export default function MerchantShell() {
               >
                 Back to admin
               </button>
+            </div>
+          ) : null}
+          {!portalEnvFlagsLoading &&
+          portalEnvironment === "sandbox" &&
+          sandboxGatewayEnabled ? (
+            <div className="mb-6 rounded-xl border border-sky-400/25 bg-sky-500/10 px-4 py-3 text-sm text-sky-100/95">
+              <p className="text-pretty">
+                You are in <span className="font-medium text-white">sandbox</span> mode. Dashboard,
+                Users, and Transactions show test data only. To use live data and withdrawals, open{" "}
+                <Link
+                  to="/m/profile"
+                  className="font-medium text-white underline decoration-sky-400/50 underline-offset-2 hover:decoration-sky-300/80"
+                >
+                  Profile
+                </Link>{" "}
+                and switch to <span className="font-medium text-white">Live</span>.
+              </p>
             </div>
           ) : null}
           <Outlet />

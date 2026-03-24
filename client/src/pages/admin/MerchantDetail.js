@@ -222,13 +222,23 @@ export default function MerchantDetail() {
             <p className="text-sm text-white/55">{m.display_name}</p>
           ) : null}
         </div>
-        <Link
-          to={`/admin/merchants/${merchantId}/edit`}
-          className="inline-flex items-center gap-2 rounded-xl border border-white/12 bg-white/5 px-4 py-2.5 text-sm font-medium text-white/80 transition-colors hover:border-white/20 hover:bg-white/10"
-        >
-          Edit merchant
-        </Link>
+        {m.deleted_at ? null : (
+          <Link
+            to={`/admin/merchants/${merchantId}/edit`}
+            className="inline-flex items-center gap-2 rounded-xl border border-white/12 bg-white/5 px-4 py-2.5 text-sm font-medium text-white/80 transition-colors hover:border-white/20 hover:bg-white/10"
+          >
+            Edit merchant
+          </Link>
+        )}
       </div>
+
+      {m.deleted_at ? (
+        <div className="mt-4 rounded-xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-100/90">
+          This merchant is <strong className="text-white/90">soft-deleted</strong>{" "}
+          (<span className="font-mono">deleted_at</span> is set). Login, gateway,
+          and edits are disabled. Data is retained in the database.
+        </div>
+      ) : null}
 
       <div className="glass w-full overflow-hidden rounded-2xl">
         <div
@@ -269,8 +279,24 @@ export default function MerchantDetail() {
             <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
               <div>
                 <p className="text-[10px] font-semibold tracking-wide text-white/40 uppercase">Status</p>
-                <p className="mt-1 text-sm text-white/80">{m.is_active ? "Active" : "Inactive"}</p>
+                <p className="mt-1 text-sm text-white/80">
+                  {m.deleted_at
+                    ? "Soft-deleted"
+                    : m.is_active
+                      ? "Active"
+                      : "Inactive"}
+                </p>
               </div>
+              {m.deleted_at ? (
+                <div className="lg:col-span-2">
+                  <p className="text-[10px] font-semibold tracking-wide text-white/40 uppercase">
+                    deleted_at
+                  </p>
+                  <p className="mt-1 font-mono text-sm text-white/70">
+                    {String(m.deleted_at).slice(0, 19)}
+                  </p>
+                </div>
+              ) : null}
               <div>
                 <p className="text-[10px] font-semibold tracking-wide text-white/40 uppercase">Created</p>
                 <p className="mt-1 font-mono text-sm text-white/70">
@@ -278,12 +304,41 @@ export default function MerchantDetail() {
                 </p>
               </div>
               <div>
-                <p className="text-[10px] font-semibold tracking-wide text-white/40 uppercase">End users</p>
-                <p className="mt-1 text-sm text-white/80">{m.end_users_count ?? 0}</p>
+                <p className="text-[10px] font-semibold tracking-wide text-white/40 uppercase">End users (live)</p>
+                <p className="mt-1 text-sm text-white/80">{m.end_users_live ?? 0}</p>
               </div>
               <div>
-                <p className="text-[10px] font-semibold tracking-wide text-white/40 uppercase">API key hint</p>
+                <p className="text-[10px] font-semibold tracking-wide text-white/40 uppercase">End users (sandbox)</p>
+                <p className="mt-1 text-sm text-white/80">{m.end_users_sandbox ?? 0}</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-semibold tracking-wide text-white/40 uppercase">Live gateway</p>
+                <p className="mt-1 text-sm text-white/80">{m.live_gateway_enabled !== false ? "On" : "Off"}</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-semibold tracking-wide text-white/40 uppercase">Sandbox gateway</p>
+                <p className="mt-1 text-sm text-white/80">{m.sandbox_gateway_enabled !== false ? "On" : "Off"}</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-semibold tracking-wide text-white/40 uppercase">
+                  Portal environment
+                </p>
+                <p className="mt-1 text-sm text-white/80 capitalize">
+                  {m.portal_environment === "sandbox" ? "Sandbox" : "Live"}
+                </p>
+              </div>
+              <div>
+                <p className="text-[10px] font-semibold tracking-wide text-white/40 uppercase">
+                  Gateway API key hint
+                </p>
                 <p className="mt-1 font-mono text-sm text-white/70">…{m.api_key_hint ?? "—"}</p>
+                {m.api_key_hint &&
+                m.sandbox_api_key_hint &&
+                m.api_key_hint !== m.sandbox_api_key_hint ? (
+                  <p className="mt-1 text-xs text-amber-200/80">
+                    Sandbox hint differs (legacy). Regenerate the gateway key in Edit merchant to unify.
+                  </p>
+                ) : null}
               </div>
               <div className="lg:col-span-2">
                 <p className="text-[10px] font-semibold tracking-wide text-white/40 uppercase">Callback URL</p>

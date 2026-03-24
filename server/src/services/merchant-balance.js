@@ -1,14 +1,20 @@
-import { WithdrawalStatus } from "@prisma/client";
+import { MerchantGatewayEnv, WithdrawalStatus } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
 
-export async function computeMerchantBalances(merchantId) {
+/**
+ * @param {string} merchantId
+ * @param {import("@prisma/client").MerchantGatewayEnv} [environment]
+ */
+export async function computeMerchantBalances(
+  merchantId,
+  environment = MerchantGatewayEnv.live,
+) {
   const inbound = await prisma.transaction.findMany({
-    where: { status: "success", wallet: { user: { merchantId } } },
+    where: {
+      status: "success",
+      wallet: { user: { merchantId, environment } },
+    },
     select: { amount: true, tokenSymbol: true, tokenDecimals: true, chain: true },
-  });
-  const out = await prisma.withdrawal.findMany({
-    where: { merchantId, status: WithdrawalStatus.completed },
-    select: { amount: true, tokenSymbol: true, chain: true },
   });
 
   const map = new Map();
@@ -26,21 +32,28 @@ export async function computeMerchantBalances(merchantId) {
         bal: n,
       });
   }
-  for (const w of out) {
-    const k = `${w.chain}:${w.tokenSymbol}`;
-    const prev = map.get(k);
-    const n = BigInt(w.amount);
-    if (prev) prev.bal -= n;
-    else {
-      const dec =
-        inbound.find((x) => x.chain === w.chain && x.tokenSymbol === w.tokenSymbol)
-          ?.tokenDecimals ?? 18;
-      map.set(k, {
-        chain: w.chain,
-        token_symbol: w.tokenSymbol,
-        token_decimals: dec,
-        bal: -n,
-      });
+
+  if (environment === MerchantGatewayEnv.live) {
+    const out = await prisma.withdrawal.findMany({
+      where: { merchantId, status: WithdrawalStatus.completed },
+      select: { amount: true, tokenSymbol: true, chain: true },
+    });
+    for (const w of out) {
+      const k = `${w.chain}:${w.tokenSymbol}`;
+      const prev = map.get(k);
+      const n = BigInt(w.amount);
+      if (prev) prev.bal -= n;
+      else {
+        const dec =
+          inbound.find((x) => x.chain === w.chain && x.tokenSymbol === w.tokenSymbol)
+            ?.tokenDecimals ?? 18;
+        map.set(k, {
+          chain: w.chain,
+          token_symbol: w.tokenSymbol,
+          token_decimals: dec,
+          bal: -n,
+        });
+      }
     }
   }
 
@@ -58,7 +71,7 @@ export async function computeMerchantBalances(merchantId) {
 }
 
 export async function merchantBalanceForAsset(merchantId, chain, tokenSymbol) {
-  const rows = await computeMerchantBalances(merchantId);
+  const rows = await computeMerchantBalances(merchantId, MerchantGatewayEnv.live);
   const hit = rows.find((r) => r.chain === chain && r.token_symbol === tokenSymbol);
   return hit ? BigInt(hit.balance_raw) : 0n;
 }

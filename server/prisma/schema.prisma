@@ -36,10 +36,17 @@ enum WithdrawalStatus {
   failed
 }
 
+/// End-user rows + gateway keys: live = production chain tracking; sandbox = isolated test data.
+enum MerchantGatewayEnv {
+  live
+  sandbox
+}
+
 /// Portal login: ADMIN (full ops) or MERCHANT (own data + API key for gateway).
+/// Email uniqueness is partial in DB: only rows with `deleted_at IS NULL` (see migration). Same email allowed again after soft-delete.
 model AdminUser {
   id           String    @id @default(cuid())
-  email        String    @unique
+  email        String
   passwordHash String    @map("password_hash")
   role         AdminRole
   displayName  String?   @map("display_name")
@@ -48,6 +55,10 @@ model AdminUser {
   apiKeyHint   String?   @map("api_key_hint")
   /// AES-256-GCM ciphertext (base64) of gateway API secret — shown to merchant in portal Doc.
   apiKeyCipher String?   @map("api_key_cipher")
+  /// Separate credential for merchant integration testing (simulate-deposit + same gateway paths).
+  sandboxApiKeyHash   String? @unique @map("sandbox_api_key_hash")
+  sandboxApiKeyHint   String? @map("sandbox_api_key_hint")
+  sandboxApiKeyCipher String? @map("sandbox_api_key_cipher")
   callbackUrl   String?   @map("callback_url")
   /// Supported default chains for gateway (must include each rail’s underlying chain).
   defaultChains Chain[] @default([]) @map("default_chains")
@@ -58,6 +69,14 @@ model AdminUser {
   /// Non-empty = gateway only allows these `CURRENCY|NETWORK` rails (must match default_chains).
   supportedDepositRails String[] @default([]) @map("supported_deposit_rails")
   isActive      Boolean @default(true) @map("is_active")
+  /// Soft-delete moment; default null = part of the live system. Non-null = out of the system (no login/gateway). Not a boolean.
+  deletedAt     DateTime? @map("deleted_at")
+  /// Live API key + portal "live" data (balances, withdrawals, chain scanner).
+  liveGatewayEnabled    Boolean @default(true) @map("live_gateway_enabled")
+  /// Sandbox API key + isolated users/wallets/transactions (no withdrawals).
+  sandboxGatewayEnabled Boolean @default(true) @map("sandbox_gateway_enabled")
+  /// Merchant portal: which gateway environment Dashboard/Users/Transactions use (stored in DB; new merchants default sandbox).
+  portalEnvironment     MerchantGatewayEnv @default(sandbox) @map("portal_environment")
   /// SHA-256 hex of one-time password-reset token (plain token only in email).
   passwordResetTokenHash   String?   @map("password_reset_token_hash")
   passwordResetExpiresAt    DateTime? @map("password_reset_expires_at")
@@ -67,6 +86,7 @@ model AdminUser {
   endUsers    User[]
   withdrawals Withdrawal[]
 
+  @@index([deletedAt])
   @@map("admin_users")
 }
 
@@ -75,12 +95,14 @@ model User {
   merchantId     String    @map("merchant_id")
   merchant       AdminUser @relation(fields: [merchantId], references: [id], onDelete: Cascade)
   externalUserId String    @map("external_user_id")
+  environment    MerchantGatewayEnv @default(live) @map("environment")
   accountIndex   Int       @unique @default(autoincrement()) @map("account_index")
   createdAt      DateTime  @default(now()) @map("created_at")
 
   wallets Wallet[]
 
-  @@unique([merchantId, externalUserId])
+  @@unique([merchantId, externalUserId, environment])
+  @@index([merchantId, environment])
   @@map("users")
 }
 

@@ -58,7 +58,11 @@ export async function api(path, init) {
         window.location.assign("/login");
       }
     }
-    throw new Error(err?.error ?? err?.detail ?? res.statusText);
+    const msg =
+      typeof err?.message === "string" && err.message.trim()
+        ? err.message.trim()
+        : null;
+    throw new Error(msg ?? err?.error ?? err?.detail ?? res.statusText);
   }
   return data;
 }

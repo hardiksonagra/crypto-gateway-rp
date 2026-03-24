@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../../api";
+import { useMerchantPortalEnvironment } from "../../hooks/useMerchantPortalEnvironment.js";
 
 function fmt(raw, dec) {
   try {
@@ -16,19 +17,67 @@ function fmt(raw, dec) {
 }
 
 export default function MerchantDashboard() {
-  const { data, isLoading } = useQuery({
-    queryKey: ["m-dash"],
+  const {
+    environment,
+    portalEnvironmentKey,
+    liveGatewayEnabled,
+    sandboxGatewayEnabled,
+    flagsLoading,
+  } = useMerchantPortalEnvironment();
+
+  const envQueryEnabled =
+    !flagsLoading &&
+    ((environment === "live" && liveGatewayEnabled) ||
+      (environment === "sandbox" && sandboxGatewayEnabled));
+
+  const { data, isPending, isError, error } = useQuery({
+    queryKey: ["m-dash", portalEnvironmentKey],
     queryFn: () => api("/api/v1/merchant/dashboard"),
+    enabled: envQueryEnabled,
   });
 
-  if (isLoading || !data) return <p className="text-white/50">Loading…</p>;
+  if (flagsLoading) {
+    return <p className="text-white/50">Loading…</p>;
+  }
+
+  if (!liveGatewayEnabled && !sandboxGatewayEnabled) {
+    return (
+      <div>
+        <h1 className="font-display text-2xl font-semibold text-white">Dashboard</h1>
+        <p className="mt-4 text-sm text-rose-200/90">
+          Neither live nor sandbox gateway is enabled for your account. Contact support.
+        </p>
+      </div>
+    );
+  }
+
+  if (!envQueryEnabled) {
+    return <p className="text-white/50">Loading…</p>;
+  }
+
+  if (isPending) {
+    return <p className="text-white/50">Loading…</p>;
+  }
+
+  if (isError) {
+    return (
+      <div>
+        <h1 className="font-display text-2xl font-semibold text-white">Dashboard</h1>
+        <p className="mt-4 text-sm text-rose-200/90">{String(error)}</p>
+      </div>
+    );
+  }
 
   return (
     <div>
-      <h1 className="font-display text-2xl font-semibold text-white">Dashboard</h1>
-      <p className="mt-1 text-sm text-white/50">
-        Balances reflect successful deposits minus completed withdrawals (per asset).
-      </p>
+      <div>
+        <h1 className="font-display text-2xl font-semibold text-white">Dashboard</h1>
+        <p className="mt-1 text-sm text-white/50">
+          {environment === "sandbox"
+            ? "Sandbox users, wallets, and transactions are isolated from live. Switch to Live in Profile for production data and withdrawals."
+            : "Balances reflect successful live deposits minus completed withdrawals (per asset)."}
+        </p>
+      </div>
 
       <div className="mt-6 grid gap-4 sm:grid-cols-2">
         <div className="glass rounded-2xl p-5">

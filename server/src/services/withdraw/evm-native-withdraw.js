@@ -1,4 +1,5 @@
 import { HDNodeWallet, JsonRpcProvider } from "ethers";
+import { MerchantGatewayEnv } from "@prisma/client";
 import { env } from "../../config/env.js";
 import { chainToRpcUrl, chainToStaticNetwork, isEvmChain } from "../../config/chains.js";
 import { prisma } from "../../lib/prisma.js";
@@ -14,7 +15,7 @@ export async function sendEvmNativeFromMerchantPool(params) {
   });
 
   const wallets = await prisma.wallet.findMany({
-    where: { chain, user: { merchantId } },
+    where: { chain, user: { merchantId, environment: MerchantGatewayEnv.live } },
     include: { user: { select: { accountIndex: true } } },
     orderBy: { createdAt: "asc" },
   });

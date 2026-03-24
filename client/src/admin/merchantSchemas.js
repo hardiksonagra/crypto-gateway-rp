@@ -63,6 +63,8 @@ export const merchantCreateSchema = yup.object({
   default_chains: defaultChainsField,
   supported_deposit_rails: supportedDepositRailsField,
   callback_url: optionalHttpsUrl,
+  live_gateway_enabled: yup.boolean().required(),
+  sandbox_gateway_enabled: yup.boolean().required(),
 });
 
 export const merchantEditSchema = yup.object({
@@ -81,11 +83,14 @@ export const merchantEditSchema = yup.object({
     .optional()
     .min(8, "Password must be at least 8 characters"),
   regenerate_api_key: yup.boolean().required(),
+  live_gateway_enabled: yup.boolean().required(),
+  sandbox_gateway_enabled: yup.boolean().required(),
 });
 
 export const merchantFilterSchema = yup.object({
   search: yup.string(),
   active: yup.string().oneOf(["", "true", "false"]),
+  list_scope: yup.string().oneOf(["", "all", "deleted"]),
 });
 
 const chainFilterField = yup
@@ -101,6 +106,7 @@ export const adminUsersFilterSchema = yup.object({
 
 export const adminTransactionsFilterSchema = yup.object({
   merchant_id: yup.string(),
+  external_user_id: yup.string(),
   chain: chainFilterField,
   status: yup.string().oneOf(["", "pending", "success", "failed"]),
   token_symbol: yup.string(),
@@ -144,6 +150,10 @@ export const merchantDetailUsersFilterSchema = yup.object({
 });
 
 export const merchantUsersFilterSchema = yup.object({
+  q: yup.string(),
+});
+
+export const merchantWalletsFilterSchema = yup.object({
   q: yup.string(),
 });
 

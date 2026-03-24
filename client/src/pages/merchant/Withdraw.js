@@ -1,7 +1,9 @@
 import { useMemo, useState } from "react";
 import { Formik, Form, Field, ErrorMessage } from "formik";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Navigate } from "react-router-dom";
 import { api } from "../../api";
+import { useMerchantPortalEnvironment } from "../../hooks/useMerchantPortalEnvironment.js";
 import {
   CHAIN_VALUES,
   EVM_CHAIN_VALUES,
@@ -33,6 +35,8 @@ const NATIVE = {
 
 export default function MerchantWithdraw() {
   const qc = useQueryClient();
+  const { environment: portalEnvironment, flagsLoading: portalEnvLoading } =
+    useMerchantPortalEnvironment();
   const [page, setPage] = useState(1);
   const [historyDrawerOpen, setHistoryDrawerOpen] = useState(false);
   const [historyFilters, setHistoryFilters] = useState({
@@ -43,6 +47,18 @@ export default function MerchantWithdraw() {
     pageSize: DEFAULT_PAGE_SIZE,
   });
   const [msg, setMsg] = useState(null);
+
+  const me = useQuery({
+    queryKey: ["auth-me"],
+    queryFn: () => api("/api/v1/auth/me"),
+    staleTime: 60_000,
+  });
+
+  const liveGatewayEnabled = me.data?.liveGatewayEnabled !== false;
+  const withdrawPortalOk =
+    Boolean(me.data) &&
+    !portalEnvLoading &&
+    portalEnvironment === "live";
 
   const listQ = useQuery({
     queryKey: [
@@ -65,11 +81,13 @@ export default function MerchantWithdraw() {
       if (historyFilters.to_address.trim()) p.set("to_address", historyFilters.to_address.trim());
       return api(`/api/v1/merchant/withdrawals?${p}`);
     },
+    enabled: withdrawPortalOk,
   });
 
   const dash = useQuery({
-    queryKey: ["m-dash"],
+    queryKey: ["m-dash", "withdraw-balance"],
     queryFn: () => api("/api/v1/merchant/dashboard"),
+    enabled: withdrawPortalOk && liveGatewayEnabled,
   });
 
   const total = listQ.data?.total ?? 0;
@@ -108,13 +126,25 @@ export default function MerchantWithdraw() {
     [],
   );
 
+  if (!portalEnvLoading && portalEnvironment === "sandbox") {
+    return <Navigate to="/m" replace />;
+  }
+
   return (
     <div>
       <h1 className="font-display text-2xl font-semibold text-white">Withdraw</h1>
       <p className="mt-1 max-w-2xl text-sm text-white/50">
         Native EVM withdrawals only: sends from the first deposit wallet on the selected chain that has
-        enough balance for the payout plus gas. Token (USDT, etc.) pooling is not automated here.
+        enough balance for the payout plus gas. Token (USDT, etc.) pooling is not automated here. Uses{" "}
+        <strong className="text-white/65">live</strong> balances only — sandbox funds cannot be withdrawn
+        here.
       </p>
+      {!me.isLoading && !liveGatewayEnabled ? (
+        <p className="mt-4 max-w-2xl rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-sm text-amber-100/90">
+          Live gateway is disabled for your account. Withdrawals are blocked until an admin enables live
+          gateway.
+        </p>
+      ) : null}
 
       <div className="mt-10 flex flex-wrap items-center justify-between gap-4">
         <h2 className="text-sm font-semibold tracking-wide text-white/40 uppercase">Withdrawal history</h2>
@@ -369,6 +399,7 @@ export default function MerchantWithdraw() {
           validateOnBlur
           validateOnChange={false}
           onSubmit={async (values, { setSubmitting, resetForm }) => {
+            if (!liveGatewayEnabled) return;
             setMsg(null);
             const sym = NATIVE[values.chain] ?? "ETH";
             try {
@@ -441,8 +472,8 @@ export default function MerchantWithdraw() {
               </div>
               <button
                 type="submit"
-                disabled={isSubmitting}
-                className="btn-primary w-full rounded-xl py-3 text-sm"
+                disabled={isSubmitting || !liveGatewayEnabled}
+                className="btn-primary w-full rounded-xl py-3 text-sm disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {isSubmitting ? "Submitting…" : "Withdraw"}
               </button>

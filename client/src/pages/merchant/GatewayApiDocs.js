@@ -1,8 +1,9 @@
 /**
  * In-app reference for integrators: `/api/v1/gateway/*` and webhooks.
- * Kept in sync with server/src/api/gateway-routes.js and callback-service.js.
+ * Kept in sync with server gateway-routes, callback-service, and unified gateway key behaviour.
  */
 import { useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { api } from "../../api";
 import {
   depositRailsForChains,
@@ -13,6 +14,11 @@ import {
 const API_EXAMPLE_BASE =
   String(import.meta.env.VITE_API_ORIGIN ?? "").replace(/\/$/, "") ||
   "(your API origin)";
+
+/** When set, simulate-deposit copy buttons use this origin (dedicated sandbox stack). */
+const SANDBOX_DOC_BASE = String(
+  import.meta.env.VITE_GATEWAY_DOCS_SANDBOX_ORIGIN ?? "",
+).replace(/\/$/, "");
 
 /** Shared style for copy actions in this page */
 const COPY_BTN_CLASS =
@@ -28,6 +34,17 @@ function gatewayEndpointClipboardText(path) {
   const base = String(API_EXAMPLE_BASE ?? "").trim();
   if (!base || base === "(your API origin)") return normalized;
   return `${base.replace(/\/$/, "")}${normalized}`;
+}
+
+/**
+ * Full URL for docs copy — optional separate sandbox API host for this path only.
+ * @param {string} path
+ * @returns {string}
+ */
+function gatewaySandboxDocClipboardText(path) {
+  const normalized = path.startsWith("/") ? path : `/${path}`;
+  if (SANDBOX_DOC_BASE) return `${SANDBOX_DOC_BASE}${normalized}`;
+  return gatewayEndpointClipboardText(path);
 }
 
 /**
@@ -164,6 +181,7 @@ function Pre({ children, breakAll }) {
 export default function GatewayApiDocs() {
   const [railRows, setRailRows] = useState(null);
   const [apiKeyHint, setApiKeyHint] = useState(null);
+  const [hasSandboxApiKey, setHasSandboxApiKey] = useState(false);
   /** Saved webhook URL from portal (`callbackUrl`); null if unset or not loaded yet */
   const [merchantCallbackUrl, setMerchantCallbackUrl] = useState(null);
 
@@ -176,6 +194,7 @@ export default function GatewayApiDocs() {
         setRailRows(keys.map(rowForRailKey));
         const h = u.apiKeyHint;
         setApiKeyHint(typeof h === "string" && h.trim() ? h.trim() : null);
+        setHasSandboxApiKey(Boolean(u.hasSandboxApiKey));
         const cb = u.callbackUrl;
         setMerchantCallbackUrl(
           typeof cb === "string" && cb.trim() ? cb.trim() : null,
@@ -185,6 +204,7 @@ export default function GatewayApiDocs() {
         if (!cancelled) {
           setRailRows([]);
           setApiKeyHint(null);
+          setHasSandboxApiKey(false);
           setMerchantCallbackUrl(null);
         }
       });
@@ -205,25 +225,30 @@ export default function GatewayApiDocs() {
         <p className="mt-2 text-xs text-white/40">
           Example base URL for this environment:{" "}
           <span className="font-mono text-white/60">{API_EXAMPLE_BASE}</span>
-        </p>
-      </div>
-
-      <section className="glass w-full rounded-2xl p-6 lg:p-8">
-        <h2 className="text-lg font-semibold text-white">
-          Authenticate gateway calls
-        </h2>
-        <p className="mt-1 text-xs font-mono text-white/45">
-          All /api/v1/gateway/* requests
+          {SANDBOX_DOC_BASE ? (
+            <>
+              {" "}
+              · Sandbox doc URL (simulate-deposit copies):{" "}
+              <span className="font-mono text-white/60">{SANDBOX_DOC_BASE}</span>
+            </>
+          ) : null}
         </p>
         <p className="mt-3 text-sm text-white/55">
-          All routes below require{" "}
-          <span className="font-mono">Content-Type: application/json</span>.
-          Pass your merchant API key as{" "}
-          <span className="font-mono">api_key</span> in the body. Do not expose
-          the key in browsers or mobile apps; call the gateway only from your
-          server.
+          POST bodies use <span className="font-mono">Content-Type: application/json</span> and{" "}
+          <span className="font-mono">api_key</span>. If you use one secret for both live and sandbox,
+          the gateway picks <span className="font-mono">live</span> vs{" "}
+          <span className="font-mono">sandbox</span> from your portal environment (Settings); you can
+          still send optional <span className="font-mono">gateway_environment</span> to override.
+          Your merchant secret is only on the{" "}
+          <Link
+            to="/m/api-key"
+            className="text-sky-300/90 underline decoration-white/20 underline-offset-2 hover:decoration-sky-300/60"
+          >
+            API key
+          </Link>{" "}
+          page — not repeated here.
         </p>
-      </section>
+      </div>
 
       <section className="glass w-full rounded-2xl p-6 lg:p-8">
         <h2 className="text-lg font-semibold text-white">Supported Currency</h2>
@@ -279,6 +304,10 @@ export default function GatewayApiDocs() {
             <span className="font-mono text-white/60">api_key</span>{" "}
             (required)
           </li>
+          <li>
+            <span className="font-mono text-white/60">gateway_environment</span>{" "}
+            (optional) — override; otherwise matches portal Live/Sandbox
+          </li>
         </ul>
         <Pre>{`POST /api/v1/gateway/supported-currency
 Content-Type: application/json
@@ -325,6 +354,10 @@ Content-Type: application/json
             (required)
           </li>
           <li>
+            <span className="font-mono text-white/60">gateway_environment</span>{" "}
+            (optional) — override; otherwise matches portal Live/Sandbox
+          </li>
+          <li>
             <span className="font-mono text-white/60">
               external_user_id
             </span>{" "}
@@ -365,6 +398,76 @@ Content-Type: application/json
             500 merchant_default_pair_misconfigured
           </span>{" "}
           if defaults are missing.
+        </p>
+      </section>
+
+      <section className="glass w-full rounded-2xl p-6 lg:p-8">
+        <h2 className="text-lg font-semibold text-white">
+          Sandbox: simulate deposit (merchant testing)
+        </h2>
+        <p className="mt-2 text-sm text-white/55">
+          Creates a synthetic <span className="font-mono">success</span>{" "}
+          transaction and sends the same{" "}
+          <span className="font-mono">payment.success</span> webhook as a real
+          confirmed deposit — so your backend can test parsing and idempotency
+          without sending crypto. Use the same <span className="font-mono">api_key</span>{" "}
+          as other gateway calls; this route always targets sandbox data. First
+          get a sandbox <span className="font-mono">wallet_id</span> from{" "}
+          <span className="font-mono">deposit-address</span> (portal set to Sandbox, or optional{" "}
+          <span className="font-mono">gateway_environment: "sandbox"</span> if portal is Live).
+        </p>
+        {!hasSandboxApiKey && railRows !== null ? (
+          <p className="mt-3 rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-sm text-amber-100/90">
+            No gateway API key on file yet. Ask your admin to create the merchant
+            or regenerate the gateway API key once.
+          </p>
+        ) : null}
+        <EndpointRow
+          textToCopy={gatewaySandboxDocClipboardText(
+            "/api/v1/gateway/sandbox/simulate-deposit",
+          )}
+        >
+          <span className="text-white/55">POST</span>{" "}
+          /api/v1/gateway/sandbox/simulate-deposit
+        </EndpointRow>
+        <p className="mt-3 text-xs font-medium text-white/45">Body</p>
+        <ul className="mt-1 list-inside list-disc text-sm text-white/55">
+          <li>
+            <span className="font-mono text-white/60">api_key</span> — same
+            merchant secret as live
+          </li>
+          <li>
+            <span className="font-mono text-white/60">wallet_id</span> — from{" "}
+            <span className="font-mono">deposit-address</span> for a sandbox user (portal Sandbox or
+            body override)
+          </li>
+          <li>
+            <span className="font-mono text-white/60">amount</span> — optional,
+            string of integer smallest units; omit for one whole unit (e.g.{" "}
+            <span className="font-mono">1000000</span> for 1 USDT)
+          </li>
+        </ul>
+        <Pre>{`POST /api/v1/gateway/sandbox/simulate-deposit
+Content-Type: application/json
+
+{
+  "api_key": ${gatewayApiKeyJsonLiteral(apiKeyHint)},
+  "wallet_id": "<from_deposit_address_response>",
+  "amount": "1000000"
+}`}</Pre>
+        <p className="mt-4 text-xs font-medium text-white/45">200 response</p>
+        <Pre>{`{
+  "transaction_id": "…",
+  "tx_hash": "sandbox_…",
+  "amount": "1000000",
+  "token_symbol": "USDT",
+  "wallet_id": "…"
+}`}</Pre>
+        <p className="mt-4 text-xs text-white/45">
+          <span className="font-mono">403 sandbox_api_key_required</span> only if
+          your account still has a separate live-only secret (legacy);{" "}
+          <span className="font-mono">404 wallet_not_found</span> if the wallet is
+          not yours or not in sandbox.
         </p>
       </section>
 
@@ -440,7 +543,11 @@ GET /api/v1/gateway/transactions?address=0x…&currency=USDT&network=ERC20`}</Pr
           (same URL as above when configured). Payloads are not signed by
           default — protect your endpoint (secret in URL, mTLS, or IP
           allowlist). Treat delivery as at-least-once; dedupe with{" "}
-          <span className="font-mono">tx_hash</span> + chain + wallet + token.
+          <span className="font-mono">tx_hash</span> + chain + wallet + token. The
+          body includes <span className="font-mono">gateway_environment</span>{" "}
+          (<span className="font-mono">live</span> or{" "}
+          <span className="font-mono">sandbox</span>) so you can ignore or branch
+          on test traffic.
         </p>
         {!merchantCallbackUrl && railRows !== null ? (
           <p className="mt-2 text-xs text-amber-200/80">
@@ -466,7 +573,8 @@ X-Webhook-Event: payment.success
   "wallet_address": "…",
   "confirmations": 20,
   "external_user_id": "user-123",
-  "merchant_id": "…"
+  "merchant_id": "…",
+  "gateway_environment": "live"
 }`}</Pre>
       </section>
     </div>

@@ -1,9 +1,15 @@
 import { Router } from "express";
-import { AdminRole } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
+import { env } from "../config/env.js";
 import { createOrGetWallet } from "../services/wallet/wallet-service.js";
 import { logger } from "../lib/logger.js";
-import { hashApiKey } from "../lib/api-key.js";
+import { resolveMerchantByGatewayApiKey } from "../lib/gateway-merchant-auth.js";
+import { simulateSandboxDeposit } from "../services/payment/sandbox-deposit.js";
+import {
+  assertMerchantGatewayKeyAllowed,
+  gatewayEnvironmentFromKeyType,
+  parseGatewayEnvironmentFromBody,
+} from "../lib/merchant-gateway-env.js";
 import {
   listMerchantSupportedCurrencyPairs,
   merchantChainAllowsRail,
@@ -23,14 +29,21 @@ router.post("/api/v1/gateway/deposit-address", async (req, res) => {
       return;
     }
 
-    const apiKeyHash = hashApiKey(apiKey);
-    const merchant = await prisma.adminUser.findFirst({
-      where: { apiKeyHash, role: AdminRole.MERCHANT, isActive: true },
+    const gwEnvHint = parseGatewayEnvironmentFromBody(body);
+    const resolved = await resolveMerchantByGatewayApiKey(apiKey, {
+      gatewayEnvironment: gwEnvHint,
     });
-    if (!merchant) {
+    if (!resolved) {
       res.status(401).json({ error: "invalid_api_key" });
       return;
     }
+    const { merchant, keyType } = resolved;
+    const gate = assertMerchantGatewayKeyAllowed(merchant, keyType);
+    if (!gate.ok) {
+      res.status(403).json({ error: gate.error, message: gate.message });
+      return;
+    }
+    const gwEnv = gatewayEnvironmentFromKeyType(keyType);
 
     let currency = normalizeAssetPart(body.currency);
     let network = normalizeAssetPart(body.network);
@@ -55,13 +68,21 @@ router.post("/api/v1/gateway/deposit-address", async (req, res) => {
 
     let user = await prisma.user.findUnique({
       where: {
-        merchantId_externalUserId: { merchantId: merchant.id, externalUserId },
+        merchantId_externalUserId_environment: {
+          merchantId: merchant.id,
+          externalUserId,
+          environment: gwEnv,
+        },
       },
     });
     let createdNewUser = false;
     if (!user) {
       user = await prisma.user.create({
-        data: { merchantId: merchant.id, externalUserId },
+        data: {
+          merchantId: merchant.id,
+          externalUserId,
+          environment: gwEnv,
+        },
       });
       createdNewUser = true;
     }
@@ -81,6 +102,7 @@ router.post("/api/v1/gateway/deposit-address", async (req, res) => {
       user_id: user.id,
       merchant_id: merchant.id,
       created_new_user: createdNewUser,
+      gateway_environment: gwEnv,
     });
   } catch (e) {
     logger.error("gateway deposit-address failed", { err: String(e) });
@@ -97,12 +119,18 @@ router.post("/api/v1/gateway/supported-currency", async (req, res) => {
       return;
     }
 
-    const apiKeyHash = hashApiKey(apiKey);
-    const merchant = await prisma.adminUser.findFirst({
-      where: { apiKeyHash, role: AdminRole.MERCHANT, isActive: true },
+    const gwEnvHint = parseGatewayEnvironmentFromBody(body);
+    const resolved = await resolveMerchantByGatewayApiKey(apiKey, {
+      gatewayEnvironment: gwEnvHint,
     });
-    if (!merchant) {
+    if (!resolved) {
       res.status(401).json({ error: "invalid_api_key" });
+      return;
+    }
+    const { merchant, keyType } = resolved;
+    const gate = assertMerchantGatewayKeyAllowed(merchant, keyType);
+    if (!gate.ok) {
+      res.status(403).json({ error: gate.error, message: gate.message });
       return;
     }
 
@@ -111,6 +139,7 @@ router.post("/api/v1/gateway/supported-currency", async (req, res) => {
       pairs,
       default_currency: normalizeAssetPart(merchant.defaultCurrency),
       default_network: normalizeAssetPart(merchant.defaultNetwork),
+      gateway_environment: gatewayEnvironmentFromKeyType(keyType),
     });
   } catch (e) {
     logger.error("gateway supported-currency failed", { err: String(e) });
@@ -138,21 +167,28 @@ router.post("/api/v1/gateway/create-wallet", async (req, res) => {
       return;
     }
 
-    const apiKeyHash = hashApiKey(apiKey);
-    const merchant = await prisma.adminUser.findFirst({
-      where: { apiKeyHash, role: AdminRole.MERCHANT, isActive: true },
+    const gwEnvHint = parseGatewayEnvironmentFromBody(body);
+    const resolved = await resolveMerchantByGatewayApiKey(apiKey, {
+      gatewayEnvironment: gwEnvHint,
     });
-    if (!merchant) {
+    if (!resolved) {
       res.status(401).json({ error: "invalid_api_key" });
       return;
     }
+    const { merchant, keyType } = resolved;
+    const gate = assertMerchantGatewayKeyAllowed(merchant, keyType);
+    if (!gate.ok) {
+      res.status(403).json({ error: gate.error, message: gate.message });
+      return;
+    }
+    const gwEnv = gatewayEnvironmentFromKeyType(keyType);
     if (!merchantChainAllowsRail(merchant, rail)) {
       res.status(403).json({ error: "rail_not_enabled_for_merchant" });
       return;
     }
 
     const user = await prisma.user.findFirst({
-      where: { id: userId, merchantId: merchant.id },
+      where: { id: userId, merchantId: merchant.id, environment: gwEnv },
     });
     if (!user) {
       res.status(404).json({ error: "user not found" });
@@ -171,6 +207,7 @@ router.post("/api/v1/gateway/create-wallet", async (req, res) => {
       currency: wallet.currency,
       network: wallet.network,
       wallet_id: wallet.id,
+      gateway_environment: gwEnv,
     });
   } catch (e) {
     const msg = String(e);
@@ -219,7 +256,13 @@ router.get("/api/v1/gateway/transactions", async (req, res) => {
     orderBy: { createdAt: "desc" },
     take: 200,
     include: {
-      wallet: { select: { currency: true, network: true } },
+      wallet: {
+        select: {
+          currency: true,
+          network: true,
+          user: { select: { environment: true } },
+        },
+      },
     },
   });
 
@@ -240,8 +283,68 @@ router.get("/api/v1/gateway/transactions", async (req, res) => {
       block_number: t.blockNumber?.toString() ?? null,
       created_at: t.createdAt,
       updated_at: t.updatedAt,
+      gateway_environment: t.wallet.user.environment,
     })),
   });
+});
+
+router.post("/api/v1/gateway/sandbox/simulate-deposit", async (req, res) => {
+  try {
+    const body = req.body ?? {};
+    const apiKey = body.api_key?.trim();
+    const walletId = body.wallet_id?.trim();
+    if (!apiKey || !walletId) {
+      res.status(400).json({ error: "api_key and wallet_id are required" });
+      return;
+    }
+
+    const resolved = await resolveMerchantByGatewayApiKey(apiKey, {
+      gatewayEnvironment: "sandbox",
+    });
+    if (!resolved) {
+      res.status(401).json({ error: "invalid_api_key" });
+      return;
+    }
+    const { merchant, keyType } = resolved;
+    if (keyType !== "sandbox" && !env.gatewaySandbox) {
+      res.status(403).json({
+        error: "sandbox_api_key_required",
+        message:
+          "simulate-deposit only runs against sandbox data. If your account still uses a separate live-only secret, use the sandbox secret. Or set GATEWAY_SANDBOX=true for local development.",
+      });
+      return;
+    }
+    const gate = assertMerchantGatewayKeyAllowed(merchant, "sandbox");
+    if (!gate.ok) {
+      res.status(403).json({ error: gate.error, message: gate.message });
+      return;
+    }
+
+    const amount =
+      typeof body.amount === "string" || typeof body.amount === "number"
+        ? String(body.amount).trim()
+        : "";
+
+    const out = await simulateSandboxDeposit({
+      merchantId: merchant.id,
+      walletId,
+      amount: amount || undefined,
+    });
+    logger.info("gateway sandbox simulate-deposit", {
+      merchantId: merchant.id,
+      walletId,
+      txHash: out.tx_hash,
+      keyType,
+    });
+    res.status(200).json(out);
+  } catch (e) {
+    if (/** @type {any} */ (e).code === "WALLET_NOT_FOUND") {
+      res.status(404).json({ error: "wallet_not_found" });
+      return;
+    }
+    logger.error("gateway sandbox simulate-deposit failed", { err: String(e) });
+    res.status(500).json({ error: "internal error" });
+  }
 });
 
 export { router as gatewayRouter };

@@ -17,6 +17,8 @@ const initial = {
   default_chains: ["TRON"],
   supported_deposit_rails: ["USDT|TRC20"],
   callback_url: "",
+  live_gateway_enabled: true,
+  sandbox_gateway_enabled: true,
 };
 
 export default function MerchantCreate() {
@@ -35,8 +37,8 @@ export default function MerchantCreate() {
       </div>
       <h1 className="font-display text-2xl font-semibold text-white">Create merchant</h1>
       <p className="mt-1 text-sm text-white/50">
-        New portal user + API key (shown once after save). Merchants are created
-        active by default.
+        New portal user + one gateway API key (<span className="font-mono">cpg_</span>
+        , live and sandbox) shown once after save. Merchants are created active by default.
       </p>
 
       <div className="glass mt-8 w-full rounded-2xl p-6 lg:p-8">
@@ -57,10 +59,13 @@ export default function MerchantCreate() {
                   default_chains: values.default_chains,
                   supported_deposit_rails: values.supported_deposit_rails,
                   callback_url: values.callback_url?.trim() || undefined,
+                  live_gateway_enabled: values.live_gateway_enabled,
+                  sandbox_gateway_enabled: values.sandbox_gateway_enabled,
                 },
               });
               setSecretModal({
                 api_key: r.api_key,
+                sandbox_api_key: r.sandbox_api_key,
                 temporary_password: r.temporary_password,
               });
             } catch (e) {
@@ -170,6 +175,18 @@ export default function MerchantCreate() {
                   className="mt-1 text-xs text-rose-400"
                 />
               </div>
+              <div className="flex items-end pb-1">
+                <label className={`${label} flex items-center gap-2`}>
+                  <Field type="checkbox" name="live_gateway_enabled" className="rounded border-white/20" />
+                  Live gateway enabled
+                </label>
+              </div>
+              <div className="flex items-end pb-1">
+                <label className={`${label} flex items-center gap-2`}>
+                  <Field type="checkbox" name="sandbox_gateway_enabled" className="rounded border-white/20" />
+                  Sandbox gateway enabled
+                </label>
+              </div>
               {status ? (
                 <p className="text-sm text-rose-400 lg:col-span-2">{status}</p>
               ) : null}
@@ -202,10 +219,15 @@ export default function MerchantCreate() {
             <p className="mt-2 text-sm text-amber-200/90">
               They are not shown again.
             </p>
-            {secretModal.api_key ? (
-              <p className="mt-3 break-all font-mono text-xs text-white/55">
-                {secretModal.api_key}
-              </p>
+            {secretModal.api_key || secretModal.sandbox_api_key ? (
+              <div className="mt-3">
+                <p className="text-[10px] font-semibold tracking-wide text-white/40 uppercase">
+                  Gateway API key (live + sandbox)
+                </p>
+                <p className="mt-1 break-all font-mono text-xs text-white/55">
+                  {secretModal.api_key ?? secretModal.sandbox_api_key}
+                </p>
+              </div>
             ) : null}
             {secretModal.temporary_password ? (
               <p className="mt-2 font-mono text-sm text-amber-200">

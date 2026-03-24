@@ -1,4 +1,4 @@
-import { PrismaClient, AdminRole, Chain } from "@prisma/client";
+import { PrismaClient, AdminRole, Chain, MerchantGatewayEnv } from "@prisma/client";
 import bcrypt from "bcrypt";
 import crypto from "crypto";
 import { encryptMerchantApiKey } from "../src/lib/merchant-api-key-cipher.js";
@@ -18,44 +18,71 @@ async function main() {
   const adminHash = await bcrypt.hash(adminPass, 10);
   const merchHash = await bcrypt.hash(merchPass, 10);
 
-  await prisma.adminUser.upsert({
-    where: { email: adminEmail },
-    create: {
-      email: adminEmail,
-      passwordHash: adminHash,
-      role: AdminRole.ADMIN,
-      displayName: "Super Admin",
-      defaultChains: [Chain.ETH],
-    },
-    update: { passwordHash: adminHash, defaultChains: [Chain.ETH] },
+  const existingAdmin = await prisma.adminUser.findFirst({
+    where: { email: adminEmail, deletedAt: null },
   });
+  if (existingAdmin) {
+    await prisma.adminUser.update({
+      where: { id: existingAdmin.id },
+      data: { passwordHash: adminHash, defaultChains: [Chain.ETH] },
+    });
+  } else {
+    await prisma.adminUser.create({
+      data: {
+        email: adminEmail,
+        passwordHash: adminHash,
+        role: AdminRole.ADMIN,
+        displayName: "Super Admin",
+        defaultChains: [Chain.ETH],
+      },
+    });
+  }
 
-  const apiSecret = process.env.SEED_MERCHANT_API_KEY ?? "cpg_live_demo_dev_only_change_me";
+  const apiSecret =
+    process.env.SEED_MERCHANT_API_KEY ??
+    process.env.SEED_MERCHANT_SANDBOX_API_KEY ??
+    "cpg_demo_dev_only_change_me";
   const apiHash = sha256Hex(apiSecret);
 
-  await prisma.adminUser.upsert({
-    where: { email: merchEmail },
-    create: {
-      email: merchEmail,
-      passwordHash: merchHash,
-      role: AdminRole.MERCHANT,
-      displayName: "Demo Merchant",
-      apiKeyHash: apiHash,
-      apiKeyHint: apiSecret.slice(-6),
-      apiKeyCipher: encryptMerchantApiKey(apiSecret),
-      defaultChains: [Chain.TRON],
-      callbackUrl: process.env.SEED_MERCHANT_CALLBACK_URL ?? null,
-    },
-    update: {
-      passwordHash: merchHash,
-      apiKeyHash: apiHash,
-      apiKeyHint: apiSecret.slice(-6),
-      apiKeyCipher: encryptMerchantApiKey(apiSecret),
-      defaultChains: [Chain.TRON],
-    },
+  const existingMerch = await prisma.adminUser.findFirst({
+    where: { email: merchEmail, deletedAt: null },
   });
+  if (existingMerch) {
+    await prisma.adminUser.update({
+      where: { id: existingMerch.id },
+      data: {
+        passwordHash: merchHash,
+        apiKeyHash: apiHash,
+        apiKeyHint: apiSecret.slice(-6),
+        apiKeyCipher: encryptMerchantApiKey(apiSecret),
+        sandboxApiKeyHash: apiHash,
+        sandboxApiKeyHint: apiSecret.slice(-6),
+        sandboxApiKeyCipher: encryptMerchantApiKey(apiSecret),
+        defaultChains: [Chain.TRON],
+        portalEnvironment: MerchantGatewayEnv.sandbox,
+      },
+    });
+  } else {
+    await prisma.adminUser.create({
+      data: {
+        email: merchEmail,
+        passwordHash: merchHash,
+        role: AdminRole.MERCHANT,
+        displayName: "Demo Merchant",
+        apiKeyHash: apiHash,
+        apiKeyHint: apiSecret.slice(-6),
+        apiKeyCipher: encryptMerchantApiKey(apiSecret),
+        sandboxApiKeyHash: apiHash,
+        sandboxApiKeyHint: apiSecret.slice(-6),
+        sandboxApiKeyCipher: encryptMerchantApiKey(apiSecret),
+        defaultChains: [Chain.TRON],
+        callbackUrl: process.env.SEED_MERCHANT_CALLBACK_URL ?? null,
+        portalEnvironment: MerchantGatewayEnv.sandbox,
+      },
+    });
+  }
 
-  console.log("Seed OK. Merchant API key (dev):", apiSecret);
+  console.log("Seed OK. Merchant gateway API key (dev, live + sandbox):", apiSecret);
 }
 
 main()

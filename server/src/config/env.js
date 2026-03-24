@@ -81,6 +81,12 @@ export const env = {
   sweepMasterEvm: optional("SWEEP_MASTER_EVM"),
   sweepMasterTron: optional("SWEEP_MASTER_TRON"),
   sweepMasterBtc: optional("SWEEP_MASTER_BTC"),
+
+  /**
+   * When true, allows POST /sandbox/simulate-deposit with the **live** API key too
+   * (local dev only). Merchants should use their sandbox API key instead.
+   */
+  gatewaySandbox: optional("GATEWAY_SANDBOX", "false").toLowerCase() === "true",
 };
 
 export function parseJsonEnv(raw, fallback) {

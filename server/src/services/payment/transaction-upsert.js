@@ -1,4 +1,4 @@
-import { Chain, TxStatus } from "@prisma/client";
+import { Chain, MerchantGatewayEnv, TxStatus } from "@prisma/client";
 import { Address } from "@ton/core";
 import { prisma } from "../../lib/prisma.js";
 import { confirmationsForChain } from "../../config/chains.js";
@@ -53,7 +53,10 @@ export async function upsertIncomingTransaction(input) {
  */
 export async function loadWalletsForChain(chain) {
   return prisma.wallet.findMany({
-    where: { chain },
+    where: {
+      chain,
+      user: { environment: MerchantGatewayEnv.live },
+    },
     select: { id: true, address: true, currency: true, network: true },
   });
 }

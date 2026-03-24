@@ -1,8 +1,15 @@
 import { Router } from "express";
-import { AdminRole, Chain, TxStatus, WithdrawalStatus } from "@prisma/client";
+import {
+  AdminRole,
+  Chain,
+  MerchantGatewayEnv,
+  TxStatus,
+  WithdrawalStatus,
+} from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
 import { requireAuth } from "../middleware/require-auth.js";
 import { parsePageQuery } from "../lib/pagination.js";
+import { ensureMerchantPortalEnvironmentConsistent } from "../lib/merchant-gateway-env.js";
 import {
   computeMerchantBalances,
   merchantBalanceForAsset,
@@ -11,6 +18,7 @@ import { isEvmChain } from "../config/chains.js";
 import { nativeSymbolForChain } from "../services/native-symbols.js";
 import { sendEvmNativeFromMerchantPool } from "../services/withdraw/evm-native-withdraw.js";
 import { logger } from "../lib/logger.js";
+import { redeliverPaymentSuccessWebhook } from "../services/callback-service.js";
 import { parseDefaultChainsArray } from "../lib/default-chains.js";
 import {
   parseSupportedDepositRailsInput,
@@ -29,16 +37,78 @@ function merchantId(req) {
   return req.auth?.sub;
 }
 
+/**
+ * Portal lists use `portal_environment` on the merchant row (not query params).
+ *
+ * @param {string} mid
+ */
+async function resolveMerchantPortalForLists(mid) {
+  const synced = await ensureMerchantPortalEnvironmentConsistent(mid);
+  if (!synced) {
+    return { ok: false, status: 401, error: "unauthorized" };
+  }
+  const environment = synced.portalEnvironment;
+  if (
+    environment === MerchantGatewayEnv.sandbox &&
+    !synced.sandboxGatewayEnabled
+  ) {
+    return {
+      ok: false,
+      status: 403,
+      error: "sandbox_gateway_disabled",
+      message: "Sandbox is disabled for your account. Ask an admin to enable it.",
+    };
+  }
+  if (environment === MerchantGatewayEnv.live && !synced.liveGatewayEnabled) {
+    return {
+      ok: false,
+      status: 403,
+      error: "live_gateway_disabled",
+      message: "Live gateway is disabled for your account.",
+    };
+  }
+  if (!synced.liveGatewayEnabled && !synced.sandboxGatewayEnabled) {
+    return {
+      ok: false,
+      status: 403,
+      error: "gateway_disabled",
+      message:
+        "Neither live nor sandbox gateway is enabled for your account. Contact support.",
+    };
+  }
+  return {
+    ok: true,
+    environment,
+    flags: {
+      liveGatewayEnabled: synced.liveGatewayEnabled,
+      sandboxGatewayEnabled: synced.sandboxGatewayEnabled,
+    },
+  };
+}
+
 router.get("/api/v1/merchant/dashboard", async (req, res) => {
   const mid = merchantId(req);
   if (!mid) {
     res.status(401).json({ error: "unauthorized" });
     return;
   }
-  const balances = await computeMerchantBalances(mid);
+  const gate = await resolveMerchantPortalForLists(mid);
+  if (!gate.ok) {
+    res.status(gate.status).json({
+      error: gate.error,
+      ...(gate.message ? { message: gate.message } : {}),
+    });
+    return;
+  }
+  const { environment } = gate;
+
+  const balances = await computeMerchantBalances(mid, environment);
   const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
   const recent = await prisma.transaction.findMany({
-    where: { wallet: { user: { merchantId: mid } }, createdAt: { gte: since } },
+    where: {
+      wallet: { user: { merchantId: mid, environment } },
+      createdAt: { gte: since },
+    },
     orderBy: { createdAt: "desc" },
     take: 8,
     include: {
@@ -46,12 +116,17 @@ router.get("/api/v1/merchant/dashboard", async (req, res) => {
     },
   });
   const [users, txs] = await Promise.all([
-    prisma.user.count({ where: { merchantId: mid } }),
+    prisma.user.count({ where: { merchantId: mid, environment } }),
     prisma.transaction.count({
-      where: { wallet: { user: { merchantId: mid } } },
+      where: { wallet: { user: { merchantId: mid, environment } } },
     }),
   ]);
   res.json({
+    environment,
+    portal: {
+      live_gateway_enabled: gate.flags.liveGatewayEnabled,
+      sandbox_gateway_enabled: gate.flags.sandboxGatewayEnabled,
+    },
     balances,
     stats: { end_users: users, transactions: txs },
     recent_transactions: recent.map((t) => ({
@@ -73,10 +148,20 @@ router.get("/api/v1/merchant/users", async (req, res) => {
     res.status(401).json({ error: "unauthorized" });
     return;
   }
+  const gate = await resolveMerchantPortalForLists(mid);
+  if (!gate.ok) {
+    res.status(gate.status).json({
+      error: gate.error,
+      ...(gate.message ? { message: gate.message } : {}),
+    });
+    return;
+  }
+  const { environment } = gate;
   const { skip, take, page, pageSize } = parsePageQuery(req.query);
   const q = typeof req.query.q === "string" ? req.query.q.trim() : "";
   const where = {
     merchantId: mid,
+    environment,
     ...(q
       ? {
           OR: [
@@ -100,11 +185,75 @@ router.get("/api/v1/merchant/users", async (req, res) => {
     page,
     pageSize,
     total,
+    environment,
     users: rows.map((u) => ({
       id: u.id,
       external_user_id: u.externalUserId,
+      environment: u.environment,
       wallets_count: u._count.wallets,
       created_at: u.createdAt,
+    })),
+  });
+});
+
+router.get("/api/v1/merchant/wallets", async (req, res) => {
+  const mid = merchantId(req);
+  if (!mid) {
+    res.status(401).json({ error: "unauthorized" });
+    return;
+  }
+  const gate = await resolveMerchantPortalForLists(mid);
+  if (!gate.ok) {
+    res.status(gate.status).json({
+      error: gate.error,
+      ...(gate.message ? { message: gate.message } : {}),
+    });
+    return;
+  }
+  const { environment } = gate;
+  const { skip, take, page, pageSize } = parsePageQuery(req.query);
+  const q = typeof req.query.q === "string" ? req.query.q.trim() : "";
+  const where = {
+    user: { merchantId: mid, environment },
+    ...(q
+      ? {
+          OR: [
+            { id: { contains: q, mode: "insensitive" } },
+            { address: { contains: q, mode: "insensitive" } },
+            {
+              user: {
+                externalUserId: { contains: q, mode: "insensitive" },
+              },
+            },
+          ],
+        }
+      : {}),
+  };
+  const [total, rows] = await Promise.all([
+    prisma.wallet.count({ where }),
+    prisma.wallet.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      skip,
+      take,
+      include: {
+        user: { select: { externalUserId: true } },
+      },
+    }),
+  ]);
+  res.json({
+    page,
+    pageSize,
+    total,
+    environment,
+    wallets: rows.map((w) => ({
+      id: w.id,
+      address: w.address,
+      chain: w.chain,
+      currency: w.currency,
+      network: w.network,
+      external_user_id: w.user.externalUserId,
+      created_at: w.createdAt,
     })),
   });
 });
@@ -115,6 +264,15 @@ router.get("/api/v1/merchant/transactions", async (req, res) => {
     res.status(401).json({ error: "unauthorized" });
     return;
   }
+  const gate = await resolveMerchantPortalForLists(mid);
+  if (!gate.ok) {
+    res.status(gate.status).json({
+      error: gate.error,
+      ...(gate.message ? { message: gate.message } : {}),
+    });
+    return;
+  }
+  const { environment } = gate;
   const { skip, take, page, pageSize } = parsePageQuery(req.query);
   const chain =
     typeof req.query.chain === "string" ? req.query.chain.trim() : "";
@@ -134,6 +292,7 @@ router.get("/api/v1/merchant/transactions", async (req, res) => {
       is: {
         user: {
           merchantId: mid,
+          environment,
           ...(qUser
             ? { externalUserId: { contains: qUser, mode: "insensitive" } }
             : {}),
@@ -153,7 +312,11 @@ router.get("/api/v1/merchant/transactions", async (req, res) => {
       skip,
       take,
       include: {
-        wallet: { include: { user: { select: { externalUserId: true } } } },
+        wallet: {
+          include: {
+            user: { select: { externalUserId: true, environment: true } },
+          },
+        },
       },
     }),
   ]);
@@ -162,6 +325,7 @@ router.get("/api/v1/merchant/transactions", async (req, res) => {
     page,
     pageSize,
     total,
+    environment,
     transactions: rows.map((t) => ({
       id: t.id,
       tx_hash: t.txHash,
@@ -173,12 +337,65 @@ router.get("/api/v1/merchant/transactions", async (req, res) => {
       confirmations: t.confirmations,
       from_address: t.fromAddress,
       to_address: t.toAddress,
+      wallet_id: t.walletId,
       wallet_address: t.wallet.address,
+      currency: t.wallet.currency,
+      network: t.wallet.network,
+      block_number: t.blockNumber?.toString() ?? null,
+      log_index: t.logIndex,
+      callback_delivered_at: t.callbackDeliveredAt,
       external_user_id: t.wallet.user.externalUserId,
+      gateway_environment: t.wallet.user.environment,
       created_at: t.createdAt,
+      updated_at: t.updatedAt,
     })),
   });
 });
+
+router.post(
+  "/api/v1/merchant/transactions/:transactionId/redeliver-callback",
+  async (req, res) => {
+    const mid = merchantId(req);
+    if (!mid) {
+      res.status(401).json({ error: "unauthorized" });
+      return;
+    }
+    const transactionId =
+      typeof req.params.transactionId === "string"
+        ? req.params.transactionId.trim()
+        : "";
+    if (!transactionId) {
+      res.status(400).json({ error: "transaction_id_required" });
+      return;
+    }
+
+    const result = await redeliverPaymentSuccessWebhook(transactionId, mid);
+    if (result.ok) {
+      res.status(200).json({ ok: true });
+      return;
+    }
+    if (result.code === "transaction_not_found") {
+      res.status(404).json({ error: result.code });
+      return;
+    }
+    if (
+      result.code === "callback_requires_success" ||
+      result.code === "callback_url_not_set"
+    ) {
+      res.status(400).json({
+        error: result.code,
+        ...(result.message ? { message: result.message } : {}),
+      });
+      return;
+    }
+    res.status(502).json({
+      error: result.code,
+      ...(result.message ? { message: result.message } : {}),
+      ...(result.httpStatus != null ? { upstream_status: result.httpStatus } : {}),
+      ...(result.bodySnippet ? { upstream_body_snippet: result.bodySnippet } : {}),
+    });
+  },
+);
 
 router.get("/api/v1/merchant/withdrawals", async (req, res) => {
   const mid = merchantId(req);
@@ -230,6 +447,18 @@ router.post("/api/v1/merchant/withdrawals", async (req, res) => {
   const mid = merchantId(req);
   if (!mid) {
     res.status(401).json({ error: "unauthorized" });
+    return;
+  }
+  const merchantGate = await prisma.adminUser.findUnique({
+    where: { id: mid },
+    select: { liveGatewayEnabled: true },
+  });
+  if (!merchantGate?.liveGatewayEnabled) {
+    res.status(403).json({
+      error: "live_gateway_disabled",
+      message:
+        "Withdrawals use live on-chain balances. Enable live gateway for your merchant (admin).",
+    });
     return;
   }
   const body = req.body ?? {};

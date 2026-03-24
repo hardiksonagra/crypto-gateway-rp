@@ -1,7 +1,8 @@
-import { Outlet, useNavigate } from "react-router-dom";
+import { Link, Outlet, useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { api, getToken, setToken } from "../api";
 import { useSidebarLayout } from "../hooks/useSidebarLayout.js";
+import { useMerchantPortalEnvironment } from "../hooks/useMerchantPortalEnvironment.js";
 import { ShellNavLink } from "./ShellNavLink.js";
 import {
   IconDashboard,
@@ -31,6 +32,10 @@ export default function AdminShell() {
   const [email, setEmail] = useState(null);
   const { collapsed, toggleCollapsed, mobileOpen, setMobileOpen, closeMobile } =
     useSidebarLayout("admin");
+  const {
+    environment: portalEnvironment,
+    flagsLoading: portalEnvFlagsLoading,
+  } = useMerchantPortalEnvironment();
 
   useEffect(() => {
     if (!getToken()) {
@@ -151,6 +156,21 @@ export default function AdminShell() {
           <span className="font-display text-sm font-semibold text-white">Admin</span>
         </header>
         <main className="min-h-0 flex-1 overflow-auto p-5 sm:p-8 lg:p-10">
+          {!portalEnvFlagsLoading && portalEnvironment === "sandbox" ? (
+            <div className="mb-6 rounded-xl border border-sky-400/25 bg-sky-500/10 px-4 py-3 text-sm text-sky-100/95">
+              <p className="text-pretty">
+                You are viewing <span className="font-medium text-white">sandbox</span> data only
+                (Users and Transactions lists). To see live production data, open{" "}
+                <Link
+                  to="/admin/profile"
+                  className="font-medium text-white underline decoration-sky-400/50 underline-offset-2 hover:decoration-sky-300/80"
+                >
+                  Profile
+                </Link>{" "}
+                and switch to <span className="font-medium text-white">Live</span>.
+              </p>
+            </div>
+          ) : null}
           <Outlet />
         </main>
       </div>

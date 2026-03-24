@@ -16,7 +16,7 @@ export default function MerchantEdit() {
   const { id } = useParams();
   const nav = useNavigate();
   const qc = useQueryClient();
-  const [newKeyModal, setNewKeyModal] = useState(null);
+  const [newKeysModal, setNewKeysModal] = useState(null);
 
   const q = useQuery({
     queryKey: ["admin-merchant", id],
@@ -45,6 +45,26 @@ export default function MerchantEdit() {
 
   const m = q.data;
 
+  if (m.deleted_at) {
+    return (
+      <div>
+        <Link to="/admin/merchants" className="text-sm text-white/50 hover:text-white">
+          ← Merchants
+        </Link>
+        <p className="mt-4 text-rose-200/90">
+          This merchant is soft-deleted and cannot be edited. Open details for a
+          read-only view.
+        </p>
+        <Link
+          to={`/admin/merchants/${id}`}
+          className="mt-4 inline-block text-sm text-sky-300/90 hover:text-sky-200"
+        >
+          View merchant →
+        </Link>
+      </div>
+    );
+  }
+
   const chainList =
     Array.isArray(m.default_chains) && m.default_chains.length > 0
       ? m.default_chains
@@ -63,6 +83,8 @@ export default function MerchantEdit() {
     callback_url: m.callback_url ?? "",
     password: "",
     regenerate_api_key: false,
+    live_gateway_enabled: m.live_gateway_enabled !== false,
+    sandbox_gateway_enabled: m.sandbox_gateway_enabled !== false,
   };
 
   return (
@@ -78,7 +100,8 @@ export default function MerchantEdit() {
       <h1 className="font-display text-2xl font-semibold text-white">Edit merchant</h1>
       <p className="mt-1 font-mono text-sm text-white/45">{m.email}</p>
       <p className="text-xs text-white/40">
-        Users: {m.end_users_count} · API key hint: …{m.api_key_hint ?? "—"}
+        Users — live: {m.end_users_live ?? 0}, sandbox: {m.end_users_sandbox ?? 0} · Gateway key
+        hint: …{m.api_key_hint ?? "—"}
       </p>
 
       <div className="glass mt-8 w-full rounded-2xl p-6 lg:p-8">
@@ -104,12 +127,20 @@ export default function MerchantEdit() {
                   callback_url: values.callback_url?.trim() || null,
                   password: values.password?.trim() || undefined,
                   regenerate_api_key: values.regenerate_api_key,
+                  regenerate_sandbox_api_key: values.regenerate_api_key,
+                  live_gateway_enabled: values.live_gateway_enabled,
+                  sandbox_gateway_enabled: values.sandbox_gateway_enabled,
                 },
               });
-              if (r.api_key) setNewKeyModal(r.api_key);
+              if (r.api_key || r.sandbox_api_key) {
+                setNewKeysModal({
+                  ...(r.api_key ? { api_key: r.api_key } : {}),
+                  ...(r.sandbox_api_key ? { sandbox_api_key: r.sandbox_api_key } : {}),
+                });
+              }
               void qc.invalidateQueries({ queryKey: ["admin-merchants"] });
               void qc.invalidateQueries({ queryKey: ["admin-merchant", id] });
-              if (!r.api_key) setStatus("Saved.");
+              if (!r.api_key && !r.sandbox_api_key) setStatus("Saved.");
             } catch (e) {
               setStatus(String(e));
             } finally {
@@ -207,14 +238,30 @@ export default function MerchantEdit() {
                   className="mt-1 text-xs text-rose-400"
                 />
               </div>
-              <div className="flex items-end pb-1">
+              <div className="flex items-end pb-1 lg:col-span-2">
                 <label className={`${label} flex items-center gap-2`}>
                   <Field
                     type="checkbox"
                     name="regenerate_api_key"
                     className="rounded border-white/20"
                   />
-                  Regenerate API key (old key stops working)
+                  Regenerate gateway API key (live + sandbox use the same secret; old key stops working)
+                </label>
+              </div>
+              <div className="flex items-end pb-1">
+                <label className={`${label} flex items-center gap-2`}>
+                  <Field type="checkbox" name="live_gateway_enabled" className="rounded border-white/20" />
+                  Live gateway enabled (API + portal live data + withdrawals)
+                </label>
+              </div>
+              <div className="flex items-end pb-1">
+                <label className={`${label} flex items-center gap-2`}>
+                  <Field
+                    type="checkbox"
+                    name="sandbox_gateway_enabled"
+                    className="rounded border-white/20"
+                  />
+                  Sandbox gateway enabled (sandbox key + isolated test users / txs)
                 </label>
               </div>
               {values.regenerate_api_key ? (
@@ -253,18 +300,26 @@ export default function MerchantEdit() {
         </Formik>
       </div>
 
-      {newKeyModal ? (
+      {newKeysModal ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
           <div className="glass w-full max-w-lg rounded-2xl p-6">
-            <h3 className="text-lg font-semibold text-white">New API key</h3>
-            <p className="mt-3 break-all font-mono text-xs text-white/55">
-              {newKeyModal}
-            </p>
+            <h3 className="text-lg font-semibold text-white">New credentials</h3>
+            <p className="mt-2 text-sm text-amber-200/90">Copy now — not shown again.</p>
+            {newKeysModal.api_key || newKeysModal.sandbox_api_key ? (
+              <div className="mt-4">
+                <p className="text-[10px] font-semibold tracking-wide text-white/40 uppercase">
+                  Gateway API key (live + sandbox)
+                </p>
+                <p className="mt-1 break-all font-mono text-xs text-white/55">
+                  {newKeysModal.api_key ?? newKeysModal.sandbox_api_key}
+                </p>
+              </div>
+            ) : null}
             <button
               type="button"
               className="mt-6 rounded-lg bg-white/10 px-4 py-2 text-sm"
               onClick={() => {
-                setNewKeyModal(null);
+                setNewKeysModal(null);
                 nav("/admin/merchants");
               }}
             >

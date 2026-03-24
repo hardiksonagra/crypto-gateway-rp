@@ -2,6 +2,7 @@ import { Formik, Form, Field, ErrorMessage } from "formik";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { api } from "../../api";
+import { useMerchantPortalEnvironment } from "../../hooks/useMerchantPortalEnvironment.js";
 import ListPaginationBar, { DEFAULT_LIST_PAGE_SIZE } from "../../components/ListPaginationBar";
 import {
   ListActiveFiltersChips,
@@ -18,6 +19,7 @@ import { adminUsersFilterSchema } from "../../admin/merchantSchemas";
 const DEFAULT_PAGE_SIZE = DEFAULT_LIST_PAGE_SIZE;
 
 export default function AdminUsers() {
+  const { portalEnvironmentKey } = useMerchantPortalEnvironment();
   const [page, setPage] = useState(1);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [applied, setApplied] = useState({
@@ -76,7 +78,10 @@ export default function AdminUsers() {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
           <h1 className="font-display text-2xl font-semibold text-white">Users</h1>
-          <p className="mt-1 text-sm text-white/50">Every payer identity created through the gateway API.</p>
+          <p className="mt-1 text-sm text-white/50">
+            Every payer identity created through the gateway API. Scope (live vs sandbox) follows your
+            Profile setting.
+          </p>
         </div>
         <ListFilterToolbar
           onOpenDrawer={() => setDrawerOpen(true)}

@@ -2,7 +2,7 @@ import { verifyAuthToken } from "../lib/auth-jwt.js";
 import { prisma } from "../lib/prisma.js";
 
 /**
- * Bearer JWT + live DB check: user must exist and be active (inactive users cannot use the API).
+ * Bearer JWT + live DB check: user must exist, not soft-deleted (`deleted_at`), and active.
  *
  * @param {...import("@prisma/client").AdminRole} allowed Optional role allow-list (checked against DB role).
  */
@@ -28,7 +28,7 @@ export function requireAuth(...allowed) {
     try {
       user = await prisma.adminUser.findUnique({
         where: { id: payload.sub },
-        select: { isActive: true, role: true },
+        select: { isActive: true, role: true, deletedAt: true },
       });
     } catch {
       res.status(500).json({ error: "internal error" });
@@ -43,6 +43,13 @@ export function requireAuth(...allowed) {
       res.status(401).json({
         error: "account_deactivated",
         message: "This account is inactive. You have been signed out.",
+      });
+      return;
+    }
+    if (user.deletedAt) {
+      res.status(401).json({
+        error: "account_removed",
+        message: "This account has been removed. You have been signed out.",
       });
       return;
     }

@@ -15,9 +15,11 @@ import AdminTransactions from "./pages/admin/Transactions";
 import AdminWithdrawals from "./pages/admin/Withdrawals";
 import MerchantDashboard from "./pages/merchant/Dashboard";
 import MerchantUsers from "./pages/merchant/Users";
+import MerchantWallets from "./pages/merchant/Wallets";
 import MerchantTransactions from "./pages/merchant/Transactions";
 import MerchantWithdraw from "./pages/merchant/Withdraw";
 import MerchantSettings from "./pages/merchant/Settings";
+import GatewayApiKey from "./pages/merchant/GatewayApiKey";
 import GatewayApiDocs from "./pages/merchant/GatewayApiDocs";
 
 export default function App() {
@@ -40,9 +42,11 @@ export default function App() {
       <Route path="/m" element={<MerchantShell />}>
         <Route index element={<MerchantDashboard />} />
         <Route path="users" element={<MerchantUsers />} />
+        <Route path="wallets" element={<MerchantWallets />} />
         <Route path="transactions" element={<MerchantTransactions />} />
         <Route path="withdraw" element={<MerchantWithdraw />} />
         <Route path="settings" element={<MerchantSettings />} />
+        <Route path="api-key" element={<GatewayApiKey />} />
         <Route path="docs" element={<GatewayApiDocs />} />
         <Route path="profile" element={<Profile />} />
       </Route>

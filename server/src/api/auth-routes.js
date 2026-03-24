@@ -1,11 +1,15 @@
 import { Router } from "express";
 import crypto from "crypto";
 import bcrypt from "bcrypt";
-import { AdminRole } from "@prisma/client";
+import { AdminRole, MerchantGatewayEnv } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
 import { signAuthToken } from "../lib/auth-jwt.js";
 import { requireAuth } from "../middleware/require-auth.js";
 import { decryptMerchantApiKey } from "../lib/merchant-api-key-cipher.js";
+import {
+  assertPortalEnvironmentUpdateAllowed,
+  ensureMerchantPortalEnvironmentConsistent,
+} from "../lib/merchant-gateway-env.js";
 import { logger } from "../lib/logger.js";
 import { sendPasswordResetEmail } from "../lib/mailer.js";
 import { env } from "../config/env.js";
@@ -33,7 +37,9 @@ async function loginHandler(req, res) {
     res.status(400).json({ error: "email and password required" });
     return;
   }
-  const user = await prisma.adminUser.findUnique({ where: { email } });
+  const user = await prisma.adminUser.findFirst({
+    where: { email, deletedAt: null },
+  });
   if (!user || !user.isActive) {
     res.status(401).json({ error: "invalid_credentials" });
     return;
@@ -74,16 +80,23 @@ router.get("/api/v1/auth/me", requireAuth(), async (req, res) => {
       supportedDepositRails: true,
       callbackUrl: true,
       apiKeyHint: true,
+      sandboxApiKeyHint: true,
       isActive: true,
+      liveGatewayEnabled: true,
+      sandboxGatewayEnabled: true,
+      portalEnvironment: true,
       apiKeyCipher: true,
+      sandboxApiKeyCipher: true,
+      sandboxApiKeyHash: true,
     },
   });
   if (!user) {
     res.status(401).json({ error: "unauthorized" });
     return;
   }
-  const { apiKeyCipher, ...rest } = user;
+  const { apiKeyCipher, sandboxApiKeyCipher, sandboxApiKeyHash, ...rest } = user;
   const out = { ...rest };
+  out.hasSandboxApiKey = Boolean(sandboxApiKeyHash);
   if (user.role === AdminRole.MERCHANT && apiKeyCipher) {
     try {
       out.apiKey = decryptMerchantApiKey(apiKeyCipher);
@@ -94,7 +107,62 @@ router.get("/api/v1/auth/me", requireAuth(), async (req, res) => {
       });
     }
   }
+  if (user.role === AdminRole.MERCHANT && sandboxApiKeyCipher) {
+    try {
+      out.sandboxApiKey = decryptMerchantApiKey(sandboxApiKeyCipher);
+    } catch (e) {
+      logger.warn("auth/me decrypt merchant sandbox api key failed", {
+        err: String(e),
+        userId: user.id,
+      });
+    }
+  }
+  if (user.role === AdminRole.MERCHANT) {
+    const synced = await ensureMerchantPortalEnvironmentConsistent(user.id);
+    if (synced) {
+      out.portalEnvironment = synced.portalEnvironment;
+    }
+  } else if (user.role === AdminRole.ADMIN) {
+    out.portalEnvironment = user.portalEnvironment;
+  } else {
+    delete out.portalEnvironment;
+  }
   res.json(out);
+});
+
+router.patch("/api/v1/auth/me/portal-environment", requireAuth(), async (req, res) => {
+  const id = req.auth?.sub;
+  if (!id) {
+    res.status(401).json({ error: "unauthorized" });
+    return;
+  }
+  const body = req.body ?? {};
+  const raw = body.portal_environment ?? body.portalEnvironment;
+  const v = String(raw ?? "")
+    .trim()
+    .toLowerCase();
+  if (v !== "live" && v !== "sandbox") {
+    res.status(400).json({
+      error: "invalid_portal_environment",
+      message: "portal_environment must be live or sandbox.",
+    });
+    return;
+  }
+  const next =
+    v === "sandbox" ? MerchantGatewayEnv.sandbox : MerchantGatewayEnv.live;
+  const gate = await assertPortalEnvironmentUpdateAllowed(id, next);
+  if (!gate.ok) {
+    res.status(gate.status).json({
+      error: gate.error,
+      ...(gate.message ? { message: gate.message } : {}),
+    });
+    return;
+  }
+  await prisma.adminUser.update({
+    where: { id },
+    data: { portalEnvironment: next },
+  });
+  res.json({ ok: true, portal_environment: v });
 });
 
 const forgotPasswordResponse = {
@@ -155,6 +223,7 @@ async function resetPasswordHandler(req, res) {
     where: {
       passwordResetTokenHash: tokenHash,
       passwordResetExpiresAt: { gt: new Date() },
+      deletedAt: null,
     },
   });
   if (!user?.isActive) {
@@ -191,8 +260,11 @@ async function changePasswordHandler(req, res) {
     res.status(401).json({ error: "unauthorized" });
     return;
   }
-  const user = await prisma.adminUser.findUnique({ where: { id } });
-  if (!user?.isActive) {
+  const user = await prisma.adminUser.findUnique({
+    where: { id },
+    select: { passwordHash: true, isActive: true, deletedAt: true },
+  });
+  if (!user?.isActive || user.deletedAt) {
     res.status(401).json({ error: "unauthorized" });
     return;
   }
