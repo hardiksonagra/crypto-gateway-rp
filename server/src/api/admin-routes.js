@@ -8,6 +8,11 @@ import {
   TxStatus,
   WithdrawalStatus,
 } from "@prisma/client";
+import { formatAtomicAmountString } from "../lib/format-atomic-amount.js";
+import {
+  reactivateWalletDepositScan,
+  walletScanTtlMinutes,
+} from "../lib/wallet-scan.js";
 import { prisma } from "../lib/prisma.js";
 import { signAuthToken } from "../lib/auth-jwt.js";
 import { requireAuth } from "../middleware/require-auth.js";
@@ -710,6 +715,7 @@ router.get("/api/v1/admin/transactions", async (req, res) => {
       token_symbol: t.tokenSymbol,
       token_decimals: t.tokenDecimals,
       amount: t.amount,
+      amount_decimal: formatAtomicAmountString(t.amount, t.tokenDecimals),
       confirmations: t.confirmations,
       from_address: t.fromAddress,
       to_address: t.toAddress,
@@ -848,6 +854,7 @@ router.get("/api/v1/admin/wallets", async (req, res) => {
       skip,
       take,
       include: {
+        _count: { select: { transactions: true } },
         user: {
           include: {
             merchant: { select: { id: true, email: true, displayName: true } },
@@ -857,24 +864,68 @@ router.get("/api/v1/admin/wallets", async (req, res) => {
     }),
   ]);
 
+  const now = new Date();
+  const ttlMin = walletScanTtlMinutes();
   res.json({
     page,
     pageSize,
     total,
-    wallets: rows.map((w) => ({
-      id: w.id,
-      address: w.address,
-      chain: w.chain,
-      currency: w.currency,
-      network: w.network,
-      derivation_index: w.derivationIndex,
-      end_user_id: w.user.id,
-      external_user_id: w.user.externalUserId,
-      merchant: w.user.merchant,
-      created_at: w.createdAt,
-    })),
+    deposit_scan_ttl_minutes: ttlMin,
+    wallets: rows.map((w) => {
+      const txCount = w._count.transactions;
+      const exp = w.scanExpiresAt;
+      const deposit_scan_active =
+        txCount > 0 || exp == null || exp > now;
+      return {
+        id: w.id,
+        address: w.address,
+        chain: w.chain,
+        currency: w.currency,
+        network: w.network,
+        derivation_index: w.derivationIndex,
+        end_user_id: w.user.id,
+        external_user_id: w.user.externalUserId,
+        merchant: w.user.merchant,
+        created_at: w.createdAt,
+        scan_expires_at: exp?.toISOString() ?? null,
+        transaction_count: txCount,
+        deposit_scan_active,
+      };
+    }),
   });
 });
+
+router.post(
+  "/api/v1/admin/wallets/:walletId/reactivate-deposit-scan",
+  async (req, res) => {
+    const walletId =
+      typeof req.params.walletId === "string"
+        ? req.params.walletId.trim()
+        : "";
+    if (!walletId) {
+      res.status(400).json({ error: "wallet_id_required" });
+      return;
+    }
+    try {
+      const row = await reactivateWalletDepositScan(walletId, {
+        asAdmin: true,
+      });
+      res.json({
+        ok: true,
+        wallet_id: row.id,
+        scan_expires_at: row.scanExpiresAt?.toISOString() ?? null,
+        deposit_scan_ttl_minutes: walletScanTtlMinutes(),
+      });
+    } catch (e) {
+      const code = /** @type {any} */ (e).code;
+      if (code === "WALLET_NOT_FOUND") {
+        res.status(404).json({ error: "wallet_not_found" });
+        return;
+      }
+      throw e;
+    }
+  },
+);
 
 router.get("/api/v1/admin/withdrawals", async (req, res) => {
   const { skip, take, page, pageSize } = parsePageQuery(req.query);

@@ -116,6 +116,8 @@ model Wallet {
   /// Client-facing network label (e.g. TRC20, ERC20, BEP20, TON, TRON).
   network         String
   derivationIndex Int      @map("derivation_index")
+  /// Live worker scans this row until this time (unless it has any transaction). Null = no TTL (legacy / TTL disabled).
+  scanExpiresAt   DateTime? @map("scan_expires_at")
   createdAt       DateTime @default(now()) @map("created_at")
 
   user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -124,6 +126,7 @@ model Wallet {
   @@unique([userId, chain, currency, network])
   @@index([chain, address])
   @@index([address])
+  @@index([scanExpiresAt])
   @@map("wallets")
 }
 

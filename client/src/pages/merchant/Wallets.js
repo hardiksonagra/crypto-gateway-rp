@@ -1,5 +1,5 @@
 import { Formik, Form, Field, ErrorMessage } from "formik";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { api } from "../../api";
 import { useMerchantPortalEnvironment } from "../../hooks/useMerchantPortalEnvironment.js";
@@ -19,6 +19,7 @@ import { merchantWalletsFilterSchema } from "../../admin/merchantSchemas";
 const DEFAULT_PAGE_SIZE = DEFAULT_LIST_PAGE_SIZE;
 
 export default function MerchantWallets() {
+  const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [applied, setApplied] = useState({
@@ -54,7 +55,19 @@ export default function MerchantWallets() {
 
   const total = res.data?.total ?? 0;
   const wallets = res.data?.wallets ?? [];
+  const scanTtlMin = res.data?.deposit_scan_ttl_minutes ?? 0;
   const showEmpty = !res.isLoading && wallets.length === 0;
+
+  const reactivateScan = useMutation({
+    mutationFn: (walletId) =>
+      api(
+        `/api/v1/merchant/wallets/${encodeURIComponent(walletId)}/reactivate-deposit-scan`,
+        { method: "POST", json: {} },
+      ),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["m-wallets"] });
+    },
+  });
 
   const hasActiveFilters = Boolean(applied.q.trim());
   const hasNonDefaultPageSize = applied.pageSize !== DEFAULT_PAGE_SIZE;
@@ -101,6 +114,15 @@ export default function MerchantWallets() {
               ? "Sandbox deposit addresses for your end users. Switch portal environment in Profile for live wallets."
               : "Live deposit addresses. Separate from sandbox."}
           </p>
+          {environment === "live" && scanTtlMin > 0 ? (
+            <p className="mt-2 max-w-3xl text-xs leading-relaxed text-white/40">
+              New live wallets are scanned for deposits for{" "}
+              <span className="font-mono text-white/55">{scanTtlMin}</span> minutes. The same
+              address is still returned from the API after that; if a payer sends late, use{" "}
+              <span className="text-white/50">Restart scan window</span> to watch again for another{" "}
+              <span className="font-mono text-white/55">{scanTtlMin}</span> minutes (no new address).
+            </p>
+          ) : null}
         </div>
         <ListFilterToolbar
           onOpenDrawer={() => setDrawerOpen(true)}
@@ -199,33 +221,53 @@ export default function MerchantWallets() {
 
       <div className="mt-10 space-y-4">
         <div className="data-table-surface overflow-x-auto">
-          <table className="data-table min-w-[720px]">
+          <table className="data-table min-w-[900px]">
             <thead>
               <tr>
                 <th>Address</th>
                 <th>Asset</th>
                 <th>Chain</th>
                 <th>External user</th>
+                <th>Deposit scan</th>
                 <th>Created</th>
+                <th className="whitespace-nowrap">Actions</th>
               </tr>
             </thead>
             <tbody>
               {res.isLoading ? (
                 <tr>
-                  <td colSpan={5} className="!py-12 text-center text-sm text-white/40">
+                  <td colSpan={7} className="!py-12 text-center text-sm text-white/40">
                     Loading…
                   </td>
                 </tr>
               ) : null}
               {showEmpty ? (
                 <tr>
-                  <td colSpan={5} className="!py-12 text-center text-sm text-white/45">
+                  <td colSpan={7} className="!py-12 text-center text-sm text-white/45">
                     No record found.
                   </td>
                 </tr>
               ) : null}
               {!res.isLoading &&
-                wallets.map((w) => (
+                wallets.map((w) => {
+                  const txc = w.transaction_count ?? 0;
+                  const scanLine =
+                    environment !== "live"
+                      ? "— (sandbox)"
+                      : scanTtlMin <= 0
+                        ? "Always on"
+                        : txc > 0
+                          ? "Always on (has payments)"
+                          : !w.scan_expires_at
+                            ? "Always on"
+                            : w.deposit_scan_active
+                              ? `Until ${w.scan_expires_at.slice(0, 16).replace("T", " ")} UTC`
+                              : "Window ended";
+                  const canRestart =
+                    environment === "live" &&
+                    scanTtlMin > 0 &&
+                    txc === 0;
+                  return (
                   <tr key={w.id}>
                     <td>
                       <div className="max-w-[min(320px,40vw)] font-mono text-xs text-white/75 break-all" title={w.address}>
@@ -241,12 +283,32 @@ export default function MerchantWallets() {
                     </td>
                     <td className="font-mono text-xs text-white/65">{w.chain}</td>
                     <td className="font-mono text-xs text-white/75">{w.external_user_id}</td>
+                    <td className="max-w-[200px] text-xs text-white/55">{scanLine}</td>
                     <td className="text-xs text-white/45">{w.created_at.slice(0, 10)}</td>
+                    <td className="whitespace-nowrap">
+                      {canRestart ? (
+                        <button
+                          type="button"
+                          disabled={reactivateScan.isPending}
+                          onClick={() => reactivateScan.mutate(w.id)}
+                          className="rounded-lg border border-sky-500/35 bg-sky-500/15 px-2.5 py-1 text-xs font-medium text-sky-200/95 transition hover:border-sky-400/50 hover:bg-sky-500/25 disabled:opacity-50"
+                        >
+                          Restart scan window
+                        </button>
+                      ) : (
+                        <span className="text-xs text-white/25">—</span>
+                      )}
+                    </td>
                   </tr>
-                ))}
+                );
+                })}
             </tbody>
           </table>
         </div>
+
+        {reactivateScan.isError ? (
+          <p className="text-sm text-rose-300/90">{String(reactivateScan.error)}</p>
+        ) : null}
 
         <ListPaginationBar
           page={page}

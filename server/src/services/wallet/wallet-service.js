@@ -1,6 +1,7 @@
 import { Chain } from "@prisma/client";
 import { prisma } from "../../lib/prisma.js";
 import { env } from "../../config/env.js";
+import { nextScanExpiresAt } from "../../lib/wallet-scan.js";
 import { isEvmChain } from "../../config/chains.js";
 import { deriveEvmAddress } from "./evm-wallet.js";
 import { deriveTronAddress } from "./tron-wallet.js";
@@ -39,6 +40,7 @@ export async function createOrGetWallet(userId, chain, currency, network) {
         network,
         address: evmExisting.address,
         derivationIndex: evmExisting.derivationIndex,
+        scanExpiresAt: nextScanExpiresAt(),
       },
     });
   }
@@ -64,6 +66,7 @@ export async function createOrGetWallet(userId, chain, currency, network) {
       network,
       address,
       derivationIndex: accountIndex,
+      scanExpiresAt: nextScanExpiresAt(),
     },
   });
 }

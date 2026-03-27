@@ -4,7 +4,11 @@ import { confirmationsForChain } from "../../config/chains.js";
 import { env, getTonJettonContracts } from "../../config/env.js";
 import { logger } from "../../lib/logger.js";
 import { nativeDecimalsForChain, nativeSymbolForChain } from "../native-symbols.js";
-import { loadWalletsForChain, normalizeMatchAddress, upsertIncomingTransaction } from "../payment/transaction-upsert.js";
+import {
+  loadWalletsForChain,
+  normalizeMatchAddress,
+  upsertIncomingTransaction,
+} from "../payment/transaction-upsert.js";
 
 function tonAddrEq(a, b) {
   try {
@@ -55,9 +59,13 @@ function groupTonWallets(wallets) {
   return m;
 }
 
-export async function scanTonChain() {
+/**
+ * @param {{ wallets?: Array<{ id: string, address: string, currency: string, network: string }> }} [options]
+ */
+export async function scanTonChain(options = {}) {
   const chain = Chain.TON;
-  const wallets = await loadWalletsForChain(chain);
+  const wallets =
+    options.wallets ?? (await loadWalletsForChain(chain));
   if (wallets.length === 0) return;
 
   const base = env.tonApiBase.replace(/\/$/, "");
@@ -126,6 +134,8 @@ export async function scanTonChain() {
           for (const w of jettonTargets) {
             await upsertIncomingTransaction({
               walletId: w.id,
+              currency: w.currency,
+              network: w.network,
               txHash,
               fromAddress: jt.sender?.address ?? "",
               toAddress: address,
@@ -153,6 +163,8 @@ export async function scanTonChain() {
           for (const w of nativeTargets) {
             await upsertIncomingTransaction({
               walletId: w.id,
+              currency: w.currency,
+              network: w.network,
               txHash,
               fromAddress: tt.sender?.address ?? "",
               toAddress: address,

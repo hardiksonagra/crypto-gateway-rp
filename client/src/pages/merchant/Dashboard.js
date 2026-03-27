@@ -1,20 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../../api";
 import { useMerchantPortalEnvironment } from "../../hooks/useMerchantPortalEnvironment.js";
-
-function fmt(raw, dec) {
-  try {
-    const n = BigInt(raw);
-    const d = BigInt(10) ** BigInt(dec);
-    const whole = n / d;
-    const frac = n % d;
-    if (dec === 0) return whole.toString();
-    const fs = frac.toString().padStart(dec, "0").replace(/0+$/, "");
-    return fs ? `${whole}.${fs}` : whole.toString();
-  } catch {
-    return raw;
-  }
-}
+import { formatTokenAmount } from "../../lib/formatTokenAmount.js";
 
 export default function MerchantDashboard() {
   const {
@@ -100,7 +87,9 @@ export default function MerchantDashboard() {
               <p className="text-xs text-white/45">
                 {b.chain} · {b.token_symbol}
               </p>
-              <p className="mt-1 font-mono text-xl text-white">{fmt(b.balance_raw, b.token_decimals)}</p>
+              <p className="mt-1 font-mono text-xl text-white">
+                {formatTokenAmount(b.balance_raw, b.token_decimals)}
+              </p>
               <p className="mt-1 font-mono text-[10px] text-white/35">raw {b.balance_raw}</p>
             </div>
           ))
@@ -115,13 +104,14 @@ export default function MerchantDashboard() {
               <th>When</th>
               <th>Chain</th>
               <th>Token</th>
+              <th>Amount</th>
               <th>Status</th>
             </tr>
           </thead>
           <tbody>
             {data.recent_transactions.length === 0 ? (
               <tr>
-                <td colSpan={4} className="!py-12 text-center text-sm text-white/45">
+                <td colSpan={5} className="!py-12 text-center text-sm text-white/45">
                   No record found.
                 </td>
               </tr>
@@ -131,6 +121,9 @@ export default function MerchantDashboard() {
                   <td className="text-xs text-white/45">{t.created_at.slice(0, 19)}</td>
                   <td>{t.chain}</td>
                   <td>{t.token_symbol}</td>
+                  <td className="font-mono text-xs text-white/90">
+                    {formatTokenAmount(t.amount, t.token_decimals)}
+                  </td>
                   <td className="text-xs">{t.status}</td>
                 </tr>
               ))

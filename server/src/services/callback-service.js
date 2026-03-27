@@ -1,4 +1,5 @@
 import axios from "axios";
+import { formatAtomicAmountString } from "../lib/format-atomic-amount.js";
 import { prisma } from "../lib/prisma.js";
 import { logger } from "../lib/logger.js";
 
@@ -14,6 +15,8 @@ export function buildPaymentSuccessWebhookBody(tx) {
     wallet_id: tx.walletId,
     tx_hash: tx.txHash,
     amount: tx.amount,
+    token_decimals: tx.tokenDecimals,
+    amount_decimal: formatAtomicAmountString(tx.amount, tx.tokenDecimals),
     status: tx.status,
     chain: tx.chain,
     currency: tx.wallet.currency,

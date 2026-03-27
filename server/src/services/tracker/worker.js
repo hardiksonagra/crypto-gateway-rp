@@ -1,6 +1,13 @@
+import { Chain } from "@prisma/client";
 import { SCANNED_EVM_CHAINS } from "../../config/chains.js";
 import { env } from "../../config/env.js";
 import { logger } from "../../lib/logger.js";
+import { loadWalletsForChainLateCatchup } from "../payment/transaction-upsert.js";
+import {
+  finishWorkerDepositScanTick,
+  startWorkerDepositScanTick,
+} from "./deposit-rail-metrics.js";
+import { scanBtcChain } from "./btc-tracker.js";
 import { scanEvmChain } from "./evm-tracker.js";
 import { scanTronChain } from "./tron-tracker.js";
 import { scanTonChain } from "./ton-tracker.js";
@@ -8,6 +15,8 @@ import { maybeSweepTick } from "../sweep-service.js";
 import { retryStuckSuccessCallbacks } from "../callback-retry.js";
 
 let timer = null;
+/** @type {number} */
+let lastLateDepositRecheckMs = 0;
 
 export function startBlockchainWorker() {
   if (timer) return;
@@ -23,22 +32,27 @@ export function stopBlockchainWorker() {
 }
 
 async function runTick() {
-  for (const chain of SCANNED_EVM_CHAINS) {
-    try {
-      await scanEvmChain(chain);
-    } catch (e) {
-      logger.error("evm scan failed", { chain, err: String(e) });
+  startWorkerDepositScanTick();
+  try {
+    for (const chain of SCANNED_EVM_CHAINS) {
+      try {
+        await scanEvmChain(chain);
+      } catch (e) {
+        logger.error("evm scan failed", { chain, err: String(e) });
+      }
     }
-  }
-  try {
-    await scanTronChain();
-  } catch (e) {
-    logger.error("tron scan failed", { err: String(e) });
-  }
-  try {
-    await scanTonChain();
-  } catch (e) {
-    logger.error("ton scan failed", { err: String(e) });
+    try {
+      await scanTronChain();
+    } catch (e) {
+      logger.error("tron scan failed", { err: String(e) });
+    }
+    try {
+      await scanTonChain();
+    } catch (e) {
+      logger.error("ton scan failed", { err: String(e) });
+    }
+  } finally {
+    finishWorkerDepositScanTick();
   }
   try {
     await maybeSweepTick();
@@ -49,5 +63,55 @@ async function runTick() {
     await retryStuckSuccessCallbacks();
   } catch (e) {
     logger.error("callback retry tick failed", { err: String(e) });
+  }
+
+  await maybeLateDepositRecheck();
+}
+
+/**
+ * Expired, zero-tx wallets: TRON / TON / BTC address APIs can still see late on-chain pays.
+ * EVM is omitted (block cursor only moves forward; use reactivate for ETH/BSC missed deposits).
+ */
+async function maybeLateDepositRecheck() {
+  const hours = env.lateDepositRecheckHours;
+  if (hours <= 0 || env.walletScanTtlMinutes <= 0) return;
+
+  const intervalMs = hours * 3600 * 1000;
+  const now = Date.now();
+  if (now - lastLateDepositRecheckMs < intervalMs) return;
+  lastLateDepositRecheckMs = now;
+
+  const counts = { tron: 0, ton: 0, btc: 0 };
+  try {
+    const tronW = await loadWalletsForChainLateCatchup(Chain.TRON);
+    counts.tron = tronW.length;
+    if (tronW.length) await scanTronChain({ wallets: tronW });
+  } catch (e) {
+    logger.error("late deposit recheck tron failed", { err: String(e) });
+  }
+  try {
+    const tonW = await loadWalletsForChainLateCatchup(Chain.TON);
+    counts.ton = tonW.length;
+    if (tonW.length) await scanTonChain({ wallets: tonW });
+  } catch (e) {
+    logger.error("late deposit recheck ton failed", { err: String(e) });
+  }
+  try {
+    const btcW = await loadWalletsForChainLateCatchup(Chain.BTC);
+    counts.btc = btcW.length;
+    if (btcW.length) await scanBtcChain({ wallets: btcW });
+  } catch (e) {
+    logger.error("late deposit recheck btc failed", { err: String(e) });
+  }
+
+  const total = counts.tron + counts.ton + counts.btc;
+  if (total > 0) {
+    logger.info("late_deposit_recheck", {
+      hours,
+      wallets_tron: counts.tron,
+      wallets_ton: counts.ton,
+      wallets_btc: counts.btc,
+      note: "EVM not included; forward-only scanner",
+    });
   }
 }

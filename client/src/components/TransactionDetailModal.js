@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { formatTokenAmount } from "../lib/formatTokenAmount.js";
 
 /** @param {string} label @param {string | number | null | undefined} value */
 function DetailRow(label, value) {
@@ -23,6 +24,7 @@ function DetailRow(label, value) {
  * @property {string} token_symbol
  * @property {number} token_decimals
  * @property {string} amount
+ * @property {string} [amount_decimal]
  * @property {number} confirmations
  * @property {string} from_address
  * @property {string} to_address
@@ -100,7 +102,11 @@ export default function TransactionDetailModal({
             {DetailRow("Network", t.network)}
             {DetailRow("Token", t.token_symbol)}
             {DetailRow("Token decimals", t.token_decimals)}
-            {DetailRow("Amount (smallest units)", t.amount)}
+            {DetailRow(
+              "Amount (display)",
+              t.amount_decimal ?? formatTokenAmount(t.amount, t.token_decimals),
+            )}
+            {DetailRow("Amount (raw / smallest units)", t.amount)}
             {DetailRow("Confirmations", t.confirmations)}
             {DetailRow("From address", t.from_address)}
             {DetailRow("To address", t.to_address)}

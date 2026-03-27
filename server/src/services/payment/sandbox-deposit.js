@@ -85,6 +85,8 @@ export async function simulateSandboxDeposit(input) {
 
   await upsertIncomingTransaction({
     walletId: wallet.id,
+    currency: wallet.currency,
+    network: wallet.network,
     txHash,
     fromAddress: sandboxFromAddress(chain),
     toAddress: wallet.address,

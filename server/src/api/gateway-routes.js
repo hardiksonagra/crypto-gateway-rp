@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { formatAtomicAmountString } from "../lib/format-atomic-amount.js";
 import { prisma } from "../lib/prisma.js";
 import { env } from "../config/env.js";
 import { createOrGetWallet } from "../services/wallet/wallet-service.js";
@@ -273,6 +274,7 @@ router.get("/api/v1/gateway/transactions", async (req, res) => {
       from_address: t.fromAddress,
       to_address: t.toAddress,
       amount: t.amount,
+      amount_decimal: formatAtomicAmountString(t.amount, t.tokenDecimals),
       token_symbol: t.tokenSymbol,
       token_decimals: t.tokenDecimals,
       chain: t.chain,

@@ -20,6 +20,7 @@ import {
   merchantDetailUsersFilterSchema,
   merchantDetailWalletsFilterSchema,
 } from "../../admin/merchantSchemas";
+import { formatTokenAmount } from "../../lib/formatTokenAmount.js";
 
 const DEFAULT_PAGE_SIZE = DEFAULT_LIST_PAGE_SIZE;
 const TX_STATUS_OPTIONS = ["pending", "success", "failed"];
@@ -648,7 +649,14 @@ export default function MerchantDetail() {
                       <td className="text-xs text-white/45">{t.created_at.slice(0, 19)}</td>
                       <td>{t.chain}</td>
                       <td>{t.token_symbol}</td>
-                      <td className="font-mono text-xs">{t.amount}</td>
+                      <td className="font-mono text-xs">
+                        <span className="text-white/90">
+                          {formatTokenAmount(t.amount, t.token_decimals)}
+                        </span>
+                        <span className="mt-0.5 block text-[10px] text-white/35">
+                          raw {t.amount}
+                        </span>
+                      </td>
                       <td className="text-xs">{t.status}</td>
                       <td className="max-w-[120px] truncate font-mono text-xs">{t.external_user_id}</td>
                       <td className="max-w-[140px] truncate font-mono text-[10px] text-white/50">

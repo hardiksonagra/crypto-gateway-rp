@@ -58,6 +58,19 @@ export const env = {
   confirmationsTon: intEnv("CONFIRMATIONS_TON", 2),
 
   workerPollMs: intEnv("WORKER_POLL_INTERVAL_MS", 8000),
+  /** `0` = no TTL; new wallets get `scan_expires_at` null (always scanned). */
+  walletScanTtlMinutes: intEnv("WALLET_SCAN_TTL_MINUTES", 10),
+  /**
+   * Re-scan expired, zero-tx live wallets on TRON/TON/BTC (address APIs). `0` = off.
+   * EVM chains are skipped (forward block cursor cannot recover old missed transfers).
+   */
+  lateDepositRecheckHours: intEnv("LATE_DEPOSIT_RECHECK_HOURS", 6),
+  /**
+   * Per worker tick: log counts of **new** `transactions` rows inserted, by deposit rail (CURRENCY|NETWORK).
+   * `nonzero` — log only when at least one new row this tick. `always` — every tick (includes zeros).
+   * `off` — disable (no extra findUnique per scanned tx).
+   */
+  workerLogRailCounts: optional("WORKER_LOG_RAIL_COUNTS", "always"),
 
   rpcEth: required("RPC_ETH"),
   rpcBnb: required("RPC_BNB"),

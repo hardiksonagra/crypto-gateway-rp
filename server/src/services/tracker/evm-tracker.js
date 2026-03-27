@@ -39,7 +39,11 @@ function groupWalletsByNormalizedAddress(chain, wallets) {
   return m;
 }
 
-export async function scanEvmChain(chain) {
+/**
+ * @param {import("@prisma/client").Chain} chain
+ * @param {{ wallets?: Array<{ id: string, address: string, currency: string, network: string }> }} [options]
+ */
+export async function scanEvmChain(chain, options = {}) {
   if (!isEvmChain(chain)) return;
 
   const network = chainToStaticNetwork(chain);
@@ -50,7 +54,8 @@ export async function scanEvmChain(chain) {
   let cursor = await getOrInitScannerBlock(chain, tip);
   if (cursor >= tip) return;
 
-  const walletRows = await loadWalletsForChain(chain);
+  const walletRows =
+    options.wallets ?? (await loadWalletsForChain(chain));
   if (walletRows.length === 0) {
     await advanceScanner(chain, tip);
     return;
@@ -92,6 +97,8 @@ export async function scanEvmChain(chain) {
         if (!walletAcceptsEvmNative(chain, w)) continue;
         await upsertIncomingTransaction({
           walletId: w.id,
+          currency: w.currency,
+          network: w.network,
           txHash: tx.hash,
           fromAddress: tx.from ?? "",
           toAddress: w.address,
@@ -139,6 +146,8 @@ export async function scanEvmChain(chain) {
         if (!walletAcceptsEvmErc20(chain, w, tokenSym)) continue;
         await upsertIncomingTransaction({
           walletId: w.id,
+          currency: w.currency,
+          network: w.network,
           txHash: log.transactionHash,
           fromAddress: String(parsed.args.from),
           toAddress: w.address,

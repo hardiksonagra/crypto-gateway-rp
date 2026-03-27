@@ -4,9 +4,13 @@ import { logger } from "../../lib/logger.js";
 import { nativeDecimalsForChain, nativeSymbolForChain } from "../native-symbols.js";
 import { loadWalletsForChain, upsertIncomingTransaction } from "../payment/transaction-upsert.js";
 
-export async function scanBtcChain() {
+/**
+ * @param {{ wallets?: Array<{ id: string, address: string, currency: string, network: string }> }} [options]
+ */
+export async function scanBtcChain(options = {}) {
   const chain = Chain.BTC;
-  const wallets = await loadWalletsForChain(chain);
+  const wallets =
+    options.wallets ?? (await loadWalletsForChain(chain));
   const targets = wallets.filter((w) => w.currency === "BTC" && w.network === "BTC");
   if (targets.length === 0) return;
 
@@ -20,7 +24,8 @@ export async function scanBtcChain() {
     return;
   }
 
-  for (const { walletId, address } of targets) {
+  for (const w of targets) {
+    const { id: walletId, address } = w;
     let txs = [];
     try {
       const res = await fetch(`${base}/address/${encodeURIComponent(address)}/txs`);
@@ -45,6 +50,8 @@ export async function scanBtcChain() {
 
       await upsertIncomingTransaction({
         walletId,
+        currency: w.currency,
+        network: w.network,
         txHash: tx.txid,
         fromAddress: "",
         toAddress: address,

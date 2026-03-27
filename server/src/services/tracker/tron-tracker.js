@@ -4,7 +4,10 @@ import { confirmationsForChain } from "../../config/chains.js";
 import { env, getTrc20Contracts } from "../../config/env.js";
 import { logger } from "../../lib/logger.js";
 import { nativeDecimalsForChain, nativeSymbolForChain } from "../native-symbols.js";
-import { loadWalletsForChain, upsertIncomingTransaction } from "../payment/transaction-upsert.js";
+import {
+  loadWalletsForChain,
+  upsertIncomingTransaction,
+} from "../payment/transaction-upsert.js";
 
 function tronAddrEq(a, b) {
   try {
@@ -54,9 +57,13 @@ function lookupTrc20Meta(map, contract) {
   }
 }
 
-export async function scanTronChain() {
+/**
+ * @param {{ wallets?: Array<{ id: string, address: string, currency: string, network: string }> }} [options]
+ */
+export async function scanTronChain(options = {}) {
   const chain = Chain.TRON;
-  const wallets = await loadWalletsForChain(chain);
+  const wallets =
+    options.wallets ?? (await loadWalletsForChain(chain));
   if (wallets.length === 0) return;
 
   const base = env.tronFullNode.replace(/\/$/, "");
@@ -138,6 +145,8 @@ async function ingestTrxForTargets(base, address, targets, chain) {
       for (const w of targets) {
         await upsertIncomingTransaction({
           walletId: w.id,
+          currency: w.currency,
+          network: w.network,
           txHash: txid,
           fromAddress: v.owner_address ?? "",
           toAddress: address,
@@ -207,6 +216,8 @@ async function ingestTrc20ForTargets(base, address, targets, chain, trc20Map) {
     for (const w of targets) {
       await upsertIncomingTransaction({
         walletId: w.id,
+        currency: w.currency,
+        network: w.network,
         txHash: txid,
         fromAddress: row.from ?? "",
         toAddress: address,

@@ -488,8 +488,10 @@ Content-Type: application/json
           <span className="font-mono">currency</span> and{" "}
           <span className="font-mono">network</span> query params filter only
           when both are provided. Returns up to 200 rows, newest first. Amounts
-          are in smallest units — use{" "}
-          <span className="font-mono">token_decimals</span> for display.
+          are in smallest units; each row also includes{" "}
+          <span className="font-mono">amount_decimal</span> for display (same
+          value as dividing <span className="font-mono">amount</span> by{" "}
+          <span className="font-mono">10^token_decimals</span>).
         </p>
         <Pre>{`GET /api/v1/gateway/transactions?address=TExampleAddress…
 GET /api/v1/gateway/transactions?address=0x…&currency=USDT&network=ERC20`}</Pre>
@@ -503,7 +505,8 @@ GET /api/v1/gateway/transactions?address=0x…&currency=USDT&network=ERC20`}</Pr
       "tx_hash": "…",
       "from_address": "…",
       "to_address": "…",
-      "amount": "…",
+      "amount": "1000000",
+      "amount_decimal": "1",
       "token_symbol": "…",
       "token_decimals": 6,
       "chain": "TRON",
@@ -564,7 +567,9 @@ X-Webhook-Event: payment.success
   "transaction_id": "…",
   "wallet_id": "…",
   "tx_hash": "…",
-  "amount": "…",
+  "amount": "1000000",
+  "token_decimals": 6,
+  "amount_decimal": "1",
   "status": "success",
   "chain": "TRON",
   "currency": "USDT",
