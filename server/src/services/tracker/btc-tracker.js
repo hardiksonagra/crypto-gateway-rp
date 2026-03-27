@@ -1,6 +1,7 @@
 import { Chain } from "@prisma/client";
 import { env } from "../../config/env.js";
 import { logger } from "../../lib/logger.js";
+import { acquireOutboundRpcSlot } from "../../lib/network-rpc-rate-limit.js";
 import { nativeDecimalsForChain, nativeSymbolForChain } from "../native-symbols.js";
 import { loadWalletsForChain, upsertIncomingTransaction } from "../payment/transaction-upsert.js";
 
@@ -17,6 +18,7 @@ export async function scanBtcChain(options = {}) {
   const base = env.btcExplorerApiBase.replace(/\/$/, "");
   let tip = 0;
   try {
+    await acquireOutboundRpcSlot("BTC");
     const tipRes = await fetch(`${base}/blocks/tip/height`);
     tip = parseInt(await tipRes.text(), 10);
   } catch (e) {
@@ -28,6 +30,7 @@ export async function scanBtcChain(options = {}) {
     const { id: walletId, address } = w;
     let txs = [];
     try {
+      await acquireOutboundRpcSlot("BTC");
       const res = await fetch(`${base}/address/${encodeURIComponent(address)}/txs`);
       txs = await res.json();
     } catch (e) {

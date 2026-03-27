@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
 import { api } from "../../api";
 
 /** Hidden state — password-style mask. */
@@ -54,6 +53,7 @@ export default function GatewayApiKey() {
   const [apiKeyInfo, setApiKeyInfo] = useState(null);
   const [showApiKey, setShowApiKey] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [copyState, setCopyState] = useState("idle");
 
   useEffect(() => {
     let cancelled = false;
@@ -68,10 +68,11 @@ export default function GatewayApiKey() {
           typeof u.apiKeyHint === "string" && u.apiKeyHint.trim()
             ? u.apiKeyHint.trim()
             : null;
-        setApiKeyInfo({ secret, hint });
+        const cipherPresent = u.api_key_cipher_present === true;
+        setApiKeyInfo({ secret, hint, cipherPresent });
       })
       .catch(() => {
-        if (!cancelled) setApiKeyInfo({ secret: null, hint: null });
+        if (!cancelled) setApiKeyInfo({ secret: null, hint: null, cipherPresent: false });
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -85,27 +86,30 @@ export default function GatewayApiKey() {
     return <p className="text-white/50">Loading…</p>;
   }
 
-  const keyRow = apiKeyInfo ?? { secret: null, hint: null };
+  const keyRow = apiKeyInfo ?? { secret: null, hint: null, cipherPresent: false };
+  const canCopyFullKey = Boolean(keyRow.secret);
   const apiKeyDisplayed = showApiKey
     ? (keyRow.secret ?? (keyRow.hint ? `****************${keyRow.hint}` : "—"))
     : API_KEY_MASK;
 
+  async function copyFullKey() {
+    if (!keyRow.secret) return;
+    try {
+      await navigator.clipboard.writeText(keyRow.secret);
+      setCopyState("ok");
+      setTimeout(() => setCopyState("idle"), 2000);
+    } catch {
+      setCopyState("err");
+      setTimeout(() => setCopyState("idle"), 2500);
+    }
+  }
+
+  const btnBase =
+    "flex shrink-0 items-center justify-center rounded-lg border border-white/10 bg-black/30 px-3 text-sm font-medium transition";
+
   return (
     <div className="w-full">
       <h1 className="font-display text-2xl font-semibold text-white">API key</h1>
-      <p className="mt-1 text-sm text-white/50">
-        Server-side gateway secret only (prefix <span className="font-mono">cpg_</span>
-        ). Send it as <span className="font-mono">api_key</span> in JSON. With one secret for
-        both modes, the API follows your portal environment (Live vs Sandbox in Settings); optional{" "}
-        <span className="font-mono">gateway_environment</span> in JSON can override. Endpoint reference:{" "}
-        <Link
-          to="/m/docs"
-          className="text-sky-300/90 underline decoration-white/20 underline-offset-2 hover:decoration-sky-300/60"
-        >
-          Doc
-        </Link>
-        .
-      </p>
 
       <div className="glass mt-8 w-full rounded-2xl p-6 lg:p-8">
         <label
@@ -118,17 +122,17 @@ export default function GatewayApiKey() {
           Do not expose in browsers or mobile apps. If it leaks, ask an admin to regenerate
           it (Edit merchant).
         </p>
-        <div className="mt-2 flex items-stretch gap-2">
+        <div className="mt-2 flex flex-wrap items-stretch gap-2">
           <div
             id="merchant-gateway-api-key-display"
-            className="min-h-[42px] flex-1 select-all rounded-lg border border-white/10 bg-black/30 px-3 py-2 font-mono text-sm text-white/70 break-all content-center"
+            className="min-h-[42px] min-w-0 flex-1 select-all rounded-lg border border-white/10 bg-black/30 px-3 py-2 font-mono text-sm text-white/70 break-all content-center"
           >
             {apiKeyDisplayed}
           </div>
           <button
             type="button"
             onClick={() => setShowApiKey((v) => !v)}
-            className="flex w-11 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-black/30 text-white/55 transition hover:border-white/20 hover:bg-white/5 hover:text-white"
+            className={`${btnBase} w-11 text-white/55 hover:border-white/20 hover:bg-white/5 hover:text-white`}
             aria-label={showApiKey ? "Hide API key" : "Show API key"}
             title={showApiKey ? "Hide" : "Show"}
           >
@@ -138,12 +142,31 @@ export default function GatewayApiKey() {
               <EyeIcon className="h-5 w-5" />
             )}
           </button>
+          <button
+            type="button"
+            onClick={copyFullKey}
+            disabled={!canCopyFullKey}
+            className={`${btnBase} text-white/80 hover:border-white/20 hover:bg-white/5 disabled:cursor-not-allowed disabled:border-white/5 disabled:text-white/25`}
+            title={
+              canCopyFullKey
+                ? "Copy full key to clipboard"
+                : "Full key is not available until an admin saves an encrypted copy (regenerate once)"
+            }
+          >
+            {copyState === "ok" ? "Copied" : copyState === "err" ? "Failed" : "Copy"}
+          </button>
         </div>
-        {showApiKey && !keyRow.secret && keyRow.hint ? (
+        {showApiKey && !keyRow.secret && keyRow.hint && !keyRow.cipherPresent ? (
           <p className="mt-2 text-xs text-amber-200/80">
-            Full key is not stored for this screen yet. Value ends with your hint; ask an
-            admin to regenerate once to save the encrypted key, or use the secret from when
-            the key was issued.
+            This account still has only a hash + hint from before encrypted storage. The full secret cannot be
+            recovered. Ask an admin to open <span className="font-medium text-white/80">Edit merchant</span>{" "}
+            and use <span className="font-medium text-white/80">Regenerate API key</span> once — after that the
+            full key is stored encrypted and you can show and copy it here.
+          </p>
+        ) : null}
+        {showApiKey && !keyRow.secret && keyRow.hint && keyRow.cipherPresent ? (
+          <p className="mt-2 text-xs text-amber-200/80">
+            Encrypted key is on file but could not be decrypted (server key/config). Contact support.
           </p>
         ) : null}
         {showApiKey && !keyRow.secret && !keyRow.hint ? (

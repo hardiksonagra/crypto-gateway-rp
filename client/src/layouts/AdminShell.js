@@ -5,6 +5,7 @@ import { useSidebarLayout } from "../hooks/useSidebarLayout.js";
 import { useMerchantPortalEnvironment } from "../hooks/useMerchantPortalEnvironment.js";
 import { ShellNavLink } from "./ShellNavLink.js";
 import {
+  IconActivity,
   IconDashboard,
   IconDoc,
   IconLogout,
@@ -24,6 +25,7 @@ const nav = [
   { to: "/admin/users", label: "Users", Icon: IconUsers },
   { to: "/admin/transactions", label: "Transactions", Icon: IconTransactions },
   { to: "/admin/withdrawals", label: "Withdrawals", Icon: IconWithdrawals },
+  { to: "/admin/activity", label: "Activity log", Icon: IconActivity },
   { to: "/admin/profile", label: "Profile", Icon: IconProfile },
 ];
 

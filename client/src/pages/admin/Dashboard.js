@@ -26,10 +26,6 @@ export default function AdminDashboard() {
   return (
     <div>
       <h1 className="font-display text-2xl font-semibold text-white">Dashboard</h1>
-      <p className="mt-1 text-sm text-white/50">
-        Merchant count is global. Users and transaction stats follow your Profile data scope (
-        <span className="text-white/65">{envLabel}</span>).
-      </p>
       <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         {cards.map((c) => (
           <div key={c.label} className="glass relative overflow-hidden rounded-2xl bg-gradient-to-br from-white/6 to-transparent p-5">

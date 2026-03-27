@@ -109,11 +109,6 @@ export default function MerchantWallets() {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
           <h1 className="font-display text-2xl font-semibold text-white">Wallets</h1>
-          <p className="mt-1 text-sm text-white/50">
-            {environment === "sandbox"
-              ? "Sandbox deposit addresses for your end users. Switch portal environment in Profile for live wallets."
-              : "Live deposit addresses. Separate from sandbox."}
-          </p>
           {environment === "live" && scanTtlMin > 0 ? (
             <p className="mt-2 max-w-3xl text-xs leading-relaxed text-white/40">
               New live wallets are scanned for deposits for{" "}

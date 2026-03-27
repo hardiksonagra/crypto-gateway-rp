@@ -6,6 +6,10 @@ import {
   walletAcceptsEvmNative,
 } from "../../config/payment-rails.js";
 import { logger } from "../../lib/logger.js";
+import {
+  acquireOutboundRpcSlot,
+  evmRpcBudgetKey,
+} from "../../lib/network-rpc-rate-limit.js";
 import { nativeDecimalsForChain, nativeSymbolForChain } from "../native-symbols.js";
 import {
   advanceScanner,
@@ -50,6 +54,8 @@ export async function scanEvmChain(chain, options = {}) {
   const provider = new ethers.JsonRpcProvider(chainToRpcUrl(chain), network, {
     staticNetwork: network,
   });
+  const budgetKey = evmRpcBudgetKey(chain);
+  await acquireOutboundRpcSlot(budgetKey);
   const tip = BigInt(await provider.getBlockNumber());
   let cursor = await getOrInitScannerBlock(chain, tip);
   if (cursor >= tip) return;
@@ -73,6 +79,7 @@ export async function scanEvmChain(chain, options = {}) {
   const end = tip < cursor + maxBatch ? tip : cursor + maxBatch;
 
   for (let b = cursor + 1n; b <= end; b++) {
+    await acquireOutboundRpcSlot(budgetKey);
     const block = await provider.getBlock(b, true);
     if (!block) continue;
 
@@ -115,6 +122,7 @@ export async function scanEvmChain(chain, options = {}) {
 
     let logs = [];
     try {
+      await acquireOutboundRpcSlot(budgetKey);
       logs = await provider.getLogs({
         fromBlock: b,
         toBlock: b,

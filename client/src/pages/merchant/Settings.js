@@ -47,13 +47,6 @@ export default function MerchantSettings() {
       <h1 className="font-display text-2xl font-semibold text-white">
         Gateway &amp; webhooks
       </h1>
-      <p className="mt-1 text-sm text-white/50">
-        Callback URL, supported chains, and deposit rails for{" "}
-        <span className="font-mono text-white/55">
-          POST /api/v1/gateway/deposit-address
-        </span>
-        .
-      </p>
 
       {gatewayModes ? (
         <div className="mt-6 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white/70">

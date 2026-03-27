@@ -3,6 +3,7 @@ import { utils } from "tronweb";
 import { confirmationsForChain } from "../../config/chains.js";
 import { env, getTrc20Contracts } from "../../config/env.js";
 import { logger } from "../../lib/logger.js";
+import { acquireOutboundRpcSlot } from "../../lib/network-rpc-rate-limit.js";
 import { nativeDecimalsForChain, nativeSymbolForChain } from "../native-symbols.js";
 import {
   loadWalletsForChain,
@@ -99,6 +100,7 @@ async function ingestTrxForTargets(base, address, targets, chain) {
   const url = `${base}/v1/accounts/${address}/transactions?only_confirmed=true&limit=50`;
   let data = {};
   try {
+    await acquireOutboundRpcSlot("TRON");
     const res = await fetch(url, { headers: tronHeaders() });
     const text = await res.text();
     try {
@@ -174,6 +176,7 @@ async function ingestTrc20ForTargets(base, address, targets, chain, trc20Map) {
   const url = `${base}/v1/accounts/${address}/transactions/trc20?only_confirmed=true&limit=50`;
   let data = {};
   try {
+    await acquireOutboundRpcSlot("TRON");
     const res = await fetch(url, { headers: tronHeaders() });
     const text = await res.text();
     try {

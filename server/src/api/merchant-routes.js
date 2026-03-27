@@ -13,6 +13,7 @@ import {
 } from "../lib/wallet-scan.js";
 import { prisma } from "../lib/prisma.js";
 import { requireAuth } from "../middleware/require-auth.js";
+import { logPanelMutations } from "../middleware/log-panel-mutations.js";
 import { parsePageQuery } from "../lib/pagination.js";
 import { ensureMerchantPortalEnvironmentConsistent } from "../lib/merchant-gateway-env.js";
 import {
@@ -36,7 +37,7 @@ const CHAIN_SET = new Set(Object.values(Chain));
 const router = Router();
 const merchantOnly = requireAuth(AdminRole.MERCHANT);
 
-router.use("/api/v1/merchant", merchantOnly);
+router.use("/api/v1/merchant", merchantOnly, logPanelMutations("merchant"));
 
 function merchantId(req) {
   return req.auth?.sub;
@@ -457,7 +458,13 @@ router.post(
       return;
     }
 
-    const result = await redeliverPaymentSuccessWebhook(transactionId, mid);
+    const actorRow = await prisma.adminUser.findUnique({
+      where: { id: mid },
+      select: { email: true },
+    });
+    const result = await redeliverPaymentSuccessWebhook(transactionId, mid, {
+      actorEmail: actorRow?.email ?? null,
+    });
     if (result.ok) {
       res.status(200).json({ ok: true });
       return;

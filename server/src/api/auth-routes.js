@@ -11,6 +11,10 @@ import {
   ensureMerchantPortalEnvironmentConsistent,
 } from "../lib/merchant-gateway-env.js";
 import { logger } from "../lib/logger.js";
+import {
+  logAuthenticatedPortalMutation,
+  redactPanelBody,
+} from "../services/panel-audit-log.js";
 import { sendPasswordResetEmail } from "../lib/mailer.js";
 import { env } from "../config/env.js";
 
@@ -97,14 +101,17 @@ router.get("/api/v1/auth/me", requireAuth(), async (req, res) => {
   const { apiKeyCipher, sandboxApiKeyCipher, sandboxApiKeyHash, ...rest } = user;
   const out = { ...rest };
   out.hasSandboxApiKey = Boolean(sandboxApiKeyHash);
-  if (user.role === AdminRole.MERCHANT && apiKeyCipher) {
-    try {
-      out.apiKey = decryptMerchantApiKey(apiKeyCipher);
-    } catch (e) {
-      logger.warn("auth/me decrypt merchant api key failed", {
-        err: String(e),
-        userId: user.id,
-      });
+  if (user.role === AdminRole.MERCHANT) {
+    out.api_key_cipher_present = Boolean(apiKeyCipher);
+    if (apiKeyCipher) {
+      try {
+        out.apiKey = decryptMerchantApiKey(apiKeyCipher);
+      } catch (e) {
+        logger.warn("auth/me decrypt merchant api key failed", {
+          err: String(e),
+          userId: user.id,
+        });
+      }
     }
   }
   if (user.role === AdminRole.MERCHANT && sandboxApiKeyCipher) {
@@ -161,6 +168,14 @@ router.patch("/api/v1/auth/me/portal-environment", requireAuth(), async (req, re
   await prisma.adminUser.update({
     where: { id },
     data: { portalEnvironment: next },
+  });
+  logAuthenticatedPortalMutation(req, {
+    path: "/api/v1/auth/me/portal-environment",
+    summary: `Profile: portal environment → ${v}`,
+    metadata: {
+      portal_environment: v,
+      request_body: redactPanelBody(body),
+    },
   });
   res.json({ ok: true, portal_environment: v });
 });
@@ -279,6 +294,13 @@ async function changePasswordHandler(req, res) {
       passwordHash: await bcrypt.hash(newPassword, 10),
       passwordResetTokenHash: null,
       passwordResetExpiresAt: null,
+    },
+  });
+  logAuthenticatedPortalMutation(req, {
+    path: "/api/v1/auth/me/password",
+    summary: "Profile: password changed",
+    metadata: {
+      request_body: redactPanelBody(req.body ?? {}),
     },
   });
   res.json({ ok: true });

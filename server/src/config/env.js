@@ -1,5 +1,10 @@
+import fs from "fs";
 import dotenv from "dotenv";
 import path from "path";
+import { fileURLToPath } from "url";
+
+const __dirnameEnv = path.dirname(fileURLToPath(import.meta.url));
+const defaultClientDist = path.resolve(__dirnameEnv, "../../../client/dist");
 
 dotenv.config({ path: path.resolve(process.cwd(), ".env") });
 dotenv.config({ path: path.resolve(process.cwd(), "..", ".env") });
@@ -27,6 +32,11 @@ function listEnv(name, fallback) {
     .map((s) => s.trim())
     .filter(Boolean);
 }
+
+const clientDistFromEnv = optional("CLIENT_DIST_PATH", "").trim();
+const clientDistPathResolved =
+  clientDistFromEnv ||
+  (fs.existsSync(defaultClientDist) ? defaultClientDist : "");
 
 export const env = {
   nodeEnv: optional("NODE_ENV", "development"),
@@ -100,6 +110,24 @@ export const env = {
    * (local dev only). Merchants should use their sandbox API key instead.
    */
   gatewaySandbox: optional("GATEWAY_SANDBOX", "false").toLowerCase() === "true",
+
+  /**
+   * Max outbound RPC / explorer HTTP calls per rolling 1s **per network bucket** (EVM_ETH, TRON, …).
+   * `0` = disable limiting. Requests wait (queue) instead of returning errors to integrators.
+   */
+  outboundRpcMaxPerSecond: intEnv("OUTBOUND_RPC_MAX_PER_SECOND", 5),
+
+  /**
+   * Absolute or cwd-relative path to Vite `client/dist`. If unset, uses monorepo `client/dist` when it exists.
+   * When set and the folder exists, Express serves the SPA and `GET /` is the React app (not JSON).
+   */
+  clientDistPath: clientDistPathResolved,
+
+  /**
+   * When `false`, `src/index.js` does not start the blockchain worker — run `src/worker-entry.js` under PM2 separately.
+   */
+  runInlineBlockchainWorker:
+    optional("RUN_BLOCKCHAIN_WORKER", "true").toLowerCase() !== "false",
 };
 
 export function parseJsonEnv(raw, fallback) {

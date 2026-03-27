@@ -308,11 +308,6 @@ export default function AdminMerchants() {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
           <h1 className="font-display text-2xl font-semibold text-white">Merchants</h1>
-          <p className="mt-1 text-sm text-white/50">
-            Inactive merchants stay visible. Soft delete sets{" "}
-            <span className="font-mono text-white/55">deleted_at</span> — those
-            rows are hidden unless you include deleted in filters.
-          </p>
           {impersonateError ? (
             <p className="mt-3 text-sm text-rose-400">{impersonateError}</p>
           ) : null}

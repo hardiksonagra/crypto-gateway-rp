@@ -9,4 +9,8 @@ app.listen(env.port, () => {
   logger.info("http listening", { port: env.port });
 });
 
-startBlockchainWorker();
+if (env.runInlineBlockchainWorker) {
+  startBlockchainWorker();
+} else {
+  logger.info("inline blockchain worker disabled (RUN_BLOCKCHAIN_WORKER=false); use worker-entry.js");
+}

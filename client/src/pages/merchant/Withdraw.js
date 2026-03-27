@@ -133,12 +133,6 @@ export default function MerchantWithdraw() {
   return (
     <div>
       <h1 className="font-display text-2xl font-semibold text-white">Withdraw</h1>
-      <p className="mt-1 max-w-2xl text-sm text-white/50">
-        Native EVM withdrawals only: sends from the first deposit wallet on the selected chain that has
-        enough balance for the payout plus gas. Token (USDT, etc.) pooling is not automated here. Uses{" "}
-        <strong className="text-white/65">live</strong> balances only — sandbox funds cannot be withdrawn
-        here.
-      </p>
       {!me.isLoading && !liveGatewayEnabled ? (
         <p className="mt-4 max-w-2xl rounded-lg border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-sm text-amber-100/90">
           Live gateway is disabled for your account. Withdrawals are blocked until an admin enables live

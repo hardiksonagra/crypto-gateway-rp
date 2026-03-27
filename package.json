@@ -8,6 +8,8 @@
     "dev:client": "npm run dev -w client",
     "dev:all": "concurrently \"npm run dev -w server\" \"npm run dev -w client\"",
     "build": "npm run build -w server && npm run build -w client",
+    "pm2:start": "pm2 start ecosystem.config.cjs",
+    "pm2:stop": "pm2 delete crypto-gateway-api crypto-gateway-worker",
     "prisma:generate": "npm run prisma:generate -w server",
     "prisma:migrate": "npm run prisma:migrate -w server",
     "prisma:reset": "npm run prisma:reset -w server",

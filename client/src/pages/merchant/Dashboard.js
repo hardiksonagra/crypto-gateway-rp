@@ -59,11 +59,6 @@ export default function MerchantDashboard() {
     <div>
       <div>
         <h1 className="font-display text-2xl font-semibold text-white">Dashboard</h1>
-        <p className="mt-1 text-sm text-white/50">
-          {environment === "sandbox"
-            ? "Sandbox users, wallets, and transactions are isolated from live. Switch to Live in Profile for production data and withdrawals."
-            : "Balances reflect successful live deposits minus completed withdrawals (per asset)."}
-        </p>
       </div>
 
       <div className="mt-6 grid gap-4 sm:grid-cols-2">

@@ -166,11 +166,6 @@ export default function MerchantTransactions() {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
           <h1 className="font-display text-2xl font-semibold text-white">Transactions</h1>
-          <p className="mt-1 text-sm text-white/50">
-            {environment === "sandbox"
-              ? "Sandbox transactions only — not included in live totals. Switch to Live in Profile when you are ready for production."
-              : "Live transactions only — sandbox is separate."}
-          </p>
         </div>
         <ListFilterToolbar
           onOpenDrawer={() => setDrawerOpen(true)}

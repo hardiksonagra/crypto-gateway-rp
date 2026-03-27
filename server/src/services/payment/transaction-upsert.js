@@ -144,11 +144,13 @@ export async function getOrInitScannerBlock(chain, tip) {
   let rows = await prisma.scannerState.findMany({ where: { chain } });
   if (rows.length === 0) {
     const warm = tip > 12n ? tip - 12n : 0n;
-    for (const { currency, network } of spec) {
-      await prisma.scannerState.create({
-        data: { currency, network, chain, lastBlock: warm },
-      });
-    }
+    await prisma.$transaction(
+      spec.map(({ currency, network }) =>
+        prisma.scannerState.create({
+          data: { currency, network, chain, lastBlock: warm },
+        }),
+      ),
+    );
     rows = await prisma.scannerState.findMany({ where: { chain } });
   }
 

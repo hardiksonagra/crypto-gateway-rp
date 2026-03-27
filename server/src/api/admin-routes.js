@@ -16,6 +16,7 @@ import {
 import { prisma } from "../lib/prisma.js";
 import { signAuthToken } from "../lib/auth-jwt.js";
 import { requireAuth } from "../middleware/require-auth.js";
+import { logPanelMutations } from "../middleware/log-panel-mutations.js";
 import { parsePageQuery } from "../lib/pagination.js";
 import { generateApiKey, hashApiKey } from "../lib/api-key.js";
 import { encryptMerchantApiKey } from "../lib/merchant-api-key-cipher.js";
@@ -34,7 +35,7 @@ const adminOnly = requireAuth(AdminRole.ADMIN);
 
 const CHAINS = new Set(Object.values(Chain));
 
-router.use("/api/v1/admin", adminOnly);
+router.use("/api/v1/admin", adminOnly, logPanelMutations("admin"));
 
 /**
  * Global Users / Transactions lists respect this admin's saved `portal_environment`.
@@ -85,6 +86,171 @@ router.get("/api/v1/admin/dashboard", async (req, res) => {
     transactions_total: txs,
     transactions_success: successTxs,
     transactions_last_24h: txs24h,
+  });
+});
+
+router.get("/api/v1/admin/audit-logs", async (req, res) => {
+  const { skip, take, page, pageSize } = parsePageQuery(req.query);
+  const merchantId =
+    typeof req.query.merchant_id === "string"
+      ? req.query.merchant_id.trim()
+      : "";
+  const source =
+    typeof req.query.source === "string" ? req.query.source.trim() : "";
+  const action =
+    typeof req.query.action === "string" ? req.query.action.trim() : "";
+  const from =
+    typeof req.query.created_from === "string"
+      ? new Date(req.query.created_from)
+      : null;
+  const to =
+    typeof req.query.created_to === "string"
+      ? new Date(req.query.created_to)
+      : null;
+
+  const createdAt = {};
+  if (from && !Number.isNaN(from.getTime())) createdAt.gte = from;
+  if (to && !Number.isNaN(to.getTime())) createdAt.lte = to;
+
+  const where = {
+    ...(merchantId ? { merchantId } : {}),
+    ...(source ? { source } : {}),
+    ...(action
+      ? { action: { contains: action, mode: Prisma.QueryMode.insensitive } }
+      : {}),
+    ...(Object.keys(createdAt).length ? { createdAt } : {}),
+  };
+
+  const [total, rows] = await Promise.all([
+    prisma.auditLog.count({ where }),
+    prisma.auditLog.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      skip,
+      take,
+    }),
+  ]);
+
+  const mids = [...new Set(rows.map((r) => r.merchantId).filter(Boolean))];
+  const merchants =
+    mids.length > 0
+      ? await prisma.adminUser.findMany({
+          where: { id: { in: mids } },
+          select: { id: true, email: true },
+        })
+      : [];
+  const emailById = Object.fromEntries(merchants.map((m) => [m.id, m.email]));
+
+  res.json({
+    total,
+    page,
+    pageSize,
+    logs: rows.map((r) => ({
+      id: r.id,
+      created_at: r.createdAt,
+      source: r.source,
+      action: r.action,
+      merchant_id: r.merchantId,
+      merchant_email: r.merchantId ? emailById[r.merchantId] ?? null : null,
+      actor_type: r.actorType,
+      actor_id: r.actorId,
+      actor_email: r.actorEmail,
+      summary: r.summary,
+      request_method: r.requestMethod,
+      request_path: r.requestPath,
+      ip_address: r.ipAddress,
+      metadata: r.metadata,
+    })),
+  });
+});
+
+router.get("/api/v1/admin/panel-audit-logs", async (req, res) => {
+  const { skip, take, page, pageSize } = parsePageQuery(req.query);
+  const panelRaw =
+    typeof req.query.panel === "string" ? req.query.panel.trim().toLowerCase() : "";
+  const panel =
+    panelRaw === "admin" || panelRaw === "merchant" ? panelRaw : "";
+  const merchantId =
+    typeof req.query.merchant_id === "string"
+      ? req.query.merchant_id.trim()
+      : "";
+  const actorId =
+    typeof req.query.actor_id === "string" ? req.query.actor_id.trim() : "";
+  const pathQ =
+    typeof req.query.path === "string" ? req.query.path.trim() : "";
+  const from =
+    typeof req.query.created_from === "string"
+      ? new Date(req.query.created_from)
+      : null;
+  const to =
+    typeof req.query.created_to === "string"
+      ? new Date(req.query.created_to)
+      : null;
+
+  const createdAt = {};
+  if (from && !Number.isNaN(from.getTime())) createdAt.gte = from;
+  if (to && !Number.isNaN(to.getTime())) {
+    const end = new Date(to);
+    end.setHours(23, 59, 59, 999);
+    createdAt.lte = end;
+  }
+
+  const where = {
+    ...(panel ? { panel } : {}),
+    ...(merchantId ? { targetMerchantId: merchantId } : {}),
+    ...(actorId ? { actorId } : {}),
+    ...(pathQ
+      ? { path: { contains: pathQ, mode: Prisma.QueryMode.insensitive } }
+      : {}),
+    ...(Object.keys(createdAt).length ? { createdAt } : {}),
+  };
+
+  const [total, rows] = await Promise.all([
+    prisma.panelAuditLog.count({ where }),
+    prisma.panelAuditLog.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      skip,
+      take,
+    }),
+  ]);
+
+  const actorIds = [...new Set(rows.map((r) => r.actorId))];
+  const targetIds = [
+    ...new Set(rows.map((r) => r.targetMerchantId).filter(Boolean)),
+  ];
+  const allUserIds = [...new Set([...actorIds, ...targetIds])];
+  const users =
+    allUserIds.length > 0
+      ? await prisma.adminUser.findMany({
+          where: { id: { in: allUserIds } },
+          select: { id: true, email: true },
+        })
+      : [];
+  const emailById = Object.fromEntries(users.map((u) => [u.id, u.email]));
+
+  res.json({
+    total,
+    page,
+    pageSize,
+    logs: rows.map((r) => ({
+      id: r.id,
+      created_at: r.createdAt,
+      panel: r.panel,
+      method: r.method,
+      path: r.path,
+      http_status: r.httpStatus,
+      actor_id: r.actorId,
+      actor_role: r.actorRole,
+      actor_email: emailById[r.actorId] ?? null,
+      target_merchant_id: r.targetMerchantId,
+      target_merchant_email: r.targetMerchantId
+        ? emailById[r.targetMerchantId] ?? null
+        : null,
+      summary: r.summary,
+      ip_address: r.ipAddress,
+      metadata: r.metadata,
+    })),
   });
 });
 
@@ -750,7 +916,9 @@ router.post(
       return;
     }
 
-    const result = await redeliverPaymentSuccessWebhookAdmin(transactionId);
+    const result = await redeliverPaymentSuccessWebhookAdmin(transactionId, {
+      actorAdminId: req.auth?.sub ?? null,
+    });
     if (result.ok) {
       res.status(200).json({ ok: true });
       return;

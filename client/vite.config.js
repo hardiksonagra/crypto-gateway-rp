@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
+import viteCompression from "vite-plugin-compression";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const monorepoRoot = path.resolve(__dirname, "..");
@@ -26,7 +27,23 @@ export default defineConfig(({ mode }) => {
       loader: "jsx",
       jsx: "automatic",
     },
-    plugins: [react(), tailwindcss()],
+    plugins: [
+      react(),
+      tailwindcss(),
+      viteCompression({
+        algorithm: "gzip",
+        ext: ".gz",
+        threshold: 1024,
+      }),
+      viteCompression({
+        algorithm: "brotliCompress",
+        ext: ".br",
+        threshold: 1024,
+      }),
+    ],
+    build: {
+      sourcemap: false,
+    },
     server: {
       port: 5173,
       proxy: {

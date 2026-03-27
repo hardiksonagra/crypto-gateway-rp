@@ -36,10 +36,6 @@ export default function MerchantCreate() {
         </Link>
       </div>
       <h1 className="font-display text-2xl font-semibold text-white">Create merchant</h1>
-      <p className="mt-1 text-sm text-white/50">
-        New portal user + one gateway API key (<span className="font-mono">cpg_</span>
-        , live and sandbox) shown once after save. Merchants are created active by default.
-      </p>
 
       <div className="glass mt-8 w-full rounded-2xl p-6 lg:p-8">
         <Formik

@@ -1,5 +1,7 @@
 import { Chain } from "@prisma/client";
 import { prisma } from "../../lib/prisma.js";
+
+/** @typedef {import("@prisma/client").Prisma.TransactionClient} DbClient */
 import { env } from "../../config/env.js";
 import { nextScanExpiresAt } from "../../lib/wallet-scan.js";
 import { isEvmChain } from "../../config/chains.js";
@@ -13,16 +15,18 @@ import { deriveTonAddress } from "./ton-wallet.js";
  * @param {import("@prisma/client").Chain} chain
  * @param {string} currency
  * @param {string} network
+ * @param {DbClient} [db] — pass interactive transaction client so user+wallet commit/rollback together
  */
-export async function createOrGetWallet(userId, chain, currency, network) {
-  const hit = await prisma.wallet.findUnique({
+export async function createOrGetWallet(userId, chain, currency, network, db = prisma) {
+  /** Same user+rail → same row; no extra chain RPC on repeat `deposit-address` calls. */
+  const hit = await db.wallet.findUnique({
     where: {
       userId_chain_currency_network: { userId, chain, currency, network },
     },
   });
   if (hit) return hit;
 
-  const user = await prisma.user.findUnique({
+  const user = await db.user.findUnique({
     where: { id: userId },
     include: { wallets: true },
   });
@@ -32,7 +36,7 @@ export async function createOrGetWallet(userId, chain, currency, network) {
 
   const evmExisting = user.wallets.find((w) => isEvmChain(w.chain));
   if (isEvmChain(chain) && evmExisting) {
-    return prisma.wallet.create({
+    return db.wallet.create({
       data: {
         userId,
         chain,
@@ -58,7 +62,7 @@ export async function createOrGetWallet(userId, chain, currency, network) {
     throw new Error(`Unsupported chain: ${chain}`);
   }
 
-  return prisma.wallet.create({
+  return db.wallet.create({
     data: {
       userId,
       chain,

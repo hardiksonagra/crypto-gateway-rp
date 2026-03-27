@@ -96,11 +96,6 @@ export default function MerchantUsers() {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
           <h1 className="font-display text-2xl font-semibold text-white">Users</h1>
-          <p className="mt-1 text-sm text-white/50">
-            {environment === "sandbox"
-              ? "Sandbox end users (sandbox API key only). Use Profile → portal environment to switch to Live."
-              : "Live end users (live API key). Separate from sandbox."}
-          </p>
         </div>
         <ListFilterToolbar
           onOpenDrawer={() => setDrawerOpen(true)}

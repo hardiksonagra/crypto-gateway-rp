@@ -3,6 +3,10 @@ import { MerchantGatewayEnv } from "@prisma/client";
 import { env } from "../../config/env.js";
 import { chainToRpcUrl, chainToStaticNetwork, isEvmChain } from "../../config/chains.js";
 import { prisma } from "../../lib/prisma.js";
+import {
+  acquireOutboundRpcSlot,
+  evmRpcBudgetKey,
+} from "../../lib/network-rpc-rate-limit.js";
 
 const GAS_LIMIT_NATIVE = 21_000n;
 
@@ -13,6 +17,7 @@ export async function sendEvmNativeFromMerchantPool(params) {
   const provider = new JsonRpcProvider(chainToRpcUrl(chain), chainToStaticNetwork(chain), {
     staticNetwork: true,
   });
+  const budgetKey = evmRpcBudgetKey(chain);
 
   const wallets = await prisma.wallet.findMany({
     where: { chain, user: { merchantId, environment: MerchantGatewayEnv.live } },
@@ -20,6 +25,7 @@ export async function sendEvmNativeFromMerchantPool(params) {
     orderBy: { createdAt: "asc" },
   });
 
+  await acquireOutboundRpcSlot(budgetKey);
   const feeData = await provider.getFeeData();
   const gasPrice = feeData.gasPrice ?? 0n;
   const gasReserve = gasPrice * GAS_LIMIT_NATIVE;
@@ -30,15 +36,18 @@ export async function sendEvmNativeFromMerchantPool(params) {
     if (signer.address.toLowerCase() !== w.address.toLowerCase()) {
       continue;
     }
+    await acquireOutboundRpcSlot(budgetKey);
     const bal = await provider.getBalance(signer.address);
     if (bal < amountWei + gasReserve) continue;
 
+    await acquireOutboundRpcSlot(budgetKey);
     const tx = await signer.sendTransaction({
       to: toAddress,
       value: amountWei,
       gasLimit: GAS_LIMIT_NATIVE,
       ...(gasPrice > 0n ? { gasPrice } : {}),
     });
+    await acquireOutboundRpcSlot(budgetKey);
     const receipt = await tx.wait(1);
     if (!receipt?.status) throw new Error("TX_REVERTED");
     return { txHash: tx.hash, fromAddress: signer.address };

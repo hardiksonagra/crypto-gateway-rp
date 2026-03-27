@@ -3,6 +3,7 @@ import { Address } from "@ton/core";
 import { confirmationsForChain } from "../../config/chains.js";
 import { env, getTonJettonContracts } from "../../config/env.js";
 import { logger } from "../../lib/logger.js";
+import { acquireOutboundRpcSlot } from "../../lib/network-rpc-rate-limit.js";
 import { nativeDecimalsForChain, nativeSymbolForChain } from "../native-symbols.js";
 import {
   loadWalletsForChain,
@@ -78,6 +79,7 @@ export async function scanTonChain(options = {}) {
     const url = `${base}/v2/accounts/${encodeURIComponent(address.trim())}/events?limit=50`;
     let payload;
     try {
+      await acquireOutboundRpcSlot("TON");
       const res = await fetch(url, { headers: tonHeaders() });
       const text = await res.text();
       try {

@@ -174,6 +174,52 @@ model Withdrawal {
   @@map("withdrawals")
 }
 
+/// Immutable trail for support: gateway calls, callbacks, who/when (no secrets stored).
+model AuditLog {
+  id             String   @id @default(cuid())
+  createdAt      DateTime @default(now()) @map("created_at")
+  source         String
+  action         String
+  merchantId     String?  @map("merchant_id")
+  actorType      String   @map("actor_type")
+  actorId        String?  @map("actor_id")
+  actorEmail     String?  @map("actor_email")
+  summary        String   @db.Text
+  requestMethod  String?  @map("request_method")
+  requestPath    String?  @map("request_path") @db.Text
+  ipAddress      String?  @map("ip_address")
+  metadata       Json     @default("{}")
+
+  @@index([createdAt])
+  @@index([merchantId])
+  @@index([source, action])
+  @@map("audit_logs")
+}
+
+/// Admin / merchant portal mutations (successful writes). Separate from gateway API + webhook audit_logs.
+model PanelAuditLog {
+  id                 String   @id @default(cuid())
+  createdAt          DateTime @default(now()) @map("created_at")
+  /// Which UI surface: `admin` or `merchant` (profile/password use the user role the same way).
+  panel              String
+  actorId            String   @map("actor_id")
+  actorRole          String   @map("actor_role")
+  /// Merchant row affected when an admin edits a merchant; merchant panel = same as actor for own actions.
+  targetMerchantId   String?  @map("target_merchant_id")
+  method             String
+  path               String   @db.Text
+  httpStatus         Int      @map("http_status")
+  summary            String   @db.Text
+  metadata           Json     @default("{}")
+  ipAddress          String?  @map("ip_address")
+
+  @@index([createdAt])
+  @@index([panel])
+  @@index([actorId])
+  @@index([targetMerchantId])
+  @@map("panel_audit_logs")
+}
+
 model ScannerState {
   id        String   @id @default(cuid())
   currency  String

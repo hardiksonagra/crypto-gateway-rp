@@ -13,6 +13,7 @@ import MerchantDetail from "./pages/admin/MerchantDetail";
 import AdminUsers from "./pages/admin/Users";
 import AdminTransactions from "./pages/admin/Transactions";
 import AdminWithdrawals from "./pages/admin/Withdrawals";
+import AdminActivityLog from "./pages/admin/ActivityLog";
 import MerchantDashboard from "./pages/merchant/Dashboard";
 import MerchantUsers from "./pages/merchant/Users";
 import MerchantWallets from "./pages/merchant/Wallets";
@@ -37,6 +38,7 @@ export default function App() {
         <Route path="users" element={<AdminUsers />} />
         <Route path="transactions" element={<AdminTransactions />} />
         <Route path="withdrawals" element={<AdminWithdrawals />} />
+        <Route path="activity" element={<AdminActivityLog />} />
         <Route path="profile" element={<Profile />} />
       </Route>
       <Route path="/m" element={<MerchantShell />}>

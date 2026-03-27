@@ -141,10 +141,6 @@ export default function AdminTransactions() {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
           <h1 className="font-display text-2xl font-semibold text-white">Transactions</h1>
-          <p className="mt-1 text-sm text-white/50">
-            Same detail view and webhook resend as the merchant portal, across all merchants. Scope (live
-            vs sandbox) follows your Profile setting.
-          </p>
         </div>
         <ListFilterToolbar
           onOpenDrawer={() => setDrawerOpen(true)}

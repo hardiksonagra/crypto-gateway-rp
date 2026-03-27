@@ -104,6 +104,23 @@ export const adminUsersFilterSchema = yup.object({
   created_to: yup.string(),
 });
 
+export const adminAuditLogsFilterSchema = yup.object({
+  merchant_id: yup.string(),
+  source: yup.string(),
+  action: yup.string(),
+  created_from: yup.string(),
+  created_to: yup.string(),
+});
+
+export const adminPanelAuditLogsFilterSchema = yup.object({
+  panel: yup.string().oneOf(["", "admin", "merchant"]),
+  merchant_id: yup.string(),
+  actor_id: yup.string(),
+  path: yup.string(),
+  created_from: yup.string(),
+  created_to: yup.string(),
+});
+
 export const adminTransactionsFilterSchema = yup.object({
   merchant_id: yup.string(),
   external_user_id: yup.string(),
