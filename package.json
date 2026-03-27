@@ -15,7 +15,8 @@
     "prisma:reset": "npm run prisma:reset -w server",
     "prisma:deploy": "npm run prisma:deploy -w server",
     "prisma:studio": "npm run prisma:studio -w server",
-    "db:seed": "npm run db:seed -w server"
+    "db:seed": "npm run db:seed -w server",
+    "deploy": "bash scripts/deploy.sh"
   },
   "devDependencies": {
     "concurrently": "^9.1.2"
