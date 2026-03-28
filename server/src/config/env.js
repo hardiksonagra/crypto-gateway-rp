@@ -33,6 +33,16 @@ function listEnv(name, fallback) {
     .filter(Boolean);
 }
 
+/**
+ * Browser `Origin` header has no trailing slash; allow matching env values written with one.
+ * @param {string | undefined | null} o
+ * @returns {string}
+ */
+export function normalizeBrowserOrigin(o) {
+  if (!o) return "";
+  return String(o).trim().replace(/\/+$/, "");
+}
+
 const clientDistFromEnv = optional("CLIENT_DIST_PATH", "").trim();
 const clientDistPathResolved =
   clientDistFromEnv ||
@@ -48,7 +58,7 @@ export const env = {
   clientOrigins: listEnv(
     "CLIENT_ORIGINS",
     "http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000,http://127.0.0.1:3000",
-  ),
+  ).map(normalizeBrowserOrigin),
   encryptionKey: optional("ENCRYPTION_KEY"),
 
   /** Base URL of the browser app (for password-reset links), e.g. https://portal.example.com */

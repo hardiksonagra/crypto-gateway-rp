@@ -3,7 +3,7 @@ import path from "path";
 import express from "express";
 import cors from "cors";
 import helmet from "helmet";
-import { env } from "./config/env.js";
+import { env, normalizeBrowserOrigin } from "./config/env.js";
 import { authRouter } from "./api/auth-routes.js";
 import { gatewayRouter } from "./api/gateway-routes.js";
 import { adminRouter } from "./api/admin-routes.js";
@@ -22,7 +22,8 @@ export function createApp() {
         env.clientOrigins.length > 0
           ? (origin, cb) => {
               if (!origin) return cb(null, true);
-              if (env.clientOrigins.includes(origin)) return cb(null, true);
+              if (env.clientOrigins.includes(normalizeBrowserOrigin(origin)))
+                return cb(null, true);
               cb(null, false);
             }
           : true,
