@@ -55,13 +55,14 @@ export const env = {
   databaseUrl: required("DATABASE_URL"),
   mnemonic: required("MNEMONIC"),
   jwtSecret: required("JWT_SECRET"),
-  clientOrigins: listEnv("CLIENT_ORIGINS", "http://portal.cryptovapay.com").map(
-    normalizeBrowserOrigin,
-  ),
+  clientOrigins: listEnv(
+    "CLIENT_ORIGINS",
+    "https://portal.cryptovapay.com",
+  ).map(normalizeBrowserOrigin),
   encryptionKey: optional("ENCRYPTION_KEY"),
 
   /** Base URL of the browser app (for password-reset links), e.g. https://portal.example.com */
-  appPublicUrl: optional("APP_PUBLIC_URL", "http://portal.cryptovapay.com"),
+  appPublicUrl: optional("APP_PUBLIC_URL", "https://portal.cryptovapay.com"),
   passwordResetTtlMinutes: intEnv("PASSWORD_RESET_TTL_MINUTES", 60),
 
   smtpHost: optional("SMTP_HOST"),
