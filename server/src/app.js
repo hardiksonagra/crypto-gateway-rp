@@ -4,6 +4,7 @@ import express from "express";
 import cors from "cors";
 import helmet from "helmet";
 import { env, normalizeBrowserOrigin } from "./config/env.js";
+import { logger } from "./lib/logger.js";
 import { authRouter } from "./api/auth-routes.js";
 import { gatewayRouter } from "./api/gateway-routes.js";
 import { adminRouter } from "./api/admin-routes.js";
@@ -22,14 +23,24 @@ export function createApp() {
         env.clientOrigins.length > 0
           ? (origin, cb) => {
               if (!origin) return cb(null, true);
-              if (env.clientOrigins.includes(normalizeBrowserOrigin(origin)))
-                return cb(null, true);
+              const norm = normalizeBrowserOrigin(origin);
+              if (env.clientOrigins.includes(norm)) return cb(null, true);
+              logger.warn("cors_origin_rejected", {
+                origin,
+                hint: "Add this exact value (scheme + host, no path) to CLIENT_ORIGINS on the API server.",
+              });
               cb(null, false);
             }
           : true,
       credentials: true,
       methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-      allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
+      allowedHeaders: [
+        "Content-Type",
+        "Authorization",
+        "Accept",
+        "X-Requested-With",
+      ],
+      maxAge: 86_400,
     }),
   );
   const jsonParser = express.json({ limit: "512kb" });
