@@ -22,10 +22,12 @@ import MerchantWithdraw from "./pages/merchant/Withdraw";
 import MerchantSettings from "./pages/merchant/Settings";
 import GatewayApiKey from "./pages/merchant/GatewayApiKey";
 import GatewayApiDocs from "./pages/merchant/GatewayApiDocs";
+import PaymentPage from "./pages/PaymentPage";
 
 export default function App() {
   return (
     <Routes>
+      <Route path="/pay/:token" element={<PaymentPage />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />

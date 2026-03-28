@@ -13,6 +13,7 @@
     "formik": "^2.4.6",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "react-qr-code": "^2.0.18",
     "react-router-dom": "^7.4.0",
     "yup": "^1.6.1"
   },

@@ -4,7 +4,7 @@ const IMPERSONATION_ADMIN_TOKEN_KEY = "cpg_impersonation_admin_token";
 
 const API_BASE = String(import.meta.env.VITE_API_ORIGIN ?? "").replace(/\/$/, "");
 
-function apiUrl(path) {
+export function apiUrl(path) {
   if (path.startsWith("http://") || path.startsWith("https://")) return path;
   if (!API_BASE) return path;
   return `${API_BASE}${path}`;

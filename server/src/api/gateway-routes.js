@@ -22,8 +22,16 @@ import {
   requestClientIp,
   writeAuditLog,
 } from "../services/audit-log.js";
+import { createPaymentLinkToken, verifyPaymentLinkToken } from "../lib/payment-link-token.js";
+import { normalizeGatewayRedirectUrl } from "../lib/payment-redirect-url.js";
+import { walletScanTtlMinutes } from "../lib/wallet-scan.js";
 
 const router = Router();
+
+function paymentPageBaseUrl() {
+  const raw = env.paymentPagePublicUrl.trim() || env.appPublicUrl;
+  return String(raw).replace(/\/+$/, "");
+}
 
 /**
  * @param {import("express").Request} req
@@ -38,6 +46,48 @@ function auditGatewayApi(req, partial) {
     ...partial,
   });
 }
+
+router.get("/api/v1/gateway/payment-session/:token", async (req, res) => {
+  try {
+    const rawToken =
+      typeof req.params.token === "string" ? req.params.token.trim() : "";
+    const v = verifyPaymentLinkToken(rawToken);
+    if (!v) {
+      res.status(410).json({ error: "payment_link_invalid_or_expired" });
+      return;
+    }
+    const redirectUrl =
+      v.redirectUrl != null && String(v.redirectUrl).trim()
+        ? normalizeGatewayRedirectUrl(v.redirectUrl)
+        : null;
+    const w = await prisma.wallet.findUnique({
+      where: { id: v.walletId },
+      select: {
+        address: true,
+        chain: true,
+        currency: true,
+        network: true,
+        scanExpiresAt: true,
+      },
+    });
+    if (!w) {
+      res.status(410).json({ error: "payment_link_invalid_or_expired" });
+      return;
+    }
+    res.json({
+      address: w.address,
+      chain: w.chain,
+      currency: w.currency,
+      network: w.network,
+      deposit_scan_expires_at: w.scanExpiresAt?.toISOString() ?? null,
+      deposit_scan_ttl_minutes: walletScanTtlMinutes(),
+      redirect_url: redirectUrl,
+    });
+  } catch (e) {
+    logger.error("gateway payment-session failed", { err: String(e) });
+    res.status(500).json({ error: "internal error" });
+  }
+});
 
 router.post("/api/v1/gateway/deposit-address", async (req, res) => {
   try {
@@ -146,6 +196,26 @@ router.post("/api/v1/gateway/deposit-address", async (req, res) => {
       return;
     }
 
+    let redirectUrl = null;
+    if (body.redirect_url != null && String(body.redirect_url).trim()) {
+      redirectUrl = normalizeGatewayRedirectUrl(body.redirect_url);
+      if (!redirectUrl) {
+        auditGatewayApi(req, {
+          action: "deposit_address",
+          merchantId: merchant.id,
+          actorType: "gateway_api_key",
+          summary: "deposit-address 400 — invalid_redirect_url",
+          metadata: {
+            request_in: redactGatewayBody(body),
+            http_status: 400,
+            external_user_id: externalUserId,
+          },
+        });
+        res.status(400).json({ error: "invalid_redirect_url" });
+        return;
+      }
+    }
+
     const { user, wallet, createdNewUser } = await prisma.$transaction(
       async (tx) => {
         let u = await tx.user.findUnique({
@@ -197,10 +267,15 @@ router.post("/api/v1/gateway/deposit-address", async (req, res) => {
       summary: `deposit-address 200 · ext=${externalUserId} · ${wallet.chain} ${wallet.currency}/${wallet.network} · new_user=${createdNewUser}`,
       metadata: {
         request_in: redactGatewayBody(body),
-        response_out: responseOut,
+        response_out: {
+          ...responseOut,
+          payment_link: true,
+        },
         occurred_at_iso: new Date().toISOString(),
       },
     });
+    const payToken = createPaymentLinkToken(wallet.id, redirectUrl);
+    const payBase = paymentPageBaseUrl();
     res.status(200).json({
       address: wallet.address,
       chain: wallet.chain,
@@ -211,6 +286,10 @@ router.post("/api/v1/gateway/deposit-address", async (req, res) => {
       merchant_id: merchant.id,
       created_new_user: createdNewUser,
       gateway_environment: gwEnv,
+      payment_link: `${payBase}/pay/${payToken}`,
+      deposit_scan_expires_at: wallet.scanExpiresAt?.toISOString() ?? null,
+      deposit_scan_ttl_minutes: walletScanTtlMinutes(),
+      redirect_url: redirectUrl,
     });
   } catch (e) {
     logger.error("gateway deposit-address failed", { err: String(e) });

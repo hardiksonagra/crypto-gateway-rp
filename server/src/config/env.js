@@ -63,6 +63,8 @@ export const env = {
 
   /** Base URL of the browser app (for password-reset links), e.g. https://portal.example.com */
   appPublicUrl: optional("APP_PUBLIC_URL", "https://portal.cryptovapay.com"),
+  /** Optional origin for `/pay/…` links; defaults to `APP_PUBLIC_URL` when unset. */
+  paymentPagePublicUrl: optional("PAYMENT_PAGE_PUBLIC_URL", ""),
   passwordResetTtlMinutes: intEnv("PASSWORD_RESET_TTL_MINUTES", 60),
 
   smtpHost: optional("SMTP_HOST"),

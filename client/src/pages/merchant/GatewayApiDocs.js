@@ -368,6 +368,13 @@ Content-Type: application/json
             <span className="font-mono text-white/60">network</span>{" "}
             (optional — default pair if omitted)
           </li>
+          <li>
+            <span className="font-mono text-white/60">redirect_url</span>{" "}
+            (optional) — absolute <span className="font-mono">http(s)</span> URL;
+            payment page redirects here when a deposit reaches{" "}
+            <span className="font-mono">success</span> or when the deposit scan
+            countdown ends
+          </li>
         </ul>
         <Pre>{`POST /api/v1/gateway/deposit-address
 Content-Type: application/json
@@ -376,7 +383,8 @@ Content-Type: application/json
   "api_key": ${gatewayApiKeyJsonLiteral(apiKeyHint)},
   "external_user_id": "user-123",
   "currency": "USDT",
-  "network": "TRC20"
+  "network": "TRC20",
+  "redirect_url": "https://yoursite.com/payment/return"
 }`}</Pre>
         <p className="mt-4 text-xs font-medium text-white/45">200 response</p>
         <Pre>{`{
@@ -387,11 +395,16 @@ Content-Type: application/json
   "wallet_id": "…",
   "user_id": "…",
   "merchant_id": "…",
-  "created_new_user": false
+  "created_new_user": false,
+  "payment_link": "https://…",
+  "deposit_scan_expires_at": "…",
+  "deposit_scan_ttl_minutes": 10,
+  "redirect_url": "https://yoursite.com/payment/return"
 }`}</Pre>
         <p className="mt-4 text-xs text-white/45">
           Errors: <span className="font-mono">400</span> missing fields or{" "}
-          <span className="font-mono">unsupported_currency_network</span>;{" "}
+          <span className="font-mono">unsupported_currency_network</span> or{" "}
+          <span className="font-mono">invalid_redirect_url</span>;{" "}
           <span className="font-mono">401 invalid_api_key</span>;{" "}
           <span className="font-mono">403 rail_not_enabled_for_merchant</span>;{" "}
           <span className="font-mono">
