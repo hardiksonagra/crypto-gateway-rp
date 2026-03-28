@@ -3,7 +3,13 @@ import { Chain } from "@prisma/client";
 const CHAINS = new Set(Object.values(Chain));
 
 /** Gateway-supported L1/L2 list (USDT TRC20 / ERC20 / TON / BEP20 + TRX TRON). */
-const PRODUCT_CHAINS = new Set([Chain.TRON, Chain.ETH, Chain.BNB, Chain.TON]);
+const PRODUCT_CHAINS = new Set([
+  Chain.TRON,
+  Chain.SOLANA,
+  Chain.ETH,
+  Chain.BNB,
+  Chain.TON,
+]);
 
 /**
  * @param {unknown} raw
@@ -24,7 +30,7 @@ export function parseDefaultChainsArray(raw, opts) {
   if (!uniq.every((c) => PRODUCT_CHAINS.has(c))) {
     return {
       error:
-        "only TRON, ETH, BNB, TON are supported (matches USDT/TRX gateway rails)",
+        "only TRON, SOLANA, ETH, BNB, TON are supported (matches gateway rails)",
     };
   }
   return { chains: uniq };

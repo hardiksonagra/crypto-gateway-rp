@@ -28,6 +28,16 @@ import {
   pickMerchantDefaultPair,
 } from "../lib/merchant-default-pair.js";
 import { redeliverPaymentSuccessWebhookAdmin } from "../services/callback-service.js";
+import {
+  listTronUsdtSweepTargets,
+  sweepTronUsdtAll,
+  sweepTronUsdtOne,
+} from "../services/sweep/tron-usdt-sweep.js";
+import {
+  listSolanaUsdtSweepTargets,
+  sweepSolanaUsdtAll,
+  sweepSolanaUsdtOne,
+} from "../services/sweep/solana-usdt-sweep.js";
 import crypto from "crypto";
 
 const router = Router();
@@ -1160,6 +1170,119 @@ router.get("/api/v1/admin/withdrawals", async (req, res) => {
       updated_at: w.updatedAt,
     })),
   });
+});
+
+router.get("/api/v1/admin/tron-sweep/targets", async (req, res) => {
+  try {
+    const data = await listTronUsdtSweepTargets();
+    res.json(data);
+  } catch (e) {
+    logger.error("admin tron-sweep targets failed", { err: String(e) });
+    res.status(500).json({ error: "server_error", message: String(e) });
+  }
+});
+
+router.post("/api/v1/admin/tron-sweep/one", async (req, res) => {
+  const walletId =
+    typeof req.body?.wallet_id === "string" ? req.body.wallet_id.trim() : "";
+  if (!walletId) {
+    return res.status(400).json({
+      error: "validation",
+      message: "wallet_id is required",
+    });
+  }
+  try {
+    const result = await sweepTronUsdtOne(walletId);
+    if (!result.ok && result.error === "WALLET_NOT_FOUND") {
+      return res.status(404).json({
+        ...result,
+        message: result.detail ?? result.error ?? "Wallet not found",
+      });
+    }
+    if (!result.ok) {
+      return res.status(400).json({
+        ...result,
+        message: result.detail ?? result.error ?? "Sweep failed",
+      });
+    }
+    res.json(result);
+  } catch (e) {
+    logger.error("admin tron-sweep one failed", { walletId, err: String(e) });
+    res.status(500).json({ error: "server_error", message: String(e) });
+  }
+});
+
+router.post("/api/v1/admin/tron-sweep/all", async (req, res) => {
+  try {
+    const data = await sweepTronUsdtAll();
+    if (data.configured === false) {
+      return res.status(400).json({
+        error: "SWEEP_MASTER_TRON_NOT_SET",
+        message: "Set SWEEP_MASTER_TRON in server environment to your main TRC20 receive address.",
+      });
+    }
+    res.json(data);
+  } catch (e) {
+    logger.error("admin tron-sweep all failed", { err: String(e) });
+    res.status(500).json({ error: "server_error", message: String(e) });
+  }
+});
+
+router.get("/api/v1/admin/solana-sweep/targets", async (req, res) => {
+  try {
+    const data = await listSolanaUsdtSweepTargets();
+    res.json(data);
+  } catch (e) {
+    logger.error("admin solana-sweep targets failed", { err: String(e) });
+    res.status(500).json({ error: "server_error", message: String(e) });
+  }
+});
+
+router.post("/api/v1/admin/solana-sweep/one", async (req, res) => {
+  const walletId =
+    typeof req.body?.wallet_id === "string" ? req.body.wallet_id.trim() : "";
+  if (!walletId) {
+    return res.status(400).json({
+      error: "validation",
+      message: "wallet_id is required",
+    });
+  }
+  try {
+    const result = await sweepSolanaUsdtOne(walletId);
+    if (!result.ok && result.error === "WALLET_NOT_FOUND") {
+      return res.status(404).json({
+        ...result,
+        message: result.detail ?? result.error ?? "Wallet not found",
+      });
+    }
+    if (!result.ok) {
+      return res.status(400).json({
+        ...result,
+        message: result.detail ?? result.error ?? "Sweep failed",
+      });
+    }
+    res.json(result);
+  } catch (e) {
+    logger.error("admin solana-sweep one failed", { walletId, err: String(e) });
+    res.status(500).json({ error: "server_error", message: String(e) });
+  }
+});
+
+router.post("/api/v1/admin/solana-sweep/all", async (req, res) => {
+  try {
+    const data = await sweepSolanaUsdtAll();
+    if (data.configured === false) {
+      return res.status(400).json({
+        error: "SWEEP_MASTER_SOLANA_NOT_SET",
+        message:
+          "Set SWEEP_MASTER_SOLANA in server environment to your main Solana USDT (SPL) receive address.",
+      });
+    }
+    res.json(data);
+  } catch (e) {
+    logger.error("admin solana-sweep all failed", { err: String(e) });
+    res.status(500).json({ error: "server_error", message: String(e) });
+  }
 });
 
 export { router as adminRouter };

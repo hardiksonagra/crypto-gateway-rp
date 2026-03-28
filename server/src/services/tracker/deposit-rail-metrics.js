@@ -5,6 +5,7 @@ import { logger } from "../../lib/logger.js";
 /** Product rails shown first in tick logs (matches gateway USDT/TRX rails). */
 export const WORKER_RAIL_LOG_ORDER = [
   "USDT|TRC20",
+  "USDT|SPL",
   "USDT|ERC20",
   "USDT|BEP20",
   "USDT|TON",
@@ -14,6 +15,7 @@ export const WORKER_RAIL_LOG_ORDER = [
 /** Human-readable rail labels for console / log lines. */
 const RAIL_LABEL = {
   "USDT|TRC20": "USDT TRC20",
+  "USDT|SPL": "USDT SPL (Solana)",
   "USDT|ERC20": "USDT ERC20",
   "USDT|BEP20": "USDT BEP20",
   "USDT|TON": "USDT TON",

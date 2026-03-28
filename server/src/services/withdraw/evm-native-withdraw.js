@@ -21,7 +21,6 @@ export async function sendEvmNativeFromMerchantPool(params) {
 
   const wallets = await prisma.wallet.findMany({
     where: { chain, user: { merchantId, environment: MerchantGatewayEnv.live } },
-    include: { user: { select: { accountIndex: true } } },
     orderBy: { createdAt: "asc" },
   });
 
@@ -31,7 +30,7 @@ export async function sendEvmNativeFromMerchantPool(params) {
   const gasReserve = gasPrice * GAS_LIMIT_NATIVE;
 
   for (const w of wallets) {
-    const path = `m/44'/60'/0'/0/${w.user.accountIndex}`;
+    const path = `m/44'/60'/0'/0/${w.derivationIndex}`;
     const signer = HDNodeWallet.fromPhrase(env.mnemonic, undefined, path).connect(provider);
     if (signer.address.toLowerCase() !== w.address.toLowerCase()) {
       continue;

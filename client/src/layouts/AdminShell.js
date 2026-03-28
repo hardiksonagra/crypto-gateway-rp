@@ -16,6 +16,7 @@ import {
   IconProfile,
   IconTransactions,
   IconUsers,
+  IconWallet,
   IconWithdrawals,
 } from "./shellNavIcons.js";
 
@@ -25,6 +26,8 @@ const nav = [
   { to: "/admin/users", label: "Users", Icon: IconUsers },
   { to: "/admin/transactions", label: "Transactions", Icon: IconTransactions },
   { to: "/admin/withdrawals", label: "Withdrawals", Icon: IconWithdrawals },
+  { to: "/admin/tron-sweep", label: "TRON sweep", Icon: IconWallet },
+  { to: "/admin/solana-sweep", label: "Solana sweep", Icon: IconWallet },
   { to: "/admin/activity", label: "Activity log", Icon: IconActivity },
   { to: "/admin/profile", label: "Profile", Icon: IconProfile },
 ];

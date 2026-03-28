@@ -119,6 +119,7 @@ export async function loadWalletsForChainLateCatchup(chain) {
 
 export function normalizeMatchAddress(chain, address) {
   if (chain === Chain.TRON) return address;
+  if (chain === Chain.SOLANA) return address.trim();
   if (chain === Chain.BTC) return address;
   if (chain === Chain.TON) {
     try {

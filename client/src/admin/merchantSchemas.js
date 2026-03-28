@@ -1,7 +1,7 @@
 import * as yup from "yup";
 import { DEPOSIT_RAIL_KEYS, DEPOSIT_RAIL_OPTIONS } from "./depositRailOptions.js";
 
-export const CHAIN_VALUES = ["TRON", "ETH", "BNB", "TON"];
+export const CHAIN_VALUES = ["TRON", "SOLANA", "ETH", "BNB", "TON"];
 
 export const EVM_CHAIN_VALUES = ["ETH", "BNB"];
 

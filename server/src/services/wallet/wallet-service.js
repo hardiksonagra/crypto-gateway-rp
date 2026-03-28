@@ -9,6 +9,8 @@ import { deriveEvmAddress } from "./evm-wallet.js";
 import { deriveTronAddress } from "./tron-wallet.js";
 import { deriveBtcAddress } from "./btc-wallet.js";
 import { deriveTonAddress } from "./ton-wallet.js";
+import { deriveSolanaAddressBase58 } from "./solana-wallet.js";
+import { resolveBip44AddressIndex } from "./bip44-index.js";
 
 /**
  * @param {string} userId
@@ -33,6 +35,7 @@ export async function createOrGetWallet(userId, chain, currency, network, db = p
   if (!user) throw new Error("USER_NOT_FOUND");
 
   const accountIndex = user.accountIndex;
+  const bip44Idx = resolveBip44AddressIndex(accountIndex, user.wallets);
 
   const evmExisting = user.wallets.find((w) => isEvmChain(w.chain));
   if (isEvmChain(chain) && evmExisting) {
@@ -51,13 +54,15 @@ export async function createOrGetWallet(userId, chain, currency, network, db = p
 
   let address;
   if (isEvmChain(chain)) {
-    address = deriveEvmAddress(accountIndex);
+    address = deriveEvmAddress(bip44Idx);
   } else if (chain === Chain.TRON) {
-    address = deriveTronAddress(accountIndex, env.mnemonic);
+    address = deriveTronAddress(bip44Idx, env.mnemonic);
   } else if (chain === Chain.BTC) {
-    address = deriveBtcAddress(accountIndex, env.mnemonic);
+    address = deriveBtcAddress(bip44Idx, env.mnemonic);
   } else if (chain === Chain.TON) {
-    address = await deriveTonAddress(accountIndex, env.mnemonic);
+    address = await deriveTonAddress(bip44Idx, env.mnemonic);
+  } else if (chain === Chain.SOLANA) {
+    address = deriveSolanaAddressBase58(bip44Idx, env.mnemonic);
   } else {
     throw new Error(`Unsupported chain: ${chain}`);
   }
@@ -69,7 +74,7 @@ export async function createOrGetWallet(userId, chain, currency, network, db = p
       currency,
       network,
       address,
-      derivationIndex: accountIndex,
+      derivationIndex: bip44Idx,
       scanExpiresAt: nextScanExpiresAt(),
     },
   });

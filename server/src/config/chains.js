@@ -56,5 +56,6 @@ export function confirmationsForChain(chain) {
   if (chain === Chain.TRON) return env.confirmationsTron;
   if (chain === Chain.BTC) return env.confirmationsBtc;
   if (chain === Chain.TON) return env.confirmationsTon;
+  if (chain === Chain.SOLANA) return env.confirmationsSolana;
   return env.confirmationsEvm;
 }

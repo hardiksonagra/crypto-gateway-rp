@@ -78,6 +78,7 @@ export const env = {
   confirmationsTron: intEnv("CONFIRMATIONS_TRON", 20),
   confirmationsBtc: intEnv("CONFIRMATIONS_BTC", 3),
   confirmationsTon: intEnv("CONFIRMATIONS_TON", 2),
+  confirmationsSolana: intEnv("CONFIRMATIONS_SOLANA", 1),
 
   workerPollMs: intEnv("WORKER_POLL_INTERVAL_MS", 8000),
   /** `0` = no TTL; new wallets get `scan_expires_at` null (always scanned). */
@@ -116,6 +117,15 @@ export const env = {
   sweepMasterEvm: optional("SWEEP_MASTER_EVM"),
   sweepMasterTron: optional("SWEEP_MASTER_TRON"),
   sweepMasterBtc: optional("SWEEP_MASTER_BTC"),
+  sweepMasterSolana: optional("SWEEP_MASTER_SOLANA"),
+
+  /** Solana JSON RPC (mainnet-beta by default). */
+  solanaRpcUrl: optional("SOLANA_RPC_URL", "https://api.mainnet-beta.solana.com"),
+  /** SPL USDT mint (mainnet default). */
+  solanaUsdtMint: optional(
+    "SOLANA_USDT_MINT",
+    "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
+  ),
 
   /**
    * When true, allows POST /sandbox/simulate-deposit with the **live** API key too

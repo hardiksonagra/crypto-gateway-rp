@@ -17,6 +17,8 @@ function sandboxFromAddress(chain) {
       return "1SandboxTest111111111111111111111";
     case Chain.TON:
       return "EQD__________________________________________0vo";
+    case Chain.SOLANA:
+      return "SoSANDBOX1111111111111111111111111111111111";
     default:
       return "0x0000000000000000000000000000000000000001";
   }

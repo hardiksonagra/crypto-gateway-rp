@@ -8,6 +8,7 @@ import { nativeSymbolForChain } from "../services/native-symbols.js";
 /** Integrator-facing rails (currency + network → underlying chain). */
 export const GATEWAY_RAILS = [
   { currency: "USDT", network: "TRC20", chain: Chain.TRON },
+  { currency: "USDT", network: "SPL", chain: Chain.SOLANA },
   { currency: "USDT", network: "ERC20", chain: Chain.ETH },
   { currency: "USDT", network: "TON", chain: Chain.TON },
   { currency: "USDT", network: "BEP20", chain: Chain.BNB },
@@ -229,6 +230,8 @@ export function suggestedDefaultPairForChain(chain) {
       return { currency: "USDT", network: "BEP20" };
     case Chain.TON:
       return { currency: "USDT", network: "TON" };
+    case Chain.SOLANA:
+      return { currency: "USDT", network: "SPL" };
     default:
       return { currency: "USDT", network: "TRC20" };
   }

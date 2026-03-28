@@ -1,6 +1,7 @@
 /** Only gateway rails; extend when server adds more in `GATEWAY_RAILS` / `SCANNER_STATE_ROWS_BY_CHAIN`. */
 export const DEPOSIT_RAIL_OPTIONS = [
   { key: "USDT|TRC20", label: "USDT — TRC20 (TRON)", chain: "TRON" },
+  { key: "USDT|SPL", label: "USDT — SPL (Solana)", chain: "SOLANA" },
   { key: "USDT|ERC20", label: "USDT — ERC20 (Ethereum)", chain: "ETH" },
   { key: "USDT|TON", label: "USDT — TON", chain: "TON" },
   { key: "USDT|BEP20", label: "USDT — BEP20 (BNB Chain)", chain: "BNB" },
