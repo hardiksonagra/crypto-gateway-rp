@@ -7,13 +7,14 @@ import { logger } from "../../lib/logger.js";
 import { acquireOutboundRpcSlot } from "../../lib/network-rpc-rate-limit.js";
 import { deriveTronPrivateKeyHex } from "../wallet/tron-wallet.js";
 
-/** Minimal ERC20 ABI for balance + transfer (TRC20). */
+/** Minimal ERC20 ABI for balance + transfer (TRC20). TronWeb ≥6 expects `stateMutability` on each function. */
 const TRC20_ABI = [
   {
     constant: true,
     inputs: [{ name: "_owner", type: "address" }],
     name: "balanceOf",
     outputs: [{ name: "balance", type: "uint256" }],
+    stateMutability: "view",
     type: "function",
   },
   {
@@ -24,6 +25,7 @@ const TRC20_ABI = [
     ],
     name: "transfer",
     outputs: [{ name: "", type: "bool" }],
+    stateMutability: "nonpayable",
     type: "function",
   },
 ];
@@ -160,7 +162,16 @@ export async function sweepTronUsdtOne(walletId) {
   const tw = createTronWeb(pkHex);
 
   const fromHex = tronUtils.address.toHex(wallet.address);
-  if (tw.defaultAddress.hex.toLowerCase() !== fromHex.toLowerCase()) {
+  const derivedHex = tw.defaultAddress?.hex;
+  if (typeof derivedHex !== "string") {
+    logger.error("tron sweep: TronWeb defaultAddress.hex missing", { walletId });
+    return {
+      ok: false,
+      error: "TRONWEB_ADDRESS_NOT_READY",
+      detail: "TronWeb did not set defaultAddress.hex after loading the wallet key",
+    };
+  }
+  if (derivedHex.toLowerCase() !== fromHex.toLowerCase()) {
     logger.error("tron sweep: derived address mismatch", {
       walletId,
       expected: wallet.address,
