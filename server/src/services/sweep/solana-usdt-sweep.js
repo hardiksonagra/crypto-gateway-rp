@@ -14,6 +14,7 @@ import {
 import { Chain } from "@prisma/client";
 import { env } from "../../config/env.js";
 import { prisma } from "../../lib/prisma.js";
+import { postgresChainEnumHasSolana } from "../../lib/postgres-chain-enum-solana.js";
 import { logger } from "../../lib/logger.js";
 import { acquireOutboundRpcSlot } from "../../lib/network-rpc-rate-limit.js";
 import { deriveSolanaKeypair } from "../wallet/solana-wallet.js";
@@ -30,6 +31,17 @@ export async function listSolanaUsdtSweepTargets() {
   const master = env.sweepMasterSolana?.trim() ?? "";
   const mint = env.solanaUsdtMint.trim();
   const rpc = env.solanaRpcUrl.replace(/\/$/, "");
+
+  if (!(await postgresChainEnumHasSolana())) {
+    return {
+      configured: Boolean(master),
+      master_address: master || null,
+      rpc_url: rpc,
+      mint,
+      wallets: [],
+      chain_solana_enum_missing: true,
+    };
+  }
 
   const wallets = await prisma.wallet.findMany({
     where: {
@@ -73,6 +85,14 @@ export async function listSolanaUsdtSweepTargets() {
  * @param {string} walletId
  */
 export async function sweepSolanaUsdtOne(walletId) {
+  if (!(await postgresChainEnumHasSolana())) {
+    return {
+      ok: false,
+      error: "CHAIN_SOLANA_ENUM_MISSING",
+      detail: "Apply Prisma migrations so Postgres enum Chain includes SOLANA.",
+    };
+  }
+
   const master = env.sweepMasterSolana?.trim();
   if (!master) {
     return { ok: false, error: "SWEEP_MASTER_SOLANA_NOT_SET" };
@@ -127,12 +147,24 @@ export async function sweepSolanaUsdtOne(walletId) {
   try {
     fromAccount = await getAccount(connection, fromAta);
   } catch {
-    return { ok: true, skipped: true, reason: "no_token_account", from_address: wallet.address };
+    return {
+      ok: true,
+      skipped: true,
+      reason: "no_token_account",
+      from_address: wallet.address,
+      balance_atomic: "0",
+    };
   }
 
   const amount = fromAccount.amount;
   if (amount === 0n) {
-    return { ok: true, skipped: true, reason: "zero_usdt_balance", from_address: wallet.address };
+    return {
+      ok: true,
+      skipped: true,
+      reason: "zero_usdt_balance",
+      from_address: wallet.address,
+      balance_atomic: amount.toString(),
+    };
   }
 
   await acquireOutboundRpcSlot("SOLANA");
@@ -231,7 +263,14 @@ export async function sweepSolanaUsdtAll() {
     if (r.ok) {
       if (r.skipped) {
         skipped += 1;
-        results.push({ wallet_id: w.id, status: "skipped", reason: r.reason });
+        results.push({
+          wallet_id: w.id,
+          status: "skipped",
+          reason: r.reason,
+          ...(r.from_address ? { from_address: r.from_address } : {}),
+          ...(r.balance_atomic != null ? { balance_atomic: String(r.balance_atomic) } : {}),
+          ...(r.detail ? { detail: r.detail } : {}),
+        });
       } else {
         ok += 1;
         results.push({

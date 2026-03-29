@@ -146,9 +146,17 @@ router.post("/api/v1/gateway/deposit-address", async (req, res) => {
 
     let currency = normalizeAssetPart(body.currency);
     let network = normalizeAssetPart(body.network);
+    const bodySpecifiedCurrencyNetwork = Boolean(currency && network);
     if (!currency || !network) {
       currency = normalizeAssetPart(merchant.defaultCurrency);
       network = normalizeAssetPart(merchant.defaultNetwork);
+    }
+    if (env.gatewayTronUsdtOnly && !bodySpecifiedCurrencyNetwork) {
+      const p = listMerchantSupportedCurrencyPairs(merchant)[0];
+      if (p) {
+        currency = p.currency;
+        network = p.network;
+      }
     }
     if (!currency || !network) {
       auditGatewayApi(req, {
@@ -355,6 +363,13 @@ router.post("/api/v1/gateway/supported-currency", async (req, res) => {
 
     const pairs = listMerchantSupportedCurrencyPairs(merchant);
     const gwEnv = gatewayEnvironmentFromKeyType(keyType);
+    const defaultPair = env.gatewayTronUsdtOnly ? pairs[0] : null;
+    const defaultCurrencyOut = defaultPair
+      ? defaultPair.currency
+      : normalizeAssetPart(merchant.defaultCurrency);
+    const defaultNetworkOut = defaultPair
+      ? defaultPair.network
+      : normalizeAssetPart(merchant.defaultNetwork);
     auditGatewayApi(req, {
       action: "supported_currency",
       merchantId: merchant.id,
@@ -366,16 +381,16 @@ router.post("/api/v1/gateway/supported-currency", async (req, res) => {
           status: 200,
           pairs_count: pairs.length,
           gateway_environment: gwEnv,
-          default_currency: normalizeAssetPart(merchant.defaultCurrency),
-          default_network: normalizeAssetPart(merchant.defaultNetwork),
+          default_currency: defaultCurrencyOut,
+          default_network: defaultNetworkOut,
         },
         occurred_at_iso: new Date().toISOString(),
       },
     });
     res.status(200).json({
       pairs,
-      default_currency: normalizeAssetPart(merchant.defaultCurrency),
-      default_network: normalizeAssetPart(merchant.defaultNetwork),
+      default_currency: defaultCurrencyOut,
+      default_network: defaultNetworkOut,
       gateway_environment: gwEnv,
     });
   } catch (e) {

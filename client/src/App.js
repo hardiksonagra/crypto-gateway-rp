@@ -14,9 +14,7 @@ import AdminUsers from "./pages/admin/Users";
 import AdminTransactions from "./pages/admin/Transactions";
 import AdminWithdrawals from "./pages/admin/Withdrawals";
 import AdminActivityLog from "./pages/admin/ActivityLog";
-import AdminTronSweep from "./pages/admin/TronSweep";
-import AdminEvmUsdtSweep from "./pages/admin/EvmUsdtSweep";
-import AdminSolanaSweep from "./pages/admin/SolanaSweep";
+import AdminUnifiedSweep from "./pages/admin/UnifiedSweep";
 import MerchantDashboard from "./pages/merchant/Dashboard";
 import MerchantUsers from "./pages/merchant/Users";
 import MerchantWallets from "./pages/merchant/Wallets";
@@ -43,9 +41,10 @@ export default function App() {
         <Route path="users" element={<AdminUsers />} />
         <Route path="transactions" element={<AdminTransactions />} />
         <Route path="withdrawals" element={<AdminWithdrawals />} />
-        <Route path="tron-sweep" element={<AdminTronSweep />} />
-        <Route path="evm-usdt-sweep" element={<AdminEvmUsdtSweep />} />
-        <Route path="solana-sweep" element={<AdminSolanaSweep />} />
+        <Route path="sweep" element={<AdminUnifiedSweep />} />
+        <Route path="tron-sweep" element={<Navigate to="/admin/sweep" replace />} />
+        <Route path="evm-usdt-sweep" element={<Navigate to="/admin/sweep" replace />} />
+        <Route path="solana-sweep" element={<Navigate to="/admin/sweep" replace />} />
         <Route path="activity" element={<AdminActivityLog />} />
         <Route path="profile" element={<Profile />} />
       </Route>

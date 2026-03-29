@@ -184,7 +184,13 @@ export async function sweepTronUsdtOne(walletId) {
   const balRaw = await contract.balanceOf(wallet.address).call();
   const amount = rawBalanceToBigInt(balRaw);
   if (amount <= 0n) {
-    return { ok: true, skipped: true, reason: "zero_usdt_balance", from_address: wallet.address };
+    return {
+      ok: true,
+      skipped: true,
+      reason: "zero_usdt_balance",
+      from_address: wallet.address,
+      balance_atomic: amount.toString(),
+    };
   }
 
   await acquireOutboundRpcSlot("TRON");
@@ -239,7 +245,14 @@ export async function sweepTronUsdtAll() {
     if (r.ok) {
       if (r.skipped) {
         skipped += 1;
-        results.push({ wallet_id: w.id, status: "skipped", reason: r.reason });
+        results.push({
+          wallet_id: w.id,
+          status: "skipped",
+          reason: r.reason,
+          ...(r.from_address ? { from_address: r.from_address } : {}),
+          ...(r.balance_atomic != null ? { balance_atomic: String(r.balance_atomic) } : {}),
+          ...(r.detail ? { detail: r.detail } : {}),
+        });
       } else {
         ok += 1;
         results.push({

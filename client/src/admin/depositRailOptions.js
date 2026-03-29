@@ -1,5 +1,8 @@
-/** Only gateway rails; extend when server adds more in `GATEWAY_RAILS` / `SCANNER_STATE_ROWS_BY_CHAIN`. */
-export const DEPOSIT_RAIL_OPTIONS = [
+/**
+ * Full gateway rail list (mirrors server `GATEWAY_RAILS`). The exported `DEPOSIT_RAIL_OPTIONS`
+ * may be narrowed when `VITE_GATEWAY_TRON_USDT_ONLY` is not `false`/`0` (default: Tron USDT only).
+ */
+export const ALL_DEPOSIT_RAIL_OPTIONS = [
   { key: "USDT|TRC20", label: "USDT — TRC20 (TRON)", chain: "TRON" },
   { key: "USDT|SPL", label: "USDT — SPL (Solana)", chain: "SOLANA" },
   { key: "USDT|ERC20", label: "USDT — ERC20 (Ethereum)", chain: "ETH" },
@@ -8,7 +11,23 @@ export const DEPOSIT_RAIL_OPTIONS = [
   { key: "TRX|TRON", label: "TRX — TRON (native)", chain: "TRON" },
 ];
 
+const tronUsdtOnly =
+  import.meta.env.VITE_GATEWAY_TRON_USDT_ONLY !== "false" &&
+  import.meta.env.VITE_GATEWAY_TRON_USDT_ONLY !== "0";
+
+/** Matches server `GATEWAY_TRON_USDT_ONLY` (see `server/src/config/env.js`). */
+export const GATEWAY_TRON_USDT_ONLY = tronUsdtOnly;
+
+export const DEPOSIT_RAIL_OPTIONS = tronUsdtOnly
+  ? ALL_DEPOSIT_RAIL_OPTIONS.filter((o) => o.key === "USDT|TRC20")
+  : ALL_DEPOSIT_RAIL_OPTIONS;
+
 export const DEPOSIT_RAIL_KEYS = DEPOSIT_RAIL_OPTIONS.map((o) => o.key);
+
+/** Chains allowed in merchant Settings / admin merchant forms for default_chains. */
+export const MERCHANT_SETTINGS_CHAIN_VALUES = tronUsdtOnly
+  ? ["TRON"]
+  : ["TRON", "SOLANA", "ETH", "BNB", "TON"];
 
 /**
  * @param {string[] | undefined} chains

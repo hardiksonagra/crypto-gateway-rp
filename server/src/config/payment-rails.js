@@ -1,4 +1,5 @@
 import { Chain } from "@prisma/client";
+import { env } from "./env.js";
 import { nativeSymbolForChain } from "../services/native-symbols.js";
 
 /**
@@ -143,6 +144,16 @@ export function walletAcceptsEvmErc20(chain, w, tokenSymbol) {
  * @returns {boolean}
  */
 export function merchantChainAllowsRail(merchant, rail) {
+  if (env.gatewayTronUsdtOnly) {
+    if (
+      rail.currency !== "USDT" ||
+      rail.network !== "TRC20" ||
+      rail.chain !== Chain.TRON
+    ) {
+      return false;
+    }
+    return true;
+  }
   const allowed = merchant.supportedDepositRails ?? [];
   if (allowed.length > 0) {
     const k = depositRailKey(rail.currency, rail.network);
@@ -150,6 +161,22 @@ export function merchantChainAllowsRail(merchant, rail) {
   }
   const chains = merchant.defaultChains ?? [];
   return chains.includes(rail.chain);
+}
+
+/**
+ * @param {Array<{ currency: string, network: string, chain: Chain }>} pairs
+ * @returns {Array<{ currency: string, network: string, chain: Chain }>}
+ */
+function finalizeMerchantGatewayPairs(pairs) {
+  if (!env.gatewayTronUsdtOnly) return pairs;
+  const only = pairs.filter(
+    (p) =>
+      p.currency === "USDT" &&
+      p.network === "TRC20" &&
+      p.chain === Chain.TRON,
+  );
+  if (only.length > 0) return only;
+  return [{ currency: "USDT", network: "TRC20", chain: Chain.TRON }];
 }
 
 /**
@@ -181,7 +208,7 @@ export function listMerchantSupportedCurrencyPairs(merchant) {
         chain: rail.chain,
       });
     }
-    return out;
+    return finalizeMerchantGatewayPairs(out);
   }
 
   const out = [];
@@ -198,21 +225,21 @@ export function listMerchantSupportedCurrencyPairs(merchant) {
       chain: rail.chain,
     });
   }
-  if (out.length > 0) return out;
+  if (out.length > 0) return finalizeMerchantGatewayPairs(out);
 
   const dc = normalizeAssetPart(merchant.defaultCurrency);
   const dn = normalizeAssetPart(merchant.defaultNetwork);
   const fallbackRail = resolveDepositRail(dc, dn);
   if (fallbackRail) {
-    return [
+    return finalizeMerchantGatewayPairs([
       {
         currency: fallbackRail.currency,
         network: fallbackRail.network,
         chain: fallbackRail.chain,
       },
-    ];
+    ]);
   }
-  return [];
+  return finalizeMerchantGatewayPairs([]);
 }
 
 /**

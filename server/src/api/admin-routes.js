@@ -21,6 +21,7 @@ import { parsePageQuery } from "../lib/pagination.js";
 import { generateApiKey, hashApiKey } from "../lib/api-key.js";
 import { encryptMerchantApiKey } from "../lib/merchant-api-key-cipher.js";
 import { logger } from "../lib/logger.js";
+import { env } from "../config/env.js";
 import { parseDefaultChainsArray } from "../lib/default-chains.js";
 import { depositRailKey } from "../config/payment-rails.js";
 import {
@@ -48,6 +49,11 @@ import {
   sweepEvmUsdtAll,
   sweepEvmUsdtOne,
 } from "../services/sweep/evm-usdt-sweep.js";
+import {
+  listUnifiedSweepTargets,
+  sweepUnifiedAll,
+  sweepUnifiedOne,
+} from "../services/sweep/unified-sweep.js";
 import crypto from "crypto";
 
 const router = Router();
@@ -547,7 +553,7 @@ router.patch("/api/v1/admin/merchants/:id", async (req, res) => {
     }
     data.supportedDepositRails = pr.keys;
     nextSupported = pr.keys;
-  } else if (nextSupported.length > 0) {
+  } else if (nextSupported.length > 0 && !env.gatewayTronUsdtOnly) {
     const v = parseSupportedDepositRailsInput(nextSupported, nextChains);
     if ("error" in v) {
       res.status(400).json({ error: v.error });
@@ -1440,6 +1446,68 @@ router.post("/api/v1/admin/solana-sweep/all", async (req, res) => {
     res.json(data);
   } catch (e) {
     logger.error("admin solana-sweep all failed", { err: String(e) });
+    res.status(500).json({ error: "server_error", message: String(e) });
+  }
+});
+
+router.get("/api/v1/admin/sweep/targets", async (req, res) => {
+  try {
+    const data = await listUnifiedSweepTargets();
+    res.json(data);
+  } catch (e) {
+    logger.error("admin unified sweep targets failed", { err: String(e) });
+    res.status(500).json({ error: "server_error", message: String(e) });
+  }
+});
+
+router.post("/api/v1/admin/sweep/one", async (req, res) => {
+  const walletId =
+    typeof req.body?.wallet_id === "string" ? req.body.wallet_id.trim() : "";
+  if (!walletId) {
+    return res.status(400).json({
+      error: "validation",
+      message: "wallet_id is required",
+    });
+  }
+  try {
+    const result = await sweepUnifiedOne(walletId);
+    if (!result.ok && result.error === "WALLET_NOT_FOUND") {
+      return res.status(404).json({
+        ...result,
+        message: result.detail ?? result.error ?? "Wallet not found",
+      });
+    }
+    if (!result.ok && result.error === "NOT_SWEEPABLE") {
+      return res.status(400).json({
+        ...result,
+        message: "This wallet rail is not supported for consolidate sweep.",
+      });
+    }
+    if (!result.ok && result.error === "SWEEP_NOT_CONFIGURED") {
+      return res.status(400).json({
+        ...result,
+        message: `Set ${result.master_env ?? "the sweep master"} in server environment for this rail.`,
+      });
+    }
+    if (!result.ok) {
+      return res.status(400).json({
+        ...result,
+        message: result.detail ?? result.error ?? "Sweep failed",
+      });
+    }
+    res.json(result);
+  } catch (e) {
+    logger.error("admin unified sweep one failed", { walletId, err: String(e) });
+    res.status(500).json({ error: "server_error", message: String(e) });
+  }
+});
+
+router.post("/api/v1/admin/sweep/all", async (req, res) => {
+  try {
+    const data = await sweepUnifiedAll();
+    res.json(data);
+  } catch (e) {
+    logger.error("admin unified sweep all failed", { err: String(e) });
     res.status(500).json({ error: "server_error", message: String(e) });
   }
 });

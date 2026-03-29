@@ -507,7 +507,7 @@ Content-Type: application/json
           <span className="font-mono">10^token_decimals</span>).
         </p>
         <Pre>{`GET /api/v1/gateway/transactions?address=TExampleAddress…
-GET /api/v1/gateway/transactions?address=0x…&currency=USDT&network=ERC20`}</Pre>
+GET /api/v1/gateway/transactions?address=TExampleAddress…&currency=USDT&network=TRC20`}</Pre>
         <p className="mt-4 text-xs font-medium text-white/45">
           200 response (shape)
         </p>

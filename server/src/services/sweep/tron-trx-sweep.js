@@ -133,6 +133,7 @@ export async function sweepTronTrxOne(walletId) {
       skipped: true,
       reason: "insufficient_trx_above_reserve",
       from_address: wallet.address,
+      balance_atomic: balSun.toString(),
       detail: `Balance ${balSun.toString()} sun; need more than ${TRX_RESERVE_SUN} sun to sweep`,
     };
   }
@@ -200,7 +201,14 @@ export async function sweepTronTrxAll() {
     if (r.ok) {
       if (r.skipped) {
         skipped += 1;
-        results.push({ wallet_id: w.id, status: "skipped", reason: r.reason });
+        results.push({
+          wallet_id: w.id,
+          status: "skipped",
+          reason: r.reason,
+          ...(r.from_address ? { from_address: r.from_address } : {}),
+          ...(r.balance_atomic != null ? { balance_atomic: String(r.balance_atomic) } : {}),
+          ...(r.detail ? { detail: r.detail } : {}),
+        });
       } else {
         ok += 1;
         results.push({

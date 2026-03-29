@@ -20,6 +20,7 @@ import {
   computeMerchantBalances,
   merchantBalanceForAsset,
 } from "../services/merchant-balance.js";
+import { env } from "../config/env.js";
 import { isEvmChain } from "../config/chains.js";
 import { nativeSymbolForChain } from "../services/native-symbols.js";
 import { sendEvmNativeFromMerchantPool } from "../services/withdraw/evm-native-withdraw.js";
@@ -722,7 +723,7 @@ router.patch("/api/v1/merchant/settings", async (req, res) => {
     }
     data.supportedDepositRails = pr.keys;
     nextSupported = pr.keys;
-  } else if (nextSupported.length > 0) {
+  } else if (nextSupported.length > 0 && !env.gatewayTronUsdtOnly) {
     const v = parseSupportedDepositRailsInput(nextSupported, nextChains);
     if ("error" in v) {
       res.status(400).json({ error: v.error });

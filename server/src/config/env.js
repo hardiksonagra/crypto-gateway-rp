@@ -140,6 +140,15 @@ export const env = {
   gatewaySandbox: optional("GATEWAY_SANDBOX", "false").toLowerCase() === "true",
 
   /**
+   * When true (default), the gateway only accepts USDT on TRC20; other rails stay in code but are rejected.
+   * Set `GATEWAY_TRON_USDT_ONLY=false` or `0` to allow all configured rails again.
+   */
+  gatewayTronUsdtOnly: (() => {
+    const v = optional("GATEWAY_TRON_USDT_ONLY", "true").toLowerCase();
+    return v !== "false" && v !== "0";
+  })(),
+
+  /**
    * Max outbound RPC / explorer HTTP calls per rolling 1s **per network bucket** (EVM_ETH, TRON, …).
    * `0` = disable limiting. Requests wait (queue) instead of returning errors to integrators.
    */

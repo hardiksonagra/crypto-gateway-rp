@@ -1,13 +1,18 @@
 import * as yup from "yup";
-import { DEPOSIT_RAIL_KEYS, DEPOSIT_RAIL_OPTIONS } from "./depositRailOptions.js";
+import {
+  DEPOSIT_RAIL_KEYS,
+  DEPOSIT_RAIL_OPTIONS,
+  MERCHANT_SETTINGS_CHAIN_VALUES,
+} from "./depositRailOptions.js";
 
+/** All chains (filters, withdrawals, history). */
 export const CHAIN_VALUES = ["TRON", "SOLANA", "ETH", "BNB", "TON"];
 
 export const EVM_CHAIN_VALUES = ["ETH", "BNB"];
 
 const defaultChainsField = yup
   .array()
-  .of(yup.string().oneOf([...CHAIN_VALUES], "Invalid chain"))
+  .of(yup.string().oneOf([...MERCHANT_SETTINGS_CHAIN_VALUES], "Invalid chain"))
   .min(1, "Select at least one chain");
 
 const supportedDepositRailsField = yup

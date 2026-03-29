@@ -28,7 +28,7 @@ const EXPECTED_NETWORK = {
  * @param {import("@prisma/client").Chain} chain
  * @returns {string | null}
  */
-function pickUsdtTokenAddress(chain) {
+export function pickUsdtTokenAddress(chain) {
   const raw = getErc20Contracts()[chain] ?? {};
   for (const [addr, meta] of Object.entries(raw)) {
     if (String(meta?.symbol ?? "").toUpperCase() === "USDT") {
@@ -166,7 +166,13 @@ export async function sweepEvmUsdtOne(walletId, chain) {
   const bal = await usdt.balanceOf(wallet.address);
 
   if (bal <= 0n) {
-    return { ok: true, skipped: true, reason: "zero_usdt_balance", from_address: wallet.address };
+    return {
+      ok: true,
+      skipped: true,
+      reason: "zero_usdt_balance",
+      from_address: wallet.address,
+      balance_atomic: bal.toString(),
+    };
   }
 
   await acquireOutboundRpcSlot(budgetKey);
@@ -255,7 +261,14 @@ export async function sweepEvmUsdtAll(chain) {
     if (r.ok) {
       if (r.skipped) {
         skipped += 1;
-        results.push({ wallet_id: w.id, status: "skipped", reason: r.reason });
+        results.push({
+          wallet_id: w.id,
+          status: "skipped",
+          reason: r.reason,
+          ...(r.from_address ? { from_address: r.from_address } : {}),
+          ...(r.balance_atomic != null ? { balance_atomic: String(r.balance_atomic) } : {}),
+          ...(r.detail ? { detail: r.detail } : {}),
+        });
       } else {
         ok += 1;
         results.push({

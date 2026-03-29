@@ -1,5 +1,5 @@
 import { Field } from "formik";
-import { CHAIN_VALUES } from "../admin/merchantSchemas";
+import { MERCHANT_SETTINGS_CHAIN_VALUES } from "../admin/depositRailOptions.js";
 
 /**
  * Multi-select chains as toggle chips (Formik field must be an array of chain codes).
@@ -15,7 +15,7 @@ export default function ChainMultiSelectField({ name, description }) {
         <div>
           {description ? <p className="mb-2 text-xs text-white/45">{description}</p> : null}
           <div className="flex flex-wrap gap-2">
-            {CHAIN_VALUES.map((c) => {
+            {MERCHANT_SETTINGS_CHAIN_VALUES.map((c) => {
               const selected = Array.isArray(field.value) && field.value.includes(c);
               return (
                 <label
