@@ -13,6 +13,9 @@ export async function maybeSweepTick() {
   logger.debug("sweep tick: configure per-chain signers to enable automated sweeps", {
     hasEvm: Boolean(env.sweepMasterEvm),
     hasTron: Boolean(env.sweepMasterTron),
+    hasTrxMaster: Boolean(env.sweepMasterTrx?.trim() || env.sweepMasterTron?.trim()),
+    hasUsdtEth: Boolean(env.sweepMasterUsdtEth?.trim()),
+    hasUsdtBnb: Boolean(env.sweepMasterUsdtBnb?.trim()),
     hasBtc: Boolean(env.sweepMasterBtc),
     hasSolana: Boolean(env.sweepMasterSolana),
   });

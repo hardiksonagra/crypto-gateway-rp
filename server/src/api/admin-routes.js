@@ -38,6 +38,16 @@ import {
   sweepSolanaUsdtAll,
   sweepSolanaUsdtOne,
 } from "../services/sweep/solana-usdt-sweep.js";
+import {
+  listTronTrxSweepTargets,
+  sweepTronTrxAll,
+  sweepTronTrxOne,
+} from "../services/sweep/tron-trx-sweep.js";
+import {
+  listEvmUsdtSweepTargets,
+  sweepEvmUsdtAll,
+  sweepEvmUsdtOne,
+} from "../services/sweep/evm-usdt-sweep.js";
 import crypto from "crypto";
 
 const router = Router();
@@ -1224,6 +1234,155 @@ router.post("/api/v1/admin/tron-sweep/all", async (req, res) => {
     res.json(data);
   } catch (e) {
     logger.error("admin tron-sweep all failed", { err: String(e) });
+    res.status(500).json({ error: "server_error", message: String(e) });
+  }
+});
+
+router.get("/api/v1/admin/tron-trx-sweep/targets", async (req, res) => {
+  try {
+    const data = await listTronTrxSweepTargets();
+    res.json(data);
+  } catch (e) {
+    logger.error("admin tron-trx-sweep targets failed", { err: String(e) });
+    res.status(500).json({ error: "server_error", message: String(e) });
+  }
+});
+
+router.post("/api/v1/admin/tron-trx-sweep/one", async (req, res) => {
+  const walletId =
+    typeof req.body?.wallet_id === "string" ? req.body.wallet_id.trim() : "";
+  if (!walletId) {
+    return res.status(400).json({
+      error: "validation",
+      message: "wallet_id is required",
+    });
+  }
+  try {
+    const result = await sweepTronTrxOne(walletId);
+    if (!result.ok && result.error === "WALLET_NOT_FOUND") {
+      return res.status(404).json({
+        ...result,
+        message: result.detail ?? result.error ?? "Wallet not found",
+      });
+    }
+    if (!result.ok) {
+      return res.status(400).json({
+        ...result,
+        message: result.detail ?? result.error ?? "Sweep failed",
+      });
+    }
+    res.json(result);
+  } catch (e) {
+    logger.error("admin tron-trx-sweep one failed", { walletId, err: String(e) });
+    res.status(500).json({ error: "server_error", message: String(e) });
+  }
+});
+
+router.post("/api/v1/admin/tron-trx-sweep/all", async (req, res) => {
+  try {
+    const data = await sweepTronTrxAll();
+    if (data.configured === false) {
+      return res.status(400).json({
+        error: "SWEEP_MASTER_TRX_OR_TRON_NOT_SET",
+        message:
+          "Set SWEEP_MASTER_TRX or SWEEP_MASTER_TRON in server environment for native TRX consolidation.",
+      });
+    }
+    res.json(data);
+  } catch (e) {
+    logger.error("admin tron-trx-sweep all failed", { err: String(e) });
+    res.status(500).json({ error: "server_error", message: String(e) });
+  }
+});
+
+/**
+ * @param {unknown} raw
+ * @returns {import("@prisma/client").Chain | null}
+ */
+function parseEvmUsdtSweepChainParam(raw) {
+  const c = String(raw ?? "")
+    .trim()
+    .toUpperCase();
+  if (c === "ETH") return Chain.ETH;
+  if (c === "BNB") return Chain.BNB;
+  return null;
+}
+
+router.get("/api/v1/admin/evm-usdt-sweep/targets", async (req, res) => {
+  const chain = parseEvmUsdtSweepChainParam(req.query?.chain);
+  if (!chain) {
+    return res.status(400).json({
+      error: "validation",
+      message: "Query chain must be ETH or BNB",
+    });
+  }
+  try {
+    const data = await listEvmUsdtSweepTargets(chain);
+    res.json(data);
+  } catch (e) {
+    logger.error("admin evm-usdt-sweep targets failed", { err: String(e) });
+    res.status(500).json({ error: "server_error", message: String(e) });
+  }
+});
+
+router.post("/api/v1/admin/evm-usdt-sweep/one", async (req, res) => {
+  const walletId =
+    typeof req.body?.wallet_id === "string" ? req.body.wallet_id.trim() : "";
+  const chain = parseEvmUsdtSweepChainParam(req.body?.chain);
+  if (!walletId) {
+    return res.status(400).json({
+      error: "validation",
+      message: "wallet_id is required",
+    });
+  }
+  if (!chain) {
+    return res.status(400).json({
+      error: "validation",
+      message: "body.chain must be ETH or BNB",
+    });
+  }
+  try {
+    const result = await sweepEvmUsdtOne(walletId, chain);
+    if (!result.ok && result.error === "WALLET_NOT_FOUND") {
+      return res.status(404).json({
+        ...result,
+        message: result.detail ?? result.error ?? "Wallet not found",
+      });
+    }
+    if (!result.ok) {
+      return res.status(400).json({
+        ...result,
+        message: result.detail ?? result.error ?? "Sweep failed",
+      });
+    }
+    res.json(result);
+  } catch (e) {
+    logger.error("admin evm-usdt-sweep one failed", { walletId, chain, err: String(e) });
+    res.status(500).json({ error: "server_error", message: String(e) });
+  }
+});
+
+router.post("/api/v1/admin/evm-usdt-sweep/all", async (req, res) => {
+  const chain = parseEvmUsdtSweepChainParam(req.body?.chain);
+  if (!chain) {
+    return res.status(400).json({
+      error: "validation",
+      message: "body.chain must be ETH or BNB",
+    });
+  }
+  try {
+    const data = await sweepEvmUsdtAll(chain);
+    if (data.configured === false) {
+      const key =
+        chain === Chain.ETH ? "SWEEP_MASTER_USDT_ETH" : "SWEEP_MASTER_USDT_BNB";
+      return res.status(400).json({
+        error: `${key}_NOT_SET`,
+        message: `Set ${key} in server environment to your main USDT receive address on ${chain}.`,
+      });
+    }
+    res.json(data);
+  } catch (e) {
+    logger.error("admin evm-usdt-sweep all failed", { err: String(e) });
     res.status(500).json({ error: "server_error", message: String(e) });
   }
 });

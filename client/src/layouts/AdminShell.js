@@ -27,6 +27,7 @@ const nav = [
   { to: "/admin/transactions", label: "Transactions", Icon: IconTransactions },
   { to: "/admin/withdrawals", label: "Withdrawals", Icon: IconWithdrawals },
   { to: "/admin/tron-sweep", label: "TRON sweep", Icon: IconWallet },
+  { to: "/admin/evm-usdt-sweep", label: "EVM USDT sweep", Icon: IconWallet },
   { to: "/admin/solana-sweep", label: "Solana sweep", Icon: IconWallet },
   { to: "/admin/activity", label: "Activity log", Icon: IconActivity },
   { to: "/admin/profile", label: "Profile", Icon: IconProfile },

@@ -15,6 +15,7 @@ import AdminTransactions from "./pages/admin/Transactions";
 import AdminWithdrawals from "./pages/admin/Withdrawals";
 import AdminActivityLog from "./pages/admin/ActivityLog";
 import AdminTronSweep from "./pages/admin/TronSweep";
+import AdminEvmUsdtSweep from "./pages/admin/EvmUsdtSweep";
 import AdminSolanaSweep from "./pages/admin/SolanaSweep";
 import MerchantDashboard from "./pages/merchant/Dashboard";
 import MerchantUsers from "./pages/merchant/Users";
@@ -43,6 +44,7 @@ export default function App() {
         <Route path="transactions" element={<AdminTransactions />} />
         <Route path="withdrawals" element={<AdminWithdrawals />} />
         <Route path="tron-sweep" element={<AdminTronSweep />} />
+        <Route path="evm-usdt-sweep" element={<AdminEvmUsdtSweep />} />
         <Route path="solana-sweep" element={<AdminSolanaSweep />} />
         <Route path="activity" element={<AdminActivityLog />} />
         <Route path="profile" element={<Profile />} />

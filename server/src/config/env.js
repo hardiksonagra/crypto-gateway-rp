@@ -116,6 +116,12 @@ export const env = {
 
   sweepMasterEvm: optional("SWEEP_MASTER_EVM"),
   sweepMasterTron: optional("SWEEP_MASTER_TRON"),
+  /** Native TRX on TRON; if unset, TRX sweep uses `SWEEP_MASTER_TRON` (same T address). */
+  sweepMasterTrx: optional("SWEEP_MASTER_TRX"),
+  /** ERC20 USDT (Ethereum) consolidation destination. */
+  sweepMasterUsdtEth: optional("SWEEP_MASTER_USDT_ETH"),
+  /** BEP20 USDT (BNB Chain) consolidation destination. */
+  sweepMasterUsdtBnb: optional("SWEEP_MASTER_USDT_BNB"),
   sweepMasterBtc: optional("SWEEP_MASTER_BTC"),
   sweepMasterSolana: optional("SWEEP_MASTER_SOLANA"),
 
