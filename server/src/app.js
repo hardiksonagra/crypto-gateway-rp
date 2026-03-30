@@ -18,6 +18,42 @@ const LOCAL_DEV_BROWSER_ORIGINS = new Set(
     "http://127.0.0.1:4173",
   ].map(normalizeBrowserOrigin),
 );
+
+/**
+ * @param {string} absoluteUrl
+ * @returns {string | null}
+ */
+function browserOriginFromAbsoluteUrl(absoluteUrl) {
+  const s = String(absoluteUrl ?? "").trim();
+  if (!s) return null;
+  try {
+    return normalizeBrowserOrigin(new URL(s).origin);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * CORS allow-list: `CLIENT_ORIGINS` entries plus origins from `APP_PUBLIC_URL` and
+ * `PAYMENT_PAGE_PUBLIC_URL` (so production SPA works even if the list was saved with only local URLs),
+ * and localhost dev ports when `NODE_ENV=development`.
+ * Rebuilt each request so Admin / DB overrides apply without restart.
+ * @returns {Set<string>}
+ */
+function effectiveCorsOriginSet() {
+  const set = new Set(re.clientOrigins);
+  const appO = browserOriginFromAbsoluteUrl(re.appPublicUrl);
+  if (appO) set.add(appO);
+  const payO = browserOriginFromAbsoluteUrl(re.paymentPagePublicUrl);
+  if (payO) set.add(payO);
+  if (env.nodeEnv === "development") {
+    for (const o of LOCAL_DEV_BROWSER_ORIGINS) {
+      set.add(o);
+    }
+  }
+  return set;
+}
+
 import { authRouter } from "./api/auth-routes.js";
 import { gatewayRouter } from "./api/gateway-routes.js";
 import { adminRouter } from "./api/admin-routes.js";
@@ -32,25 +68,24 @@ export function createApp() {
   );
   app.use(
     cors({
-      origin:
-        re.clientOrigins.length > 0
-          ? (origin, cb) => {
-              if (!origin) return cb(null, true);
-              const norm = normalizeBrowserOrigin(origin);
-              if (re.clientOrigins.includes(norm)) return cb(null, true);
-              if (
-                env.nodeEnv === "development" &&
-                LOCAL_DEV_BROWSER_ORIGINS.has(norm)
-              ) {
-                return cb(null, true);
-              }
-              logger.warn("cors_origin_rejected", {
-                origin,
-                hint: "Add this exact value (scheme + host, no path) to CLIENT_ORIGINS on the API server (Admin → System settings or .env). In development, localhost / 127.0.0.1 on ports 5173, 3000, 4173 are also allowed.",
-              });
-              cb(null, false);
-            }
-          : true,
+      origin(origin, cb) {
+        const allowed = effectiveCorsOriginSet();
+        if (allowed.size === 0) {
+          return cb(null, true);
+        }
+        if (!origin) {
+          return cb(null, true);
+        }
+        const norm = normalizeBrowserOrigin(origin);
+        if (allowed.has(norm)) {
+          return cb(null, true);
+        }
+        logger.warn("cors_origin_rejected", {
+          origin,
+          hint: "Add scheme+host (no path) to CLIENT_ORIGINS, or set APP_PUBLIC_URL / PAYMENT_PAGE_PUBLIC_URL to your live app base URL (its origin is allowed automatically). In development, localhost / 127.0.0.1 on ports 5173, 3000, 4173 are merged in.",
+        });
+        cb(null, false);
+      },
       credentials: true,
       methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
       allowedHeaders: [

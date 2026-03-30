@@ -13,7 +13,9 @@ import { deriveSolanaAddressBase58 } from "crypto-payment-gateway/src/services/w
 
 /**
  * Assign a reusable deposit wallet for an end-user (merchant pool). Runs on gateway API request, not on a timer.
- * Prefers the oldest **free** pool row; otherwise creates a new address.
+ * If this user already holds a row for the rail, refreshes hold/scan and returns it (including expired holds).
+ * Otherwise picks a **free** pool row, preferring any wallet this user has prior `transactions` on (any status);
+ * then oldest by `created_at`. If none available, creates a new address.
  *
  * @param {Tx} tx
  * @param {{
@@ -28,7 +30,13 @@ import { deriveSolanaAddressBase58 } from "crypto-payment-gateway/src/services/w
 export async function assignPooledWalletForDeposit(tx, p) {
   const { merchantId, environment, userId, chain, currency, network } = p;
 
-  const existing = await tx.wallet.findFirst({
+  const holdUntil =
+    re.walletAssignmentHoldMinutes > 0
+      ? new Date(Date.now() + re.walletAssignmentHoldMinutes * 60 * 1000)
+      : null;
+  const scanAt = nextScanExpiresAt();
+
+  const stillAssigned = await tx.wallet.findFirst({
     where: {
       merchantId,
       environment,
@@ -36,16 +44,17 @@ export async function assignPooledWalletForDeposit(tx, p) {
       currency,
       network,
       assignedUserId: userId,
-      OR: [{ holdExpiresAt: null }, { holdExpiresAt: { gt: new Date() } }],
     },
   });
-  if (existing) return existing;
-
-  const holdUntil =
-    re.walletAssignmentHoldMinutes > 0
-      ? new Date(Date.now() + re.walletAssignmentHoldMinutes * 60 * 1000)
-      : null;
-  const scanAt = nextScanExpiresAt();
+  if (stillAssigned) {
+    return tx.wallet.update({
+      where: { id: stillAssigned.id },
+      data: {
+        holdExpiresAt: holdUntil,
+        scanExpiresAt: scanAt,
+      },
+    });
+  }
 
   const pickArgs = {
     merchantId,
@@ -105,17 +114,22 @@ async function tryPickFreePoolWallet(tx, args) {
       "hold_expires_at" = ${holdUntil},
       "scan_expires_at" = ${scanAt}
     FROM (
-      SELECT "id" FROM "wallets"
-      WHERE "merchant_id" = ${merchantId}
-        AND "environment" = ${environment}::"MerchantGatewayEnv"
-        AND "chain" = ${chain}::"Chain"
-        AND "currency" = ${currency}
-        AND "network" = ${network}
+      SELECT w2."id" FROM "wallets" w2
+      WHERE w2."merchant_id" = ${merchantId}
+        AND w2."environment" = ${environment}::"MerchantGatewayEnv"
+        AND w2."chain" = ${chain}::"Chain"
+        AND w2."currency" = ${currency}
+        AND w2."network" = ${network}
         AND (
-          "assigned_user_id" IS NULL
-          OR ("hold_expires_at" IS NOT NULL AND "hold_expires_at" < NOW())
+          w2."assigned_user_id" IS NULL
+          OR (w2."hold_expires_at" IS NOT NULL AND w2."hold_expires_at" < NOW())
         )
-      ORDER BY "created_at" ASC
+      ORDER BY
+        EXISTS (
+          SELECT 1 FROM "transactions" t
+          WHERE t."wallet_id" = w2."id" AND t."payer_user_id" = ${userId}
+        ) DESC,
+        w2."created_at" ASC
       FOR UPDATE SKIP LOCKED
       LIMIT 1
     ) pick
