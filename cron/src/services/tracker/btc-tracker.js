@@ -10,6 +10,7 @@ import {
   loadWalletsForChain,
   upsertIncomingTransaction,
 } from "crypto-payment-gateway/src/services/payment/transaction-upsert.js";
+import { recordDepositScanPolledAddresses } from "crypto-payment-gateway/src/services/tracker/deposit-rail-metrics.js";
 
 /**
  * @param {{ wallets?: Array<{ id: string, address: string, currency: string, network: string }> }} [options]
@@ -20,6 +21,11 @@ export async function scanBtcChain(options = {}) {
     options.wallets ?? (await loadWalletsForChain(chain));
   const targets = wallets.filter((w) => w.currency === "BTC" && w.network === "BTC");
   if (targets.length === 0) return;
+
+  recordDepositScanPolledAddresses(
+    Chain.BTC,
+    [...new Set(targets.map((w) => w.address))],
+  );
 
   const base = re.btcExplorerApiBase.replace(/\/$/, "");
   let tip = 0;

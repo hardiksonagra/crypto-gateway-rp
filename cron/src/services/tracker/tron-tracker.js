@@ -17,6 +17,7 @@ import {
   loadWalletsForChain,
   upsertIncomingTransaction,
 } from "crypto-payment-gateway/src/services/payment/transaction-upsert.js";
+import { recordDepositScanPolledAddresses } from "crypto-payment-gateway/src/services/tracker/deposit-rail-metrics.js";
 import { pickUsdtTrc20Contract } from "crypto-payment-gateway/src/services/sweep/tron-usdt-sweep.js";
 
 /** @type {boolean} */
@@ -139,10 +140,12 @@ export async function scanTronChain(options = {}) {
     byHex.get(k).push(w);
   }
 
+  const polled = [];
   for (const group of byHex.values()) {
     const address = group[0].address;
     const trxTargets = group.filter((w) => w.currency === "TRX" && w.network === "TRON");
     const usdtTargets = group.filter((w) => w.currency === "USDT" && w.network === "TRC20");
+    if (trxTargets.length || usdtTargets.length) polled.push(address);
     if (trxTargets.length) {
       await ingestTrxViaTronscan(base, address, trxTargets, chain);
     }
@@ -150,6 +153,7 @@ export async function scanTronChain(options = {}) {
       await ingestTrc20ViaTronscan(base, address, usdtTargets, chain, trc20Map);
     }
   }
+  recordDepositScanPolledAddresses(Chain.TRON, polled);
 }
 
 /**

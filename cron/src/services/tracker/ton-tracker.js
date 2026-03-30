@@ -14,6 +14,7 @@ import {
   normalizeMatchAddress,
   upsertIncomingTransaction,
 } from "crypto-payment-gateway/src/services/payment/transaction-upsert.js";
+import { recordDepositScanPolledAddresses } from "crypto-payment-gateway/src/services/tracker/deposit-rail-metrics.js";
 
 function tonAddrEq(a, b) {
   try {
@@ -77,6 +78,11 @@ export async function scanTonChain(options = {}) {
   const jettonMeta = buildTonJettonMetaByRaw(getTonJettonContracts());
   const threshold = confirmationsForChain(chain);
   const byRaw = groupTonWallets(wallets);
+
+  recordDepositScanPolledAddresses(
+    Chain.TON,
+    [...byRaw.values()].map((g) => g[0].address),
+  );
 
   for (const group of byRaw.values()) {
     const address = group[0].address;

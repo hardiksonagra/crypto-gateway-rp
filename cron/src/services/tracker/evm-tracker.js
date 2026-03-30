@@ -25,6 +25,7 @@ import {
   normalizeMatchAddress,
   upsertIncomingTransaction,
 } from "crypto-payment-gateway/src/services/payment/transaction-upsert.js";
+import { recordDepositScanPolledAddresses } from "crypto-payment-gateway/src/services/tracker/deposit-rail-metrics.js";
 
 const transferTopic = ethers.id("Transfer(address,address,uint256)");
 const erc20Iface = new ethers.Interface([
@@ -73,6 +74,11 @@ export async function scanEvmChain(chain, options = {}) {
     await advanceScanner(chain, tip);
     return;
   }
+
+  recordDepositScanPolledAddresses(
+    chain,
+    [...new Set(walletRows.map((w) => w.address))],
+  );
 
   const byAddr = groupWalletsByNormalizedAddress(chain, walletRows);
 
