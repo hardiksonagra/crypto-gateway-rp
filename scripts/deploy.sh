@@ -81,4 +81,4 @@ fi
 
 pm2 save 2>/dev/null || true
 
-log "Done. Check: pm2 status && pm2 logs crypto-gateway-api --lines 50"
+log "Done. Check: pm2 status (crypto-gateway-api + crypto-gateway-cron online) && pm2 logs crypto-gateway-api --lines 50"

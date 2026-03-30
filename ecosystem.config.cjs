@@ -3,8 +3,12 @@
  *
  * Prereqs: `.env` at repo root or `server/.env` with DATABASE_URL, JWT_SECRET, MNEMONIC, RPC_*, etc.
  *
- * - API process: HTTP + React static (`client/dist` auto-detected when present).
- * - Cron process: blockchain deposit scanner (`setInterval`), TRON USDT auto-sweep schedule, wallet-pool expired-hold cleanup, and any other `node-cron` jobs — all under `cron/` only (API has no timers).
+ * - API (`crypto-gateway-api`): HTTP + React static (`client/dist` when present). No timers.
+ * - Cron (`crypto-gateway-cron`): **all** scheduled/timer work in **one** process (`cron/src/run.js`):
+ *   - Deposit / transaction tracker: `startBlockchainWorker()` (`WORKER_POLL_INTERVAL_MS`)
+ *   - `node-cron` jobs from `cron/src/jobs/index.js`: example heartbeat, wallet-pool expired holds, TRON USDT auto-sweep
+ *
+ * `pm2 start ecosystem.config.cjs` starts both apps; you do **not** need a separate PM2 app per cron expression.
  */
 module.exports = {
   apps: [
