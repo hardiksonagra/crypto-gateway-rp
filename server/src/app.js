@@ -4,6 +4,7 @@ import express from "express";
 import cors from "cors";
 import helmet from "helmet";
 import { env, normalizeBrowserOrigin } from "./config/env.js";
+import { re } from "./config/runtime-env.js";
 import { logger } from "./lib/logger.js";
 import { authRouter } from "./api/auth-routes.js";
 import { gatewayRouter } from "./api/gateway-routes.js";
@@ -20,11 +21,11 @@ export function createApp() {
   app.use(
     cors({
       origin:
-        env.clientOrigins.length > 0
+        re.clientOrigins.length > 0
           ? (origin, cb) => {
               if (!origin) return cb(null, true);
               const norm = normalizeBrowserOrigin(origin);
-              if (env.clientOrigins.includes(norm)) return cb(null, true);
+              if (re.clientOrigins.includes(norm)) return cb(null, true);
               logger.warn("cors_origin_rejected", {
                 origin,
                 hint: "Add this exact value (scheme + host, no path) to CLIENT_ORIGINS on the API server.",

@@ -1,5 +1,5 @@
 import { Chain } from "@prisma/client";
-import { env } from "../../config/env.js";
+import { re } from "../../config/runtime-env.js";
 import { prisma } from "../../lib/prisma.js";
 import { postgresChainEnumHasSolana } from "../../lib/postgres-chain-enum-solana.js";
 import {
@@ -28,9 +28,9 @@ export function sweepKindForWallet(w) {
 }
 
 function tronTrxDestination() {
-  const trx = env.sweepMasterTrx?.trim();
+  const trx = re.sweepMasterTrx?.trim();
   if (trx) return trx;
-  return env.sweepMasterTron?.trim() ?? "";
+  return re.sweepMasterTron?.trim() ?? "";
 }
 
 /**
@@ -39,7 +39,7 @@ function tronTrxDestination() {
 function sweepConfiguration(kind) {
   switch (kind) {
     case "tron_usdt": {
-      const m = env.sweepMasterTron?.trim() ?? "";
+      const m = re.sweepMasterTron?.trim() ?? "";
       return {
         configured: Boolean(m),
         destination_address: m || null,
@@ -51,12 +51,12 @@ function sweepConfiguration(kind) {
       return {
         configured: Boolean(m),
         destination_address: m || null,
-        master_env: env.sweepMasterTrx?.trim() ? "SWEEP_MASTER_TRX" : "SWEEP_MASTER_TRON",
-        uses_tron_usdt_master_fallback: Boolean(!env.sweepMasterTrx?.trim() && m),
+        master_env: re.sweepMasterTrx?.trim() ? "SWEEP_MASTER_TRX" : "SWEEP_MASTER_TRON",
+        uses_tron_usdt_master_fallback: Boolean(!re.sweepMasterTrx?.trim() && m),
       };
     }
     case "evm_usdt_eth": {
-      const m = env.sweepMasterUsdtEth?.trim() ?? "";
+      const m = re.sweepMasterUsdtEth?.trim() ?? "";
       return {
         configured: Boolean(m),
         destination_address: m || null,
@@ -65,7 +65,7 @@ function sweepConfiguration(kind) {
       };
     }
     case "evm_usdt_bnb": {
-      const m = env.sweepMasterUsdtBnb?.trim() ?? "";
+      const m = re.sweepMasterUsdtBnb?.trim() ?? "";
       return {
         configured: Boolean(m),
         destination_address: m || null,
@@ -74,13 +74,13 @@ function sweepConfiguration(kind) {
       };
     }
     case "solana_usdt": {
-      const m = env.sweepMasterSolana?.trim() ?? "";
+      const m = re.sweepMasterSolana?.trim() ?? "";
       return {
         configured: Boolean(m),
         destination_address: m || null,
         master_env: "SWEEP_MASTER_SOLANA",
-        solana_rpc_url: env.solanaRpcUrl.replace(/\/$/, ""),
-        solana_usdt_mint: env.solanaUsdtMint.trim(),
+        solana_rpc_url: re.solanaRpcUrl.replace(/\/$/, ""),
+        solana_usdt_mint: re.solanaUsdtMint.trim(),
       };
     }
     default:
@@ -93,14 +93,8 @@ function sweepConfiguration(kind) {
 }
 
 const sweepWalletInclude = {
-  user: {
-    select: {
-      id: true,
-      externalUserId: true,
-      environment: true,
-      merchant: { select: { email: true, displayName: true } },
-    },
-  },
+  merchant: { select: { email: true, displayName: true } },
+  assignedUser: { select: { externalUserId: true } },
 };
 
 /**
@@ -158,9 +152,9 @@ export async function listUnifiedSweepTargets() {
       currency: w.currency,
       network: w.network,
       derivation_index: w.derivationIndex,
-      environment: w.user.environment,
-      external_user_id: w.user.externalUserId,
-      merchant_label: w.user.merchant.displayName ?? w.user.merchant.email,
+      environment: w.environment,
+      external_user_id: w.assignedUser?.externalUserId ?? null,
+      merchant_label: w.merchant.displayName ?? w.merchant.email,
       sweep_kind: kind,
       sweep_label: kind ? sweepKindLabel(kind) : null,
       sweep_configured: cfg?.configured ?? false,

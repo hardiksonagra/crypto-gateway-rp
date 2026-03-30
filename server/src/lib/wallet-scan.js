@@ -1,19 +1,19 @@
 import { prisma } from "./prisma.js";
-import { env } from "../config/env.js";
+import { re } from "../config/runtime-env.js";
 
 /**
  * Minutes for new wallet deposit monitoring. `0` = no TTL (`scan_expires_at` stays null; always scanned).
  * @returns {number}
  */
 export function walletScanTtlMinutes() {
-  return env.walletScanTtlMinutes;
+  return re.walletScanTtlMinutes;
 }
 
 /**
  * @returns {Date | null}
  */
 export function nextScanExpiresAt() {
-  const m = env.walletScanTtlMinutes;
+  const m = re.walletScanTtlMinutes;
   if (m <= 0) return null;
   return new Date(Date.now() + m * 60 * 1000);
 }
@@ -41,14 +41,14 @@ export async function reactivateWalletDepositScan(walletId, opts = {}) {
   const { merchantId = null, asAdmin = false } = opts;
   const w = await prisma.wallet.findUnique({
     where: { id: walletId },
-    include: { user: { select: { merchantId: true } } },
+    select: { merchantId: true },
   });
   if (!w) {
     const e = new Error("WALLET_NOT_FOUND");
     /** @type {any} */ (e).code = "WALLET_NOT_FOUND";
     throw e;
   }
-  if (!asAdmin && merchantId != null && w.user.merchantId !== merchantId) {
+  if (!asAdmin && merchantId != null && w.merchantId !== merchantId) {
     const e = new Error("FORBIDDEN");
     /** @type {any} */ (e).code = "FORBIDDEN";
     throw e;

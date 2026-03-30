@@ -13,6 +13,7 @@ import {
 } from "@solana/spl-token";
 import { Chain } from "@prisma/client";
 import { env } from "../../config/env.js";
+import { re } from "../../config/runtime-env.js";
 import { prisma } from "../../lib/prisma.js";
 import { postgresChainEnumHasSolana } from "../../lib/postgres-chain-enum-solana.js";
 import { logger } from "../../lib/logger.js";
@@ -28,9 +29,9 @@ const MIN_SOL_LAMPORTS = 3_000_000n;
  * @returns {Promise<{ configured: boolean, master_address: string | null, rpc_url: string, mint: string, wallets: object[] }>}
  */
 export async function listSolanaUsdtSweepTargets() {
-  const master = env.sweepMasterSolana?.trim() ?? "";
-  const mint = env.solanaUsdtMint.trim();
-  const rpc = env.solanaRpcUrl.replace(/\/$/, "");
+  const master = re.sweepMasterSolana?.trim() ?? "";
+  const mint = re.solanaUsdtMint.trim();
+  const rpc = re.solanaRpcUrl.replace(/\/$/, "");
 
   if (!(await postgresChainEnumHasSolana())) {
     return {
@@ -51,14 +52,8 @@ export async function listSolanaUsdtSweepTargets() {
     },
     orderBy: { createdAt: "asc" },
     include: {
-      user: {
-        select: {
-          id: true,
-          externalUserId: true,
-          environment: true,
-          merchant: { select: { email: true, displayName: true } },
-        },
-      },
+      merchant: { select: { email: true, displayName: true } },
+      assignedUser: { select: { externalUserId: true } },
     },
   });
 
@@ -74,9 +69,9 @@ export async function listSolanaUsdtSweepTargets() {
       currency: w.currency,
       network: w.network,
       derivation_index: w.derivationIndex,
-      environment: w.user.environment,
-      external_user_id: w.user.externalUserId,
-      merchant_label: w.user.merchant.displayName ?? w.user.merchant.email,
+      environment: w.environment,
+      external_user_id: w.assignedUser?.externalUserId ?? null,
+      merchant_label: w.merchant.displayName ?? w.merchant.email,
     })),
   };
 }
@@ -93,12 +88,12 @@ export async function sweepSolanaUsdtOne(walletId) {
     };
   }
 
-  const master = env.sweepMasterSolana?.trim();
+  const master = re.sweepMasterSolana?.trim();
   if (!master) {
     return { ok: false, error: "SWEEP_MASTER_SOLANA_NOT_SET" };
   }
 
-  const mintPk = new PublicKey(env.solanaUsdtMint.trim());
+  const mintPk = new PublicKey(re.solanaUsdtMint.trim());
   let destOwner;
   try {
     destOwner = new PublicKey(master);
@@ -134,7 +129,7 @@ export async function sweepSolanaUsdtOne(walletId) {
   }
 
   await acquireOutboundRpcSlot("SOLANA");
-  const connection = new Connection(env.solanaRpcUrl, "confirmed");
+  const connection = new Connection(re.solanaRpcUrl, "confirmed");
 
   const fromAta = getAssociatedTokenAddressSync(
     mintPk,

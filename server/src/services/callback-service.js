@@ -5,12 +5,15 @@ import { logger } from "../lib/logger.js";
 import { logPaymentSuccessCallback, writeAuditLog } from "./audit-log.js";
 
 /**
- * @param {import("@prisma/client").Transaction & { wallet: import("@prisma/client").Wallet & { user: import("@prisma/client").User & { merchant: import("@prisma/client").AdminUser } } }} tx
+ * @param {import("@prisma/client").Transaction & {
+ *   wallet: import("@prisma/client").Wallet & { merchant: import("@prisma/client").AdminUser },
+ *   payerUser: (import("@prisma/client").User & { merchant: import("@prisma/client").AdminUser }) | null,
+ * }} tx
  * @returns {Record<string, unknown>}
  */
 export function buildPaymentSuccessWebhookBody(tx) {
-  const u = tx.wallet.user;
-  const merchant = u.merchant;
+  const u = tx.payerUser;
+  const merchant = u?.merchant ?? tx.wallet.merchant;
   return {
     transaction_id: tx.id,
     wallet_id: tx.walletId,
@@ -25,9 +28,9 @@ export function buildPaymentSuccessWebhookBody(tx) {
     token_symbol: tx.tokenSymbol,
     wallet_address: tx.wallet.address,
     confirmations: tx.confirmations,
-    external_user_id: u.externalUserId,
+    external_user_id: u?.externalUserId ?? "",
     merchant_id: merchant.id,
-    gateway_environment: u.environment,
+    gateway_environment: u?.environment ?? tx.wallet.environment,
   };
 }
 
@@ -48,7 +51,10 @@ function axiosErrDetail(e) {
 export async function notifyPaymentSuccess(txId) {
   const tx = await prisma.transaction.findUnique({
     where: { id: txId },
-    include: { wallet: { include: { user: { include: { merchant: true } } } } },
+    include: {
+      wallet: { include: { merchant: true } },
+      payerUser: { include: { merchant: true } },
+    },
   });
   if (!tx) {
     logger.warn("callback skip: tx not found", { txId });
@@ -63,13 +69,13 @@ export async function notifyPaymentSuccess(txId) {
     });
     return;
   }
-  const merchant = tx.wallet.user.merchant;
+  const merchant = tx.payerUser?.merchant ?? tx.wallet.merchant;
   const url = merchant.callbackUrl;
   const body = buildPaymentSuccessWebhookBody(tx);
   if (!url) {
     logger.warn("callback skip: merchant has no callback_url (set in portal)", {
       txId,
-      userId: tx.wallet.userId,
+      payerUserId: tx.payerUserId,
       merchantId: merchant.id,
     });
     logPaymentSuccessCallback({
@@ -129,16 +135,15 @@ export async function notifyPaymentSuccess(txId) {
 }
 
 /**
- * @param {import("@prisma/client").Transaction & { wallet: import("@prisma/client").Wallet & { user: import("@prisma/client").User & { merchant: import("@prisma/client").AdminUser } } }} tx
- * @returns {Promise<{ ok: true } | { ok: false, code: string, message?: string, httpStatus?: number, bodySnippet?: string }>}
- */
-/**
- * @param {import("@prisma/client").Transaction & { wallet: import("@prisma/client").Wallet & { user: import("@prisma/client").User & { merchant: import("@prisma/client").AdminUser } } }} tx
+ * @param {import("@prisma/client").Transaction & {
+ *   wallet: import("@prisma/client").Wallet & { merchant: import("@prisma/client").AdminUser },
+ *   payerUser: (import("@prisma/client").User & { merchant: import("@prisma/client").AdminUser }) | null,
+ * }} tx
  * @param {{ trigger: "merchant_redeliver" | "admin_redeliver", actorAdminId?: string | null, actorMerchantEmail?: string | null }} audit
  */
 async function executeRedeliverPaymentSuccess(tx, audit) {
   const txId = tx.id;
-  const merchant = tx.wallet.user.merchant;
+  const merchant = tx.payerUser?.merchant ?? tx.wallet.merchant;
   const actorType =
     audit.trigger === "admin_redeliver" ? "admin" : "merchant_jwt";
 
@@ -263,9 +268,12 @@ export async function redeliverPaymentSuccessWebhook(txId, merchantId, audit = {
   const tx = await prisma.transaction.findFirst({
     where: {
       id: txId,
-      wallet: { user: { merchantId } },
+      wallet: { merchantId },
     },
-    include: { wallet: { include: { user: { include: { merchant: true } } } } },
+    include: {
+      wallet: { include: { merchant: true } },
+      payerUser: { include: { merchant: true } },
+    },
   });
   if (!tx) {
     return { ok: false, code: "transaction_not_found" };
@@ -288,7 +296,10 @@ export async function redeliverPaymentSuccessWebhook(txId, merchantId, audit = {
 export async function redeliverPaymentSuccessWebhookAdmin(txId, audit = {}) {
   const tx = await prisma.transaction.findUnique({
     where: { id: txId },
-    include: { wallet: { include: { user: { include: { merchant: true } } } } },
+    include: {
+      wallet: { include: { merchant: true } },
+      payerUser: { include: { merchant: true } },
+    },
   });
   if (!tx) {
     return { ok: false, code: "transaction_not_found" };

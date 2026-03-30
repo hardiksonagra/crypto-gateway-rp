@@ -16,7 +16,7 @@ import {
   redactPanelBody,
 } from "../services/panel-audit-log.js";
 import { sendPasswordResetEmail } from "../lib/mailer.js";
-import { env } from "../config/env.js";
+import { re } from "../config/runtime-env.js";
 
 const router = Router();
 
@@ -198,7 +198,7 @@ async function forgotPasswordHandler(req, res) {
   }
   const token = crypto.randomBytes(32).toString("base64url");
   const tokenHash = hashResetToken(token);
-  const expires = new Date(Date.now() + env.passwordResetTtlMinutes * 60_000);
+  const expires = new Date(Date.now() + re.passwordResetTtlMinutes * 60_000);
   await prisma.adminUser.update({
     where: { id: user.id },
     data: {
@@ -206,7 +206,7 @@ async function forgotPasswordHandler(req, res) {
       passwordResetExpiresAt: expires,
     },
   });
-  const base = env.appPublicUrl.replace(/\/$/, "");
+  const base = re.appPublicUrl.replace(/\/$/, "");
   const resetUrl = `${base}/reset-password?token=${encodeURIComponent(token)}`;
   try {
     await sendPasswordResetEmail({ to: user.email, resetUrl });

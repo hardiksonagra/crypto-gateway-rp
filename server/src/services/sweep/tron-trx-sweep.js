@@ -2,6 +2,7 @@ import { Chain } from "@prisma/client";
 import { TronWeb } from "tronweb";
 import { utils as tronUtils } from "tronweb";
 import { env } from "../../config/env.js";
+import { re } from "../../config/runtime-env.js";
 import { prisma } from "../../lib/prisma.js";
 import { logger } from "../../lib/logger.js";
 import { acquireOutboundRpcSlot } from "../../lib/network-rpc-rate-limit.js";
@@ -11,11 +12,11 @@ import { deriveTronPrivateKeyHex } from "../wallet/tron-wallet.js";
 const TRX_RESERVE_SUN = 2_000_000;
 
 function tronHost() {
-  return env.tronFullNode.replace(/\/$/, "");
+  return re.tronFullNode.replace(/\/$/, "");
 }
 
 function tronHeaders() {
-  return env.tronApiKey ? { "TRON-PRO-API-KEY": env.tronApiKey } : {};
+  return re.tronApiKey ? { "TRON-PRO-API-KEY": re.tronApiKey } : {};
 }
 
 function createTronWeb(privateKeyHex) {
@@ -29,9 +30,9 @@ function createTronWeb(privateKeyHex) {
 
 /** Master for native TRX; falls back to USDT TRC20 master (same T address is common). */
 function masterTrxAddress() {
-  const a = env.sweepMasterTrx?.trim();
+  const a = re.sweepMasterTrx?.trim();
   if (a) return a;
-  return env.sweepMasterTron?.trim() ?? "";
+  return re.sweepMasterTron?.trim() ?? "";
 }
 
 function tronAddrEq(a, b) {
@@ -56,21 +57,15 @@ export async function listTronTrxSweepTargets() {
     },
     orderBy: { createdAt: "asc" },
     include: {
-      user: {
-        select: {
-          id: true,
-          externalUserId: true,
-          environment: true,
-          merchant: { select: { email: true, displayName: true } },
-        },
-      },
+      merchant: { select: { email: true, displayName: true } },
+      assignedUser: { select: { externalUserId: true } },
     },
   });
 
   return {
     configured: Boolean(master),
     master_trx_address: master || null,
-    uses_tron_usdt_master_fallback: Boolean(!env.sweepMasterTrx?.trim() && master),
+    uses_tron_usdt_master_fallback: Boolean(!re.sweepMasterTrx?.trim() && master),
     wallets: wallets.map((w) => ({
       id: w.id,
       address: w.address,
@@ -78,9 +73,9 @@ export async function listTronTrxSweepTargets() {
       currency: w.currency,
       network: w.network,
       derivation_index: w.derivationIndex,
-      environment: w.user.environment,
-      external_user_id: w.user.externalUserId,
-      merchant_label: w.user.merchant.displayName ?? w.user.merchant.email,
+      environment: w.environment,
+      external_user_id: w.assignedUser?.externalUserId ?? null,
+      merchant_label: w.merchant.displayName ?? w.merchant.email,
     })),
   };
 }

@@ -14,6 +14,7 @@ import {
   IconPanelClose,
   IconPanelOpen,
   IconProfile,
+  IconSettings,
   IconTransactions,
   IconUsers,
   IconWallet,
@@ -24,10 +25,12 @@ const nav = [
   { to: "/admin", label: "Dashboard", end: true, Icon: IconDashboard },
   { to: "/admin/merchants", label: "Merchants", Icon: IconMerchants },
   { to: "/admin/users", label: "Users", Icon: IconUsers },
+  { to: "/admin/wallets", label: "Wallets", Icon: IconWallet },
   { to: "/admin/transactions", label: "Transactions", Icon: IconTransactions },
   { to: "/admin/withdrawals", label: "Withdrawals", Icon: IconWithdrawals },
   { to: "/admin/sweep", label: "Sweep", Icon: IconWallet },
   { to: "/admin/activity", label: "Activity log", Icon: IconActivity },
+  { to: "/admin/settings", label: "System settings", Icon: IconSettings },
   { to: "/admin/profile", label: "Profile", Icon: IconProfile },
 ];
 

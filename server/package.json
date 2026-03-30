@@ -6,17 +6,16 @@
   "description": "Production-grade multi-chain HD wallet payment system",
   "main": "src/index.js",
   "scripts": {
-    "build": "node --check src/index.js && node --check src/worker-entry.js",
+    "build": "node --check src/index.js",
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
-    "worker": "node src/worker-entry.js",
-    "dev:worker": "node --watch src/worker-entry.js",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "dotenv -e ../.env -e .env -- prisma migrate dev",
     "prisma:reset": "dotenv -e ../.env -e .env -- prisma migrate reset --force",
     "prisma:deploy": "dotenv -e ../.env -e .env -- prisma migrate deploy",
     "prisma:studio": "dotenv -e ../.env -e .env -- prisma studio",
-    "db:seed": "dotenv -e ../.env -e .env -- node prisma/seed.js"
+    "db:seed": "dotenv -e ../.env -e .env -- node prisma/seed.js",
+    "sync-settings-from-env": "dotenv -e ../.env -e .env -- node scripts/sync-app-settings-from-env.js"
   },
   "prisma": {
     "seed": "dotenv -e ../.env -e .env -- node prisma/seed.js"

@@ -1,5 +1,5 @@
 import { Chain } from "@prisma/client";
-import { env } from "../config/env.js";
+import { re } from "../config/runtime-env.js";
 
 const CHAINS = new Set(Object.values(Chain));
 
@@ -34,7 +34,7 @@ export function parseDefaultChainsArray(raw, opts) {
         "only TRON, SOLANA, ETH, BNB, TON are supported (matches gateway rails)",
     };
   }
-  if (env.gatewayTronUsdtOnly && !uniq.every((c) => c === Chain.TRON)) {
+  if (re.gatewayTronUsdtOnly && !uniq.every((c) => c === Chain.TRON)) {
     return {
       error: "only the TRON chain is enabled for deposits (USDT TRC20)",
     };

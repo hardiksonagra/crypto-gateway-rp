@@ -1,4 +1,4 @@
-import { env } from "../config/env.js";
+import { re } from "../config/runtime-env.js";
 import {
   depositRailKey,
   normalizeAssetPart,
@@ -20,7 +20,7 @@ export function parseSupportedDepositRailsInput(raw, defaultChains) {
     return { error: "supported_deposit_rails must include at least one rail" };
   }
   let list = raw.map((x) => String(x ?? "").trim()).filter(Boolean);
-  if (env.gatewayTronUsdtOnly) {
+  if (re.gatewayTronUsdtOnly) {
     list = list.filter((item) => {
       const { currency, network } = parseDepositRailKeyString(item);
       return currency === "USDT" && network === "TRC20";

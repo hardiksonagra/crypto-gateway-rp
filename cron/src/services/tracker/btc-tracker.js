@@ -1,9 +1,15 @@
 import { Chain } from "@prisma/client";
-import { env } from "../../config/env.js";
-import { logger } from "../../lib/logger.js";
-import { acquireOutboundRpcSlot } from "../../lib/network-rpc-rate-limit.js";
-import { nativeDecimalsForChain, nativeSymbolForChain } from "../native-symbols.js";
-import { loadWalletsForChain, upsertIncomingTransaction } from "../payment/transaction-upsert.js";
+import { re } from "crypto-payment-gateway/src/config/runtime-env.js";
+import { logger } from "crypto-payment-gateway/src/lib/logger.js";
+import { acquireOutboundRpcSlot } from "crypto-payment-gateway/src/lib/network-rpc-rate-limit.js";
+import {
+  nativeDecimalsForChain,
+  nativeSymbolForChain,
+} from "crypto-payment-gateway/src/services/native-symbols.js";
+import {
+  loadWalletsForChain,
+  upsertIncomingTransaction,
+} from "crypto-payment-gateway/src/services/payment/transaction-upsert.js";
 
 /**
  * @param {{ wallets?: Array<{ id: string, address: string, currency: string, network: string }> }} [options]
@@ -15,7 +21,7 @@ export async function scanBtcChain(options = {}) {
   const targets = wallets.filter((w) => w.currency === "BTC" && w.network === "BTC");
   if (targets.length === 0) return;
 
-  const base = env.btcExplorerApiBase.replace(/\/$/, "");
+  const base = re.btcExplorerApiBase.replace(/\/$/, "");
   let tip = 0;
   try {
     await acquireOutboundRpcSlot("BTC");

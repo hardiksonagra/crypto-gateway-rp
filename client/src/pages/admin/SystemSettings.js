@@ -1,0 +1,242 @@
+import { Formik, Form, Field, ErrorMessage } from "formik";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { api } from "../../api";
+import { buildSystemSettingsSchema } from "../../admin/systemSettingsSchemas";
+
+const input =
+  "w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none ring-white/20 focus:ring-1";
+const label = "mb-1 block text-xs font-medium text-white/60";
+const textarea = `${input} min-h-[120px] font-mono text-xs leading-relaxed`;
+
+/**
+ * @typedef {{
+ *   key: string,
+ *   label: string,
+ *   category: string,
+ *   type: string,
+ *   sensitive: boolean,
+ *   has_db_override: boolean,
+ *   env_display: string,
+ *   effective_display: string,
+ *   form_initial: string,
+ * }} SettingItem
+ */
+
+function FieldForItem({ it }) {
+  const name = it.key;
+  if (it.type === "bool" || it.type === "bool_tron_gateway") {
+    return (
+      <div className="lg:col-span-1">
+        <label className={label} htmlFor={name}>
+          {it.label}
+        </label>
+        <Field
+          id={name}
+          name={name}
+          as="select"
+          className={input}
+        >
+          <option value="">Use .env default ({it.env_display || "—"})</option>
+          <option value="true">true</option>
+          <option value="false">false</option>
+        </Field>
+        <ErrorMessage
+          name={name}
+          component="p"
+          className="mt-1 text-xs text-rose-400"
+        />
+        {it.has_db_override ? (
+          <p className="mt-1 text-[11px] text-amber-200/80">
+            Database override active — choose “Use .env default” and save to clear it.
+          </p>
+        ) : null}
+      </div>
+    );
+  }
+
+  if (it.type === "json") {
+    return (
+      <div className="lg:col-span-2">
+        <label className={label} htmlFor={name}>
+          {it.label}
+        </label>
+        <Field id={name} name={name} as="textarea" className={textarea} spellCheck={false} />
+        <p className="mt-1 text-[11px] text-white/40">
+          Must be a JSON object. Clear the field and save to fall back to .env.
+        </p>
+        <ErrorMessage
+          name={name}
+          component="p"
+          className="mt-1 text-xs text-rose-400"
+        />
+      </div>
+    );
+  }
+
+  const isSecret = it.sensitive;
+  return (
+    <div className={it.type === "comma_origins" ? "lg:col-span-2" : "lg:col-span-1"}>
+      <label className={label} htmlFor={name}>
+        {it.label}
+      </label>
+      <Field
+        id={name}
+        name={name}
+        type={isSecret ? "password" : "text"}
+        className={input}
+        autoComplete="off"
+        placeholder={
+          isSecret
+            ? it.has_db_override
+              ? "Leave blank to keep stored value"
+              : "Set to override .env"
+            : undefined
+        }
+      />
+      {isSecret ? (
+        <p className="mt-1 text-[11px] text-white/40">
+          Stored value is never shown. Effective: {it.effective_display}
+        </p>
+      ) : null}
+      <ErrorMessage
+        name={name}
+        component="p"
+        className="mt-1 text-xs text-rose-400"
+      />
+    </div>
+  );
+}
+
+export default function SystemSettings() {
+  const [items, setItems] = useState(/** @type {SettingItem[] | null} */ (null));
+  const [loadError, setLoadError] = useState(null);
+
+  const load = useCallback(async () => {
+    setLoadError(null);
+    try {
+      const r = await api("/api/v1/admin/system-settings");
+      setItems(r.items ?? []);
+    } catch (e) {
+      setLoadError(String(e));
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const initialValues = useMemo(() => {
+    if (!items) return {};
+    return Object.fromEntries(items.map((i) => [i.key, i.form_initial ?? ""]));
+  }, [items]);
+
+  const validationSchema = useMemo(() => {
+    if (!items?.length) return buildSystemSettingsSchema([]);
+    return buildSystemSettingsSchema(items.map((i) => i.key));
+  }, [items]);
+
+  const byCategory = useMemo(() => {
+    if (!items) return new Map();
+    const m = new Map();
+    for (const it of items) {
+      if (!m.has(it.category)) m.set(it.category, []);
+      m.get(it.category).push(it);
+    }
+    return m;
+  }, [items]);
+
+  if (loadError) {
+    return (
+      <div className="w-full max-w-none">
+        <h1 className="font-display text-2xl font-semibold text-white">System settings</h1>
+        <p className="mt-4 text-sm text-rose-400">{loadError}</p>
+      </div>
+    );
+  }
+
+  if (!items) {
+    return (
+      <div className="w-full max-w-none">
+        <h1 className="font-display text-2xl font-semibold text-white">System settings</h1>
+        <p className="mt-4 text-sm text-white/50">Loading…</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="w-full max-w-none">
+      <h1 className="font-display text-2xl font-semibold text-white">System settings</h1>
+      <p className="mt-2 max-w-3xl text-sm text-white/55 text-pretty">
+        Values here override the API / cron process environment for the keys listed below. Bootstrap
+        secrets (database URL, mnemonic, JWT secret, encryption key, TRX funder private key) stay in{" "}
+        <span className="font-mono text-white/80">.env</span> only. The running API reloads overrides
+        on save; restart the <span className="font-mono text-white/80">crypto-gateway-cron</span>{" "}
+        process if you change scanner poll interval or other cron-only behavior.
+      </p>
+
+      <div className="glass mt-8 w-full rounded-2xl p-6 lg:p-8">
+        <Formik
+          enableReinitialize
+          initialValues={initialValues}
+          validationSchema={validationSchema}
+          validateOnBlur
+          validateOnChange={false}
+          onSubmit={async (values, { setStatus, setSubmitting }) => {
+            setStatus(undefined);
+            try {
+              const r = await api("/api/v1/admin/system-settings", {
+                method: "PUT",
+                json: values,
+              });
+              setItems(r.items ?? items);
+            } catch (e) {
+              setStatus(String(e));
+            } finally {
+              setSubmitting(false);
+            }
+          }}
+        >
+          {({ isSubmitting, status }) => (
+            <Form className="space-y-10">
+              {[...byCategory.entries()].map(([category, list]) => (
+                <section key={category}>
+                  <h2 className="mb-4 border-b border-white/10 pb-2 font-display text-sm font-semibold tracking-wide text-white/80 uppercase">
+                    {category}
+                  </h2>
+                  <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                    {list.map((it) => (
+                      <FieldForItem key={it.key} it={it} />
+                    ))}
+                  </div>
+                </section>
+              ))}
+
+              {status ? (
+                <p className="lg:col-span-2 text-sm text-rose-400" role="alert">
+                  {status}
+                </p>
+              ) : null}
+
+              <div className="flex flex-wrap items-center gap-3 lg:col-span-2">
+                <button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="rounded-lg bg-white/90 px-4 py-2 text-sm font-medium text-black hover:bg-white disabled:opacity-50"
+                >
+                  {isSubmitting ? "Saving…" : "Save settings"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void load()}
+                  className="rounded-lg border border-white/15 px-4 py-2 text-sm text-white/80 hover:bg-white/5"
+                >
+                  Reload
+                </button>
+              </div>
+            </Form>
+          )}
+        </Formik>
+      </div>
+    </div>
+  );
+}

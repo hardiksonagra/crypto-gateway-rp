@@ -1,5 +1,6 @@
 import nodemailer from "nodemailer";
 import { env } from "../config/env.js";
+import { re } from "../config/runtime-env.js";
 import { logger } from "./logger.js";
 
 /**
@@ -7,7 +8,7 @@ import { logger } from "./logger.js";
  * @returns {Promise<{ sent: boolean }>}
  */
 export async function sendMail(opts) {
-  if (!env.smtpHost?.trim()) {
+  if (!re.smtpHost?.trim()) {
     logger.warn("mail_skipped_no_smtp", {
       to: opts.to,
       subject: opts.subject,
@@ -16,17 +17,17 @@ export async function sendMail(opts) {
   }
 
   const transporter = nodemailer.createTransport({
-    host: env.smtpHost.trim(),
-    port: env.smtpPort,
-    secure: env.smtpSecure,
+    host: re.smtpHost.trim(),
+    port: re.smtpPort,
+    secure: re.smtpSecure,
     auth:
-      env.smtpUser && env.smtpPass
-        ? { user: env.smtpUser, pass: env.smtpPass }
+      re.smtpUser && re.smtpPass
+        ? { user: re.smtpUser, pass: re.smtpPass }
         : undefined,
   });
 
   await transporter.sendMail({
-    from: env.smtpFrom,
+    from: re.smtpFrom,
     to: opts.to,
     subject: opts.subject,
     text: opts.text,

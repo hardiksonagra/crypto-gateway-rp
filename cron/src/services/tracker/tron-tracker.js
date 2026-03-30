@@ -1,14 +1,18 @@
 import { Chain } from "@prisma/client";
 import { utils } from "tronweb";
-import { confirmationsForChain } from "../../config/chains.js";
-import { env, getTrc20Contracts } from "../../config/env.js";
-import { logger } from "../../lib/logger.js";
-import { acquireOutboundRpcSlot } from "../../lib/network-rpc-rate-limit.js";
-import { nativeDecimalsForChain, nativeSymbolForChain } from "../native-symbols.js";
+import { confirmationsForChain } from "crypto-payment-gateway/src/config/chains.js";
+import { getTrc20Contracts } from "crypto-payment-gateway/src/config/env.js";
+import { re } from "crypto-payment-gateway/src/config/runtime-env.js";
+import { logger } from "crypto-payment-gateway/src/lib/logger.js";
+import { acquireOutboundRpcSlot } from "crypto-payment-gateway/src/lib/network-rpc-rate-limit.js";
+import {
+  nativeDecimalsForChain,
+  nativeSymbolForChain,
+} from "crypto-payment-gateway/src/services/native-symbols.js";
 import {
   loadWalletsForChain,
   upsertIncomingTransaction,
-} from "../payment/transaction-upsert.js";
+} from "crypto-payment-gateway/src/services/payment/transaction-upsert.js";
 
 function tronAddrEq(a, b) {
   try {
@@ -28,7 +32,7 @@ function tronGroupKey(address) {
 
 function tronHeaders() {
   const h = { "Content-Type": "application/json" };
-  if (env.tronApiKey) h["TRON-PRO-API-KEY"] = env.tronApiKey;
+  if (re.tronApiKey) h["TRON-PRO-API-KEY"] = re.tronApiKey;
   return h;
 }
 
@@ -67,7 +71,7 @@ export async function scanTronChain(options = {}) {
     options.wallets ?? (await loadWalletsForChain(chain));
   if (wallets.length === 0) return;
 
-  const base = env.tronFullNode.replace(/\/$/, "");
+  const base = re.tronFullNode.replace(/\/$/, "");
   const trc20Map = buildTrc20Lookup(getTrc20Contracts());
 
   const byHex = new Map();

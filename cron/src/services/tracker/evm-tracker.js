@@ -1,23 +1,30 @@
 import { ethers } from "ethers";
-import { chainToRpcUrl, chainToStaticNetwork, isEvmChain } from "../../config/chains.js";
-import { getErc20Contracts } from "../../config/env.js";
+import {
+  chainToRpcUrl,
+  chainToStaticNetwork,
+  isEvmChain,
+} from "crypto-payment-gateway/src/config/chains.js";
+import { getErc20Contracts } from "crypto-payment-gateway/src/config/env.js";
 import {
   walletAcceptsEvmErc20,
   walletAcceptsEvmNative,
-} from "../../config/payment-rails.js";
-import { logger } from "../../lib/logger.js";
+} from "crypto-payment-gateway/src/config/payment-rails.js";
+import { logger } from "crypto-payment-gateway/src/lib/logger.js";
 import {
   acquireOutboundRpcSlot,
   evmRpcBudgetKey,
-} from "../../lib/network-rpc-rate-limit.js";
-import { nativeDecimalsForChain, nativeSymbolForChain } from "../native-symbols.js";
+} from "crypto-payment-gateway/src/lib/network-rpc-rate-limit.js";
+import {
+  nativeDecimalsForChain,
+  nativeSymbolForChain,
+} from "crypto-payment-gateway/src/services/native-symbols.js";
 import {
   advanceScanner,
   getOrInitScannerBlock,
   loadWalletsForChain,
   normalizeMatchAddress,
   upsertIncomingTransaction,
-} from "../payment/transaction-upsert.js";
+} from "crypto-payment-gateway/src/services/payment/transaction-upsert.js";
 
 const transferTopic = ethers.id("Transfer(address,address,uint256)");
 const erc20Iface = new ethers.Interface([

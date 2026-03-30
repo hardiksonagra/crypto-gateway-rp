@@ -164,6 +164,16 @@ export const merchantDetailWalletsFilterSchema = yup.object({
   created_to: yup.string(),
 });
 
+/** Admin “All wallets” list filters. */
+export const adminWalletsFilterSchema = yup.object({
+  q: yup.string(),
+  merchant_id: yup.string(),
+  chain: chainFilterField,
+  currency: yup.string(),
+  network: yup.string(),
+  pageSize: yup.string().oneOf(["10", "20", "50", "100"]),
+});
+
 /** Filters for end users on merchant detail (merchant id is fixed in the page). */
 export const merchantDetailUsersFilterSchema = yup.object({
   q: yup.string(),

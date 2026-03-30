@@ -1,21 +1,24 @@
 {
   "name": "crypto-payment-gateway-monorepo",
   "private": true,
-  "workspaces": ["server", "client"],
+  "workspaces": ["server", "client", "cron"],
   "scripts": {
     "dev": "npm run dev -w server",
     "dev:server": "npm run dev -w server",
     "dev:client": "npm run dev -w client",
+    "dev:cron": "npm run dev -w cron",
     "dev:all": "concurrently \"npm run dev -w server\" \"npm run dev -w client\"",
-    "build": "npm run build -w server && npm run build -w client",
+    "dev:stack": "concurrently \"npm run dev -w server\" \"npm run dev -w client\" \"npm run dev -w cron\"",
+    "build": "npm run build -w server && npm run build -w client && npm run build -w cron",
     "pm2:start": "pm2 start ecosystem.config.cjs",
-    "pm2:stop": "pm2 delete crypto-gateway-api crypto-gateway-worker",
+    "pm2:stop": "pm2 delete crypto-gateway-api crypto-gateway-cron",
     "prisma:generate": "npm run prisma:generate -w server",
     "prisma:migrate": "npm run prisma:migrate -w server",
     "prisma:reset": "npm run prisma:reset -w server",
     "prisma:deploy": "npm run prisma:deploy -w server",
     "prisma:studio": "npm run prisma:studio -w server",
     "db:seed": "npm run db:seed -w server",
+    "sync-settings-from-env": "npm run sync-settings-from-env -w server",
     "deploy": "bash scripts/deploy.sh"
   },
   "devDependencies": {

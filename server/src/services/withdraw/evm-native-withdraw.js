@@ -20,7 +20,7 @@ export async function sendEvmNativeFromMerchantPool(params) {
   const budgetKey = evmRpcBudgetKey(chain);
 
   const wallets = await prisma.wallet.findMany({
-    where: { chain, user: { merchantId, environment: MerchantGatewayEnv.live } },
+    where: { chain, merchantId, environment: MerchantGatewayEnv.live },
     orderBy: { createdAt: "asc" },
   });
 

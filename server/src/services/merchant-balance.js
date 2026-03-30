@@ -12,7 +12,7 @@ export async function computeMerchantBalances(
   const inbound = await prisma.transaction.findMany({
     where: {
       status: "success",
-      wallet: { user: { merchantId, environment } },
+      wallet: { merchantId, environment },
     },
     select: { amount: true, tokenSymbol: true, tokenDecimals: true, chain: true },
   });

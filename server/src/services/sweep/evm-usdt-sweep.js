@@ -1,6 +1,7 @@
 import { Chain } from "@prisma/client";
 import { Contract, HDNodeWallet, JsonRpcProvider, ethers } from "ethers";
 import { env, getErc20Contracts } from "../../config/env.js";
+import { re } from "../../config/runtime-env.js";
 import { chainToRpcUrl, chainToStaticNetwork } from "../../config/chains.js";
 import { prisma } from "../../lib/prisma.js";
 import { logger } from "../../lib/logger.js";
@@ -43,8 +44,8 @@ export function pickUsdtTokenAddress(chain) {
  * @returns {string}
  */
 function masterForChain(chain) {
-  if (chain === Chain.ETH) return env.sweepMasterUsdtEth?.trim() ?? "";
-  if (chain === Chain.BNB) return env.sweepMasterUsdtBnb?.trim() ?? "";
+  if (chain === Chain.ETH) return re.sweepMasterUsdtEth?.trim() ?? "";
+  if (chain === Chain.BNB) return re.sweepMasterUsdtBnb?.trim() ?? "";
   return "";
 }
 
@@ -67,14 +68,8 @@ export async function listEvmUsdtSweepTargets(chain) {
     },
     orderBy: { createdAt: "asc" },
     include: {
-      user: {
-        select: {
-          id: true,
-          externalUserId: true,
-          environment: true,
-          merchant: { select: { email: true, displayName: true } },
-        },
-      },
+      merchant: { select: { email: true, displayName: true } },
+      assignedUser: { select: { externalUserId: true } },
     },
   });
 
@@ -91,9 +86,9 @@ export async function listEvmUsdtSweepTargets(chain) {
       currency: w.currency,
       network: w.network,
       derivation_index: w.derivationIndex,
-      environment: w.user.environment,
-      external_user_id: w.user.externalUserId,
-      merchant_label: w.user.merchant.displayName ?? w.user.merchant.email,
+      environment: w.environment,
+      external_user_id: w.assignedUser?.externalUserId ?? null,
+      merchant_label: w.merchant.displayName ?? w.merchant.email,
     })),
   };
 }

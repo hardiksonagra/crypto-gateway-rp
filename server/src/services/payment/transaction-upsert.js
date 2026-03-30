@@ -1,7 +1,7 @@
 import { Chain, MerchantGatewayEnv, TxStatus } from "@prisma/client";
 import { Address } from "@ton/core";
 import { prisma } from "../../lib/prisma.js";
-import { env } from "../../config/env.js";
+import { re } from "../../config/runtime-env.js";
 import { confirmationsForChain } from "../../config/chains.js";
 import { SCANNER_STATE_ROWS_BY_CHAIN } from "../../config/payment-rails.js";
 import { notifyPaymentSuccess } from "../callback-service.js";
@@ -10,11 +10,13 @@ import {
   recordNewDepositInsert,
   workerRailMetricsEnabled,
 } from "../tracker/deposit-rail-metrics.js";
+import { releaseWalletAfterDepositSuccess } from "../wallet/wallet-service.js";
 
 /**
  * @param {object} input
  * @param {string} [input.currency] — wallet rail; with `network`, enables new-row tick metrics
  * @param {string} [input.network]
+ * @param {string} [input.payerUserId] — when creating a row, prefer this over live `wallet.assigned_user_id`
  */
 export async function upsertIncomingTransaction(input) {
   const threshold = confirmationsForChain(input.chain);
@@ -42,12 +44,27 @@ export async function upsertIncomingTransaction(input) {
     hadRowBefore = Boolean(hit);
   }
 
+  const prior = await prisma.transaction.findUnique({
+    where: { tx_dedupe: dedupe },
+    select: { id: true, status: true, callbackDeliveredAt: true },
+  });
+
+  let payerUserIdForCreate = input.payerUserId ?? null;
+  if (!hadRowBefore && payerUserIdForCreate == null) {
+    const w = await prisma.wallet.findUnique({
+      where: { id: input.walletId },
+      select: { assignedUserId: true },
+    });
+    payerUserIdForCreate = w?.assignedUserId ?? null;
+  }
+
   const row = await prisma.transaction.upsert({
     where: {
       tx_dedupe: dedupe,
     },
     create: {
       walletId: input.walletId,
+      payerUserId: payerUserIdForCreate,
       txHash: input.txHash,
       fromAddress: input.fromAddress,
       toAddress: input.toAddress,
@@ -77,6 +94,13 @@ export async function upsertIncomingTransaction(input) {
     recordNewDepositInsert(input.currency, input.network);
   }
 
+  const becameSuccess =
+    nextStatus === TxStatus.success &&
+    (!prior || prior.status !== TxStatus.success);
+  if (becameSuccess) {
+    await releaseWalletAfterDepositSuccess(input.walletId);
+  }
+
   if (nextStatus === TxStatus.success && !row.callbackDeliveredAt) {
     await notifyPaymentSuccess(row.id);
   }
@@ -90,7 +114,7 @@ export async function loadWalletsForChain(chain) {
   return prisma.wallet.findMany({
     where: {
       chain,
-      user: { environment: MerchantGatewayEnv.live },
+      environment: MerchantGatewayEnv.live,
       ...liveWorkerWalletScanFilter(),
     },
     select: { id: true, address: true, currency: true, network: true },
@@ -102,14 +126,14 @@ export async function loadWalletsForChain(chain) {
  * @param {import("@prisma/client").Chain} chain
  */
 export async function loadWalletsForChainLateCatchup(chain) {
-  if (env.walletScanTtlMinutes <= 0 || env.lateDepositRecheckHours <= 0) {
+  if (re.walletScanTtlMinutes <= 0 || re.lateDepositRecheckHours <= 0) {
     return [];
   }
   const now = new Date();
   return prisma.wallet.findMany({
     where: {
       chain,
-      user: { environment: MerchantGatewayEnv.live },
+      environment: MerchantGatewayEnv.live,
       scanExpiresAt: { not: null, lt: now },
       transactions: { none: {} },
     },

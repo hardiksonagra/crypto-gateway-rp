@@ -1,15 +1,19 @@
 import { Chain } from "@prisma/client";
 import { Address } from "@ton/core";
-import { confirmationsForChain } from "../../config/chains.js";
-import { env, getTonJettonContracts } from "../../config/env.js";
-import { logger } from "../../lib/logger.js";
-import { acquireOutboundRpcSlot } from "../../lib/network-rpc-rate-limit.js";
-import { nativeDecimalsForChain, nativeSymbolForChain } from "../native-symbols.js";
+import { confirmationsForChain } from "crypto-payment-gateway/src/config/chains.js";
+import { getTonJettonContracts } from "crypto-payment-gateway/src/config/env.js";
+import { re } from "crypto-payment-gateway/src/config/runtime-env.js";
+import { logger } from "crypto-payment-gateway/src/lib/logger.js";
+import { acquireOutboundRpcSlot } from "crypto-payment-gateway/src/lib/network-rpc-rate-limit.js";
+import {
+  nativeDecimalsForChain,
+  nativeSymbolForChain,
+} from "crypto-payment-gateway/src/services/native-symbols.js";
 import {
   loadWalletsForChain,
   normalizeMatchAddress,
   upsertIncomingTransaction,
-} from "../payment/transaction-upsert.js";
+} from "crypto-payment-gateway/src/services/payment/transaction-upsert.js";
 
 function tonAddrEq(a, b) {
   try {
@@ -42,7 +46,7 @@ function lookupJetton(map, jettonAddr) {
 
 function tonHeaders() {
   const h = { Accept: "application/json" };
-  if (env.tonApiKey) h.Authorization = `Bearer ${env.tonApiKey}`;
+  if (re.tonApiKey) h.Authorization = `Bearer ${re.tonApiKey}`;
   return h;
 }
 
@@ -69,7 +73,7 @@ export async function scanTonChain(options = {}) {
     options.wallets ?? (await loadWalletsForChain(chain));
   if (wallets.length === 0) return;
 
-  const base = env.tonApiBase.replace(/\/$/, "");
+  const base = re.tonApiBase.replace(/\/$/, "");
   const jettonMeta = buildTonJettonMetaByRaw(getTonJettonContracts());
   const threshold = confirmationsForChain(chain);
   const byRaw = groupTonWallets(wallets);

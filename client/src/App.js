@@ -11,9 +11,11 @@ import MerchantCreate from "./pages/admin/MerchantCreate";
 import MerchantEdit from "./pages/admin/MerchantEdit";
 import MerchantDetail from "./pages/admin/MerchantDetail";
 import AdminUsers from "./pages/admin/Users";
+import AdminWallets from "./pages/admin/AdminWallets";
 import AdminTransactions from "./pages/admin/Transactions";
 import AdminWithdrawals from "./pages/admin/Withdrawals";
 import AdminActivityLog from "./pages/admin/ActivityLog";
+import AdminSystemSettings from "./pages/admin/SystemSettings";
 import AdminUnifiedSweep from "./pages/admin/UnifiedSweep";
 import MerchantDashboard from "./pages/merchant/Dashboard";
 import MerchantUsers from "./pages/merchant/Users";
@@ -39,6 +41,7 @@ export default function App() {
         <Route path="merchants/:id" element={<MerchantDetail />} />
         <Route path="merchants" element={<AdminMerchants />} />
         <Route path="users" element={<AdminUsers />} />
+        <Route path="wallets" element={<AdminWallets />} />
         <Route path="transactions" element={<AdminTransactions />} />
         <Route path="withdrawals" element={<AdminWithdrawals />} />
         <Route path="sweep" element={<AdminUnifiedSweep />} />
@@ -46,6 +49,7 @@ export default function App() {
         <Route path="evm-usdt-sweep" element={<Navigate to="/admin/sweep" replace />} />
         <Route path="solana-sweep" element={<Navigate to="/admin/sweep" replace />} />
         <Route path="activity" element={<AdminActivityLog />} />
+        <Route path="settings" element={<AdminSystemSettings />} />
         <Route path="profile" element={<Profile />} />
       </Route>
       <Route path="/m" element={<MerchantShell />}>

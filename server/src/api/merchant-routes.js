@@ -20,7 +20,7 @@ import {
   computeMerchantBalances,
   merchantBalanceForAsset,
 } from "../services/merchant-balance.js";
-import { env } from "../config/env.js";
+import { re } from "../config/runtime-env.js";
 import { isEvmChain } from "../config/chains.js";
 import { nativeSymbolForChain } from "../services/native-symbols.js";
 import { sendEvmNativeFromMerchantPool } from "../services/withdraw/evm-native-withdraw.js";
@@ -113,7 +113,7 @@ router.get("/api/v1/merchant/dashboard", async (req, res) => {
   const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
   const recent = await prisma.transaction.findMany({
     where: {
-      wallet: { user: { merchantId: mid, environment } },
+      wallet: { merchantId: mid, environment },
       createdAt: { gte: since },
     },
     orderBy: { createdAt: "desc" },
@@ -125,7 +125,7 @@ router.get("/api/v1/merchant/dashboard", async (req, res) => {
   const [users, txs] = await Promise.all([
     prisma.user.count({ where: { merchantId: mid, environment } }),
     prisma.transaction.count({
-      where: { wallet: { user: { merchantId: mid, environment } } },
+      where: { wallet: { merchantId: mid, environment } },
     }),
   ]);
   res.json({
@@ -187,7 +187,7 @@ router.get("/api/v1/merchant/users", async (req, res) => {
       orderBy: { createdAt: "desc" },
       skip,
       take,
-      include: { _count: { select: { wallets: true } } },
+      include: { _count: { select: { assignedWallets: true } } },
     }),
   ]);
   res.json({
@@ -199,7 +199,7 @@ router.get("/api/v1/merchant/users", async (req, res) => {
       id: u.id,
       external_user_id: u.externalUserId,
       environment: u.environment,
-      wallets_count: u._count.wallets,
+      wallets_count: u._count.assignedWallets,
       created_at: u.createdAt,
     })),
   });
@@ -223,14 +223,15 @@ router.get("/api/v1/merchant/wallets", async (req, res) => {
   const { skip, take, page, pageSize } = parsePageQuery(req.query);
   const q = typeof req.query.q === "string" ? req.query.q.trim() : "";
   const where = {
-    user: { merchantId: mid, environment },
+    merchantId: mid,
+    environment,
     ...(q
       ? {
           OR: [
             { id: { contains: q, mode: "insensitive" } },
             { address: { contains: q, mode: "insensitive" } },
             {
-              user: {
+              assignedUser: {
                 externalUserId: { contains: q, mode: "insensitive" },
               },
             },
@@ -246,7 +247,7 @@ router.get("/api/v1/merchant/wallets", async (req, res) => {
       skip,
       take,
       include: {
-        user: { select: { externalUserId: true } },
+        assignedUser: { select: { externalUserId: true } },
         _count: { select: { transactions: true } },
       },
     }),
@@ -270,7 +271,7 @@ router.get("/api/v1/merchant/wallets", async (req, res) => {
         chain: w.chain,
         currency: w.currency,
         network: w.network,
-        external_user_id: w.user.externalUserId,
+        external_user_id: w.assignedUser?.externalUserId ?? null,
         created_at: w.createdAt,
         scan_expires_at: exp?.toISOString() ?? null,
         transaction_count: txCount,
@@ -314,7 +315,8 @@ router.post(
     const owns = await prisma.wallet.findFirst({
       where: {
         id: walletId,
-        user: { merchantId: mid, environment: MerchantGatewayEnv.live },
+        merchantId: mid,
+        environment: MerchantGatewayEnv.live,
       },
       select: { id: true },
     });
@@ -379,15 +381,37 @@ router.get("/api/v1/merchant/transactions", async (req, res) => {
   const where = {
     wallet: {
       is: {
-        user: {
-          merchantId: mid,
-          environment,
-          ...(qUser
-            ? { externalUserId: { contains: qUser, mode: "insensitive" } }
-            : {}),
-        },
+        merchantId: mid,
+        environment,
       },
     },
+    ...(qUser
+      ? {
+          OR: [
+            {
+              payerUser: {
+                is: {
+                  merchantId: mid,
+                  externalUserId: { contains: qUser, mode: "insensitive" },
+                },
+              },
+            },
+            {
+              wallet: {
+                is: {
+                  merchantId: mid,
+                  environment,
+                  assignedUser: {
+                    is: {
+                      externalUserId: { contains: qUser, mode: "insensitive" },
+                    },
+                  },
+                },
+              },
+            },
+          ],
+        }
+      : {}),
     ...(chain && CHAIN_SET.has(chain) ? { chain } : {}),
     ...(status && Object.values(TxStatus).includes(status) ? { status } : {}),
     ...(token ? { tokenSymbol: { equals: token, mode: "insensitive" } } : {}),
@@ -401,9 +425,10 @@ router.get("/api/v1/merchant/transactions", async (req, res) => {
       skip,
       take,
       include: {
+        payerUser: { select: { externalUserId: true } },
         wallet: {
           include: {
-            user: { select: { externalUserId: true, environment: true } },
+            assignedUser: { select: { externalUserId: true } },
           },
         },
       },
@@ -434,8 +459,9 @@ router.get("/api/v1/merchant/transactions", async (req, res) => {
       block_number: t.blockNumber?.toString() ?? null,
       log_index: t.logIndex,
       callback_delivered_at: t.callbackDeliveredAt,
-      external_user_id: t.wallet.user.externalUserId,
-      gateway_environment: t.wallet.user.environment,
+      external_user_id:
+        t.payerUser?.externalUserId ?? t.wallet.assignedUser?.externalUserId ?? null,
+      gateway_environment: t.wallet.environment,
       created_at: t.createdAt,
       updated_at: t.updatedAt,
     })),
@@ -723,7 +749,7 @@ router.patch("/api/v1/merchant/settings", async (req, res) => {
     }
     data.supportedDepositRails = pr.keys;
     nextSupported = pr.keys;
-  } else if (nextSupported.length > 0 && !env.gatewayTronUsdtOnly) {
+  } else if (nextSupported.length > 0 && !re.gatewayTronUsdtOnly) {
     const v = parseSupportedDepositRailsInput(nextSupported, nextChains);
     if ("error" in v) {
       res.status(400).json({ error: v.error });

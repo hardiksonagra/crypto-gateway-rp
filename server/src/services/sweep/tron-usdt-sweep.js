@@ -2,6 +2,7 @@ import { Chain } from "@prisma/client";
 import { TronWeb } from "tronweb";
 import { utils as tronUtils } from "tronweb";
 import { env, getTrc20Contracts } from "../../config/env.js";
+import { re } from "../../config/runtime-env.js";
 import { prisma } from "../../lib/prisma.js";
 import { logger } from "../../lib/logger.js";
 import { acquireOutboundRpcSlot } from "../../lib/network-rpc-rate-limit.js";
@@ -31,18 +32,18 @@ const TRC20_ABI = [
 ];
 
 /** Rough minimum TRX (sun) so a TRC20 transfer can burn bandwidth/energy. */
-const MIN_TRX_SUN_FOR_SWEEP = 12_000_000n;
+export const MIN_TRX_SUN_FOR_SWEEP = 12_000_000n;
 
 function tronHost() {
-  return env.tronFullNode.replace(/\/$/, "");
+  return re.tronFullNode.replace(/\/$/, "");
 }
 
 function tronHeaders() {
-  return env.tronApiKey ? { "TRON-PRO-API-KEY": env.tronApiKey } : {};
+  return re.tronApiKey ? { "TRON-PRO-API-KEY": re.tronApiKey } : {};
 }
 
 /** @param {string} privateKeyHex */
-function createTronWeb(privateKeyHex) {
+export function createTronWebFromPrivateKeyHex(privateKeyHex) {
   const pk = privateKeyHex.replace(/^0x/i, "");
   return new TronWeb({
     fullHost: tronHost(),
@@ -51,7 +52,7 @@ function createTronWeb(privateKeyHex) {
   });
 }
 
-function pickUsdtTrc20Contract() {
+export function pickUsdtTrc20Contract() {
   const cfg = getTrc20Contracts();
   const hit = Object.entries(cfg).find(
     ([, m]) => String(m?.symbol ?? "").toUpperCase() === "USDT",
@@ -85,7 +86,7 @@ function rawBalanceToBigInt(raw) {
  * @returns {Promise<{ configured: boolean, master_tron_address: string | null, wallets: object[] }>}
  */
 export async function listTronUsdtSweepTargets() {
-  const master = env.sweepMasterTron?.trim() ?? "";
+  const master = re.sweepMasterTron?.trim() ?? "";
 
   const wallets = await prisma.wallet.findMany({
     where: {
@@ -96,14 +97,8 @@ export async function listTronUsdtSweepTargets() {
     },
     orderBy: { createdAt: "asc" },
     include: {
-      user: {
-        select: {
-          id: true,
-          externalUserId: true,
-          environment: true,
-          merchant: { select: { email: true, displayName: true } },
-        },
-      },
+      merchant: { select: { email: true, displayName: true } },
+      assignedUser: { select: { externalUserId: true } },
     },
   });
 
@@ -117,9 +112,9 @@ export async function listTronUsdtSweepTargets() {
       currency: w.currency,
       network: w.network,
       derivation_index: w.derivationIndex,
-      environment: w.user.environment,
-      external_user_id: w.user.externalUserId,
-      merchant_label: w.user.merchant.displayName ?? w.user.merchant.email,
+      environment: w.environment,
+      external_user_id: w.assignedUser?.externalUserId ?? null,
+      merchant_label: w.merchant.displayName ?? w.merchant.email,
     })),
   };
 }
@@ -129,7 +124,7 @@ export async function listTronUsdtSweepTargets() {
  * @returns {Promise<{ ok: true, skipped?: boolean, reason?: string, tx_hash?: string, amount_atomic?: string, from_address?: string, to_address?: string } | { ok: false, error: string, detail?: string }>}
  */
 export async function sweepTronUsdtOne(walletId) {
-  const master = env.sweepMasterTron?.trim();
+  const master = re.sweepMasterTron?.trim();
   if (!master) {
     return { ok: false, error: "SWEEP_MASTER_TRON_NOT_SET" };
   }
@@ -159,7 +154,7 @@ export async function sweepTronUsdtOne(walletId) {
   }
 
   const pkHex = deriveTronPrivateKeyHex(wallet.derivationIndex, env.mnemonic);
-  const tw = createTronWeb(pkHex);
+  const tw = createTronWebFromPrivateKeyHex(pkHex);
 
   const fromHex = tronUtils.address.toHex(wallet.address);
   const derivedHex = tw.defaultAddress?.hex;
@@ -180,57 +175,11 @@ export async function sweepTronUsdtOne(walletId) {
     return { ok: false, error: "DERIVED_ADDRESS_MISMATCH" };
   }
 
-  await acquireOutboundRpcSlot("TRON");
-  const trxSun = BigInt(await tw.trx.getBalance(wallet.address));
-  if (trxSun < MIN_TRX_SUN_FOR_SWEEP) {
-    return {
-      ok: false,
-      error: "INSUFFICIENT_TRX_FOR_FEE",
-      detail: `Need at least ${MIN_TRX_SUN_FOR_SWEEP} sun TRX on ${wallet.address}; have ${trxSun}`,
-    };
-  }
-
-  const contract = tw.contract(TRC20_ABI, contractAddr);
-  await acquireOutboundRpcSlot("TRON");
-  const balRaw = await contract.balanceOf(wallet.address).call();
-  const amount = rawBalanceToBigInt(balRaw);
-  if (amount <= 0n) {
-    return {
-      ok: true,
-      skipped: true,
-      reason: "zero_usdt_balance",
-      from_address: wallet.address,
-      balance_atomic: amount.toString(),
-    };
-  }
-
-  await acquireOutboundRpcSlot("TRON");
-  let txId;
-  try {
-    txId = await contract.transfer(master, amount.toString()).send({
-      feeLimit: 150_000_000,
-      shouldPollResponse: true,
-    });
-  } catch (e) {
-    logger.error("tron sweep transfer failed", { walletId, err: String(e) });
-    return { ok: false, error: "TRANSFER_FAILED", detail: String(e) };
-  }
-
-  logger.info("tron usdt swept", {
-    walletId,
-    from: wallet.address,
-    to: master,
-    amount: amount.toString(),
-    tx: txId,
-  });
-
-  return {
-    ok: true,
-    tx_hash: typeof txId === "string" ? txId : String(txId),
-    amount_atomic: amount.toString(),
-    from_address: wallet.address,
-    to_address: master,
-  };
+  return sweepTronUsdtTransferFullBalanceFromDepositWallet(
+    wallet,
+    master,
+    contractAddr,
+  );
 }
 
 /**
@@ -293,6 +242,106 @@ export async function sweepTronUsdtAll() {
       skipped,
       failed,
     },
+  };
+}
+
+/**
+ * @param {{ address: string, derivationIndex: number }} wallet
+ * @param {string} contractAddr
+ * @returns {Promise<bigint>}
+ */
+export async function readTronUsdtBalanceAtomicForWallet(wallet, contractAddr) {
+  const pkHex = deriveTronPrivateKeyHex(wallet.derivationIndex, env.mnemonic);
+  const tw = createTronWebFromPrivateKeyHex(pkHex);
+  const contract = tw.contract(TRC20_ABI, contractAddr);
+  await acquireOutboundRpcSlot("TRON");
+  const balRaw = await contract.balanceOf(wallet.address).call();
+  return rawBalanceToBigInt(balRaw);
+}
+
+/**
+ * Full USDT·TRC20 balance from deposit wallet → master (caller must ensure TRX ≥ {@link MIN_TRX_SUN_FOR_SWEEP}).
+ *
+ * @param {{ id: string, address: string, derivationIndex: number }} wallet
+ * @param {string} master
+ * @param {string} contractAddr
+ */
+export async function sweepTronUsdtTransferFullBalanceFromDepositWallet(
+  wallet,
+  master,
+  contractAddr,
+) {
+  const pkHex = deriveTronPrivateKeyHex(wallet.derivationIndex, env.mnemonic);
+  const tw = createTronWebFromPrivateKeyHex(pkHex);
+
+  const fromHex = tronUtils.address.toHex(wallet.address);
+  const derivedHex = tw.defaultAddress?.hex;
+  if (typeof derivedHex !== "string") {
+    logger.error("tron sweep transfer: TronWeb defaultAddress.hex missing", {
+      walletId: wallet.id,
+    });
+    return {
+      ok: false,
+      error: "TRONWEB_ADDRESS_NOT_READY",
+      detail: "TronWeb did not set defaultAddress.hex",
+    };
+  }
+  if (derivedHex.toLowerCase() !== fromHex.toLowerCase()) {
+    logger.error("tron sweep transfer: derived address mismatch", {
+      walletId: wallet.id,
+    });
+    return { ok: false, error: "DERIVED_ADDRESS_MISMATCH" };
+  }
+
+  await acquireOutboundRpcSlot("TRON");
+  const trxSun = BigInt(await tw.trx.getBalance(wallet.address));
+  if (trxSun < MIN_TRX_SUN_FOR_SWEEP) {
+    return {
+      ok: false,
+      error: "INSUFFICIENT_TRX_FOR_FEE",
+      detail: `Need at least ${MIN_TRX_SUN_FOR_SWEEP} sun; have ${trxSun}`,
+    };
+  }
+
+  const contract = tw.contract(TRC20_ABI, contractAddr);
+  await acquireOutboundRpcSlot("TRON");
+  const balRaw = await contract.balanceOf(wallet.address).call();
+  const amount = rawBalanceToBigInt(balRaw);
+  if (amount <= 0n) {
+    return {
+      ok: true,
+      skipped: true,
+      reason: "zero_usdt_balance",
+      balance_atomic: amount.toString(),
+    };
+  }
+
+  await acquireOutboundRpcSlot("TRON");
+  let txId;
+  try {
+    txId = await contract.transfer(master, amount.toString()).send({
+      feeLimit: 150_000_000,
+      shouldPollResponse: true,
+    });
+  } catch (e) {
+    logger.error("tron sweep transfer failed", { walletId: wallet.id, err: String(e) });
+    return { ok: false, error: "TRANSFER_FAILED", detail: String(e) };
+  }
+
+  logger.info("tron usdt swept", {
+    walletId: wallet.id,
+    from: wallet.address,
+    to: master,
+    amount: amount.toString(),
+    tx: txId,
+  });
+
+  return {
+    ok: true,
+    tx_hash: typeof txId === "string" ? txId : String(txId),
+    amount_atomic: amount.toString(),
+    from_address: wallet.address,
+    to_address: master,
   };
 }
 

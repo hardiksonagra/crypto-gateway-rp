@@ -21,7 +21,11 @@ import { parsePageQuery } from "../lib/pagination.js";
 import { generateApiKey, hashApiKey } from "../lib/api-key.js";
 import { encryptMerchantApiKey } from "../lib/merchant-api-key-cipher.js";
 import { logger } from "../lib/logger.js";
-import { env } from "../config/env.js";
+import { re } from "../config/runtime-env.js";
+import {
+  applyAppSettingsPatch,
+  buildAppSettingsAdminList,
+} from "../lib/app-settings-runtime.js";
 import { parseDefaultChainsArray } from "../lib/default-chains.js";
 import { depositRailKey } from "../config/payment-rails.js";
 import {
@@ -29,6 +33,7 @@ import {
   pickMerchantDefaultPair,
 } from "../lib/merchant-default-pair.js";
 import { redeliverPaymentSuccessWebhookAdmin } from "../services/callback-service.js";
+import { refreshAllWalletCachedBalances } from "../services/wallet/wallet-balance-probe.js";
 import {
   listTronUsdtSweepTargets,
   sweepTronUsdtAll,
@@ -85,7 +90,7 @@ async function adminListViewerEnvironment(req) {
 router.get("/api/v1/admin/dashboard", async (req, res) => {
   const listEnv = await adminListViewerEnvironment(req);
   const txEnvWhere = {
-    wallet: { is: { user: { environment: listEnv } } },
+    wallet: { is: { environment: listEnv } },
   };
 
   const [merchants, users, txs, successTxs] = await Promise.all([
@@ -553,7 +558,7 @@ router.patch("/api/v1/admin/merchants/:id", async (req, res) => {
     }
     data.supportedDepositRails = pr.keys;
     nextSupported = pr.keys;
-  } else if (nextSupported.length > 0 && !env.gatewayTronUsdtOnly) {
+  } else if (nextSupported.length > 0 && !re.gatewayTronUsdtOnly) {
     const v = parseSupportedDepositRailsInput(nextSupported, nextChains);
     if ("error" in v) {
       res.status(400).json({ error: v.error });
@@ -803,7 +808,7 @@ router.get("/api/v1/admin/users", async (req, res) => {
       take,
       include: {
         merchant: { select: { id: true, email: true, displayName: true } },
-        _count: { select: { wallets: true } },
+        _count: { select: { assignedWallets: true } },
       },
     }),
   ]);
@@ -817,7 +822,7 @@ router.get("/api/v1/admin/users", async (req, res) => {
       id: u.id,
       external_user_id: u.externalUserId,
       merchant: u.merchant,
-      wallets_count: u._count.wallets,
+      wallets_count: u._count.assignedWallets,
       created_at: u.createdAt,
     })),
   });
@@ -845,27 +850,47 @@ router.get("/api/v1/admin/transactions", async (req, res) => {
       ? req.query.external_user_id.trim()
       : "";
 
-  const walletUserWhere = {
+  const walletIs = {
     environment: listEnv,
     ...(merchantId ? { merchantId } : {}),
-    ...(qExtUser
-      ? {
-          externalUserId: { contains: qExtUser, mode: "insensitive" },
-        }
+    ...(qAddr
+      ? qAddr.startsWith("0x")
+        ? { address: { equals: qAddr, mode: "insensitive" } }
+        : { address: qAddr }
       : {}),
   };
 
   const where = {
-    wallet: {
-      is: {
-        ...(qAddr
-          ? qAddr.startsWith("0x")
-            ? { address: { equals: qAddr, mode: "insensitive" } }
-            : { address: qAddr }
-          : {}),
-        user: walletUserWhere,
-      },
-    },
+    wallet: { is: walletIs },
+    ...(qExtUser
+      ? {
+          OR: [
+            {
+              payerUser: {
+                is: {
+                  externalUserId: { contains: qExtUser, mode: "insensitive" },
+                  ...(merchantId ? { merchantId } : {}),
+                },
+              },
+            },
+            {
+              wallet: {
+                is: {
+                  ...walletIs,
+                  assignedUser: {
+                    is: {
+                      externalUserId: {
+                        contains: qExtUser,
+                        mode: "insensitive",
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          ],
+        }
+      : {}),
     ...(chain && CHAINS.has(chain) ? { chain } : {}),
     ...(status && Object.values(TxStatus).includes(status) ? { status } : {}),
     ...(token ? { tokenSymbol: { equals: token, mode: "insensitive" } } : {}),
@@ -879,15 +904,15 @@ router.get("/api/v1/admin/transactions", async (req, res) => {
       skip,
       take,
       include: {
+        payerUser: {
+          include: {
+            merchant: { select: { id: true, email: true, displayName: true } },
+          },
+        },
         wallet: {
           include: {
-            user: {
-              include: {
-                merchant: {
-                  select: { id: true, email: true, displayName: true },
-                },
-              },
-            },
+            merchant: { select: { id: true, email: true, displayName: true } },
+            assignedUser: { select: { id: true, externalUserId: true } },
           },
         },
       },
@@ -899,34 +924,38 @@ router.get("/api/v1/admin/transactions", async (req, res) => {
     pageSize,
     total,
     viewer_environment: listEnv,
-    transactions: rows.map((t) => ({
-      id: t.id,
-      tx_hash: t.txHash,
-      chain: t.chain,
-      status: t.status,
-      token_symbol: t.tokenSymbol,
-      token_decimals: t.tokenDecimals,
-      amount: t.amount,
-      amount_decimal: formatAtomicAmountString(t.amount, t.tokenDecimals),
-      confirmations: t.confirmations,
-      from_address: t.fromAddress,
-      to_address: t.toAddress,
-      wallet_id: t.walletId,
-      wallet_address: t.wallet.address,
-      currency: t.wallet.currency,
-      network: t.wallet.network,
-      block_number: t.blockNumber?.toString() ?? null,
-      log_index: t.logIndex,
-      callback_delivered_at: t.callbackDeliveredAt,
-      end_user_id: t.wallet.user.id,
-      external_user_id: t.wallet.user.externalUserId,
-      gateway_environment: t.wallet.user.environment,
-      merchant: t.wallet.user.merchant,
-      merchant_id: t.wallet.user.merchant.id,
-      merchant_email: t.wallet.user.merchant.email,
-      created_at: t.createdAt,
-      updated_at: t.updatedAt,
-    })),
+    transactions: rows.map((t) => {
+      const endUser = t.payerUser ?? t.wallet.assignedUser;
+      const merch = t.wallet.merchant;
+      return {
+        id: t.id,
+        tx_hash: t.txHash,
+        chain: t.chain,
+        status: t.status,
+        token_symbol: t.tokenSymbol,
+        token_decimals: t.tokenDecimals,
+        amount: t.amount,
+        amount_decimal: formatAtomicAmountString(t.amount, t.tokenDecimals),
+        confirmations: t.confirmations,
+        from_address: t.fromAddress,
+        to_address: t.toAddress,
+        wallet_id: t.walletId,
+        wallet_address: t.wallet.address,
+        currency: t.wallet.currency,
+        network: t.wallet.network,
+        block_number: t.blockNumber?.toString() ?? null,
+        log_index: t.logIndex,
+        callback_delivered_at: t.callbackDeliveredAt,
+        end_user_id: endUser?.id ?? null,
+        external_user_id: endUser?.externalUserId ?? null,
+        gateway_environment: t.wallet.environment,
+        merchant: merch,
+        merchant_id: merch.id,
+        merchant_email: merch.email,
+        created_at: t.createdAt,
+        updated_at: t.updatedAt,
+      };
+    }),
   });
 });
 
@@ -996,19 +1025,6 @@ router.get("/api/v1/admin/wallets", async (req, res) => {
       ? new Date(req.query.created_to)
       : null;
 
-  const userWhere = {
-    ...(merchantId ? { merchantId } : {}),
-    ...(q
-      ? {
-          OR: [
-            { externalUserId: { contains: q, mode: "insensitive" } },
-            { id: { contains: q, mode: "insensitive" } },
-          ],
-        }
-      : {}),
-  };
-
-  const hasUserScope = merchantId || q;
   /** @type {Record<string, unknown>} */
   const createdAtCond = {};
   if (from && !Number.isNaN(from.getTime())) createdAtCond.gte = from;
@@ -1022,7 +1038,27 @@ router.get("/api/v1/admin/wallets", async (req, res) => {
     Object.prototype.hasOwnProperty.call(createdAtCond, "lte");
 
   const where = {
-    ...(hasUserScope ? { user: userWhere } : {}),
+    ...(merchantId ? { merchantId } : {}),
+    ...(q
+      ? {
+          OR: [
+            { id: { contains: q, mode: "insensitive" } },
+            { address: { contains: q, mode: "insensitive" } },
+            {
+              assignedUser: {
+                is: {
+                  OR: [
+                    {
+                      externalUserId: { contains: q, mode: "insensitive" },
+                    },
+                    { id: { contains: q, mode: "insensitive" } },
+                  ],
+                },
+              },
+            },
+          ],
+        }
+      : {}),
     ...(chain && CHAINS.has(chain) ? { chain } : {}),
     ...(addressQ
       ? {
@@ -1049,11 +1085,8 @@ router.get("/api/v1/admin/wallets", async (req, res) => {
       take,
       include: {
         _count: { select: { transactions: true } },
-        user: {
-          include: {
-            merchant: { select: { id: true, email: true, displayName: true } },
-          },
-        },
+        merchant: { select: { id: true, email: true, displayName: true } },
+        assignedUser: { select: { id: true, externalUserId: true } },
       },
     }),
   ]);
@@ -1077,16 +1110,39 @@ router.get("/api/v1/admin/wallets", async (req, res) => {
         currency: w.currency,
         network: w.network,
         derivation_index: w.derivationIndex,
-        end_user_id: w.user.id,
-        external_user_id: w.user.externalUserId,
-        merchant: w.user.merchant,
+        end_user_id: w.assignedUser?.id ?? null,
+        external_user_id: w.assignedUser?.externalUserId ?? null,
+        merchant: w.merchant,
+        gateway_environment: w.environment,
         created_at: w.createdAt,
         scan_expires_at: exp?.toISOString() ?? null,
         transaction_count: txCount,
         deposit_scan_active,
+        cached_balance_display: w.cachedBalanceDisplay ?? null,
+        cached_balance_atomic: w.cachedBalanceAtomic ?? null,
+        cached_balance_error: w.cachedBalanceError ?? null,
+        cached_balance_updated_at: w.cachedBalanceUpdatedAt?.toISOString() ?? null,
       };
     }),
   });
+});
+
+router.post("/api/v1/admin/wallets/refresh-balances", async (_req, res) => {
+  try {
+    const result = await refreshAllWalletCachedBalances();
+    logger.info("admin_wallet_balances_refreshed", {
+      total: result.total,
+      ok: result.ok,
+      failed: result.failed,
+    });
+    res.json(result);
+  } catch (e) {
+    logger.error("admin_wallet_balances_refresh_failed", { err: String(e) });
+    res.status(500).json({
+      error: "refresh_failed",
+      message: String(e),
+    });
+  }
 });
 
 router.post(
@@ -1509,6 +1565,32 @@ router.post("/api/v1/admin/sweep/all", async (req, res) => {
   } catch (e) {
     logger.error("admin unified sweep all failed", { err: String(e) });
     res.status(500).json({ error: "server_error", message: String(e) });
+  }
+});
+
+router.get("/api/v1/admin/system-settings", (_req, res) => {
+  res.json({ items: buildAppSettingsAdminList() });
+});
+
+router.put("/api/v1/admin/system-settings", async (req, res) => {
+  try {
+    const body = req.body?.settings ?? req.body;
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return res.status(400).json({
+        error: "invalid_body",
+        message: "Expected a settings object keyed by env name.",
+      });
+    }
+    await applyAppSettingsPatch(
+      /** @type {Record<string, string | null | undefined>} */ (body),
+    );
+    res.json({ ok: true, items: buildAppSettingsAdminList() });
+  } catch (e) {
+    logger.error("admin system-settings update failed", { err: String(e) });
+    res.status(400).json({
+      error: "invalid_settings",
+      message: String(e),
+    });
   }
 });
 

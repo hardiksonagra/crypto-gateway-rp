@@ -8,7 +8,7 @@ export async function retryStuckSuccessCallbacks(limit = 30) {
     where: {
       status: TxStatus.success,
       callbackDeliveredAt: null,
-      wallet: { user: { merchant: { callbackUrl: { not: null } } } },
+      wallet: { merchant: { callbackUrl: { not: null } } },
     },
     select: { id: true },
     take: limit,

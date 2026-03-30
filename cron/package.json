@@ -1,0 +1,25 @@
+{
+  "name": "crypto-gateway-cron",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Scheduled jobs (cron) for crypto-gateway — separate from the HTTP API",
+  "main": "src/index.js",
+  "scripts": {
+    "build": "node --check src/index.js && node --check src/run.js && node --check src/services/tracker/worker.js && node --check src/services/wallet-pool/assign-pooled-wallet.js && node --check src/services/wallet-pool/wallet-pool-release.js && node --check src/jobs/index.js && node --check src/jobs/wallet-pool-holds-cron.js && node --check src/jobs/tron-usdt-auto-sweep-cron.js && node --check src/jobs/example-heartbeat.js",
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.5.0",
+    "@ton/core": "^0.63.1",
+    "crypto-payment-gateway": "file:../server",
+    "dotenv": "^16.4.7",
+    "ethers": "^6.13.5",
+    "node-cron": "^3.0.3",
+    "tronweb": "^6.0.2"
+  }
+}

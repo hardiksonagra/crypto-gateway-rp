@@ -1,8 +1,8 @@
 import { Router } from "express";
 import { formatAtomicAmountString } from "../lib/format-atomic-amount.js";
 import { prisma } from "../lib/prisma.js";
-import { env } from "../config/env.js";
-import { createOrGetWallet } from "../services/wallet/wallet-service.js";
+import { re } from "../config/runtime-env.js";
+import { assignPooledWalletForDeposit } from "../services/wallet/wallet-service.js";
 import { logger } from "../lib/logger.js";
 import { resolveMerchantByGatewayApiKey } from "../lib/gateway-merchant-auth.js";
 import { simulateSandboxDeposit } from "../services/payment/sandbox-deposit.js";
@@ -29,7 +29,7 @@ import { walletScanTtlMinutes } from "../lib/wallet-scan.js";
 const router = Router();
 
 function paymentPageBaseUrl() {
-  const raw = env.paymentPagePublicUrl.trim() || env.appPublicUrl;
+  const raw = re.paymentPagePublicUrl.trim() || re.appPublicUrl;
   return String(raw).replace(/\/+$/, "");
 }
 
@@ -68,6 +68,7 @@ router.get("/api/v1/gateway/payment-session/:token", async (req, res) => {
         currency: true,
         network: true,
         scanExpiresAt: true,
+        holdExpiresAt: true,
       },
     });
     if (!w) {
@@ -81,6 +82,7 @@ router.get("/api/v1/gateway/payment-session/:token", async (req, res) => {
       network: w.network,
       deposit_scan_expires_at: w.scanExpiresAt?.toISOString() ?? null,
       deposit_scan_ttl_minutes: walletScanTtlMinutes(),
+      reservation_expires_at: w.holdExpiresAt?.toISOString() ?? null,
       redirect_url: redirectUrl,
     });
   } catch (e) {
@@ -151,7 +153,7 @@ router.post("/api/v1/gateway/deposit-address", async (req, res) => {
       currency = normalizeAssetPart(merchant.defaultCurrency);
       network = normalizeAssetPart(merchant.defaultNetwork);
     }
-    if (env.gatewayTronUsdtOnly && !bodySpecifiedCurrencyNetwork) {
+    if (re.gatewayTronUsdtOnly && !bodySpecifiedCurrencyNetwork) {
       const p = listMerchantSupportedCurrencyPairs(merchant)[0];
       if (p) {
         currency = p.currency;
@@ -246,13 +248,14 @@ router.post("/api/v1/gateway/deposit-address", async (req, res) => {
           });
           created = true;
         }
-        const w = await createOrGetWallet(
-          u.id,
-          rail.chain,
-          rail.currency,
-          rail.network,
-          tx,
-        );
+        const w = await assignPooledWalletForDeposit(tx, {
+          merchantId: merchant.id,
+          environment: gwEnv,
+          userId: u.id,
+          chain: rail.chain,
+          currency: rail.currency,
+          network: rail.network,
+        });
         return { user: u, wallet: w, createdNewUser: created };
       },
     );
@@ -297,6 +300,7 @@ router.post("/api/v1/gateway/deposit-address", async (req, res) => {
       payment_link: `${payBase}/pay/${payToken}`,
       deposit_scan_expires_at: wallet.scanExpiresAt?.toISOString() ?? null,
       deposit_scan_ttl_minutes: walletScanTtlMinutes(),
+      reservation_expires_at: wallet.holdExpiresAt?.toISOString() ?? null,
       redirect_url: redirectUrl,
     });
   } catch (e) {
@@ -363,7 +367,7 @@ router.post("/api/v1/gateway/supported-currency", async (req, res) => {
 
     const pairs = listMerchantSupportedCurrencyPairs(merchant);
     const gwEnv = gatewayEnvironmentFromKeyType(keyType);
-    const defaultPair = env.gatewayTronUsdtOnly ? pairs[0] : null;
+    const defaultPair = re.gatewayTronUsdtOnly ? pairs[0] : null;
     const defaultCurrencyOut = defaultPair
       ? defaultPair.currency
       : normalizeAssetPart(merchant.defaultCurrency);
@@ -506,13 +510,14 @@ router.post("/api/v1/gateway/create-wallet", async (req, res) => {
         where: { id: userId, merchantId: merchant.id, environment: gwEnv },
       });
       if (!u) return null;
-      return createOrGetWallet(
-        u.id,
-        rail.chain,
-        rail.currency,
-        rail.network,
-        tx,
-      );
+      return assignPooledWalletForDeposit(tx, {
+        merchantId: merchant.id,
+        environment: gwEnv,
+        userId: u.id,
+        chain: rail.chain,
+        currency: rail.currency,
+        network: rail.network,
+      });
     });
     if (!wallet) {
       auditGatewayApi(req, {
@@ -628,7 +633,7 @@ router.get("/api/v1/gateway/transactions", async (req, res) => {
         select: {
           currency: true,
           network: true,
-          user: { select: { environment: true } },
+          environment: true,
         },
       },
     },
@@ -652,7 +657,7 @@ router.get("/api/v1/gateway/transactions", async (req, res) => {
       block_number: t.blockNumber?.toString() ?? null,
       created_at: t.createdAt,
       updated_at: t.updatedAt,
-      gateway_environment: t.wallet.user.environment,
+      gateway_environment: t.wallet.environment,
     })),
   });
 });
@@ -693,7 +698,7 @@ router.post("/api/v1/gateway/sandbox/simulate-deposit", async (req, res) => {
       return;
     }
     const { merchant, keyType } = resolved;
-    if (keyType !== "sandbox" && !env.gatewaySandbox) {
+    if (keyType !== "sandbox" && !re.gatewaySandbox) {
       auditGatewayApi(req, {
         action: "simulate_deposit",
         merchantId: merchant.id,

@@ -1,16 +1,25 @@
-import { createApp } from "./app.js";
-import { env } from "./config/env.js";
-import { logger } from "./lib/logger.js";
-import { startBlockchainWorker } from "./services/tracker/worker.js";
+async function main() {
+  const { loadAppSettingsFromDatabase } = await import(
+    "./lib/app-settings-runtime.js",
+  );
+  await loadAppSettingsFromDatabase();
 
-const app = createApp();
+  const { createApp } = await import("./app.js");
+  const { env } = await import("./config/env.js");
+  const { logger } = await import("./lib/logger.js");
 
-app.listen(env.port, () => {
-  logger.info("http listening", { port: env.port });
-});
+  const app = createApp();
 
-if (env.runInlineBlockchainWorker) {
-  startBlockchainWorker();
-} else {
-  logger.info("inline blockchain worker disabled (RUN_BLOCKCHAIN_WORKER=false); use worker-entry.js");
+  app.listen(env.port, () => {
+    logger.info("http listening", { port: env.port });
+  });
+
+  logger.info(
+    "deposit scanner runs in crypto-gateway-cron (`npm run start -w cron` or PM2 crypto-gateway-cron)",
+  );
 }
+
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

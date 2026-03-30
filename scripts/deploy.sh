@@ -8,7 +8,7 @@
 # Prerequisites on the server:
 #   - Node.js >= 20, npm
 #   - PostgreSQL reachable via DATABASE_URL in .env
-#   - Optional: PM2 globally (`npm i -g pm2`) for API + worker
+#   - Optional: PM2 globally (`npm i -g pm2`) for API + cron (deposit scanner)
 #
 # Env (optional):
 #   DEPLOY_GIT_PULL=1     — run `git pull --ff-only` before install (repo must be a git clone)
@@ -67,8 +67,8 @@ fi
 
 if ! command -v pm2 >/dev/null 2>&1; then
   log "PM2 not found — skipping process manager. Install: sudo npm i -g pm2"
-  log "Run API manually: cd $ROOT/server && NODE_ENV=production RUN_BLOCKCHAIN_WORKER=false node src/index.js"
-  log "Run worker:     cd $ROOT/server && NODE_ENV=production node src/worker-entry.js"
+  log "Run API manually:  cd $ROOT/server && NODE_ENV=production node src/index.js"
+  log "Run cron+scanner: cd $ROOT/cron && NODE_ENV=production node src/index.js"
   exit 0
 fi
 

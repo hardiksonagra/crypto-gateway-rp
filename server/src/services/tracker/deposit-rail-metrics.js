@@ -1,5 +1,5 @@
 import { depositRailKey, normalizeAssetPart } from "../../config/payment-rails.js";
-import { env } from "../../config/env.js";
+import { re } from "../../config/runtime-env.js";
 import { logger } from "../../lib/logger.js";
 
 /** Product rails shown first in tick logs (matches gateway USDT/TRX rails). */
@@ -45,7 +45,7 @@ let tickActive = false;
 let tickCounts = new Map();
 
 export function workerRailMetricsEnabled() {
-  const m = env.workerLogRailCounts.toLowerCase();
+  const m = re.workerLogRailCounts.toLowerCase();
   return m === "nonzero" || m === "always";
 }
 
@@ -79,7 +79,7 @@ export function recordNewDepositInsert(currency, network) {
 export function finishWorkerDepositScanTick() {
   if (!workerRailMetricsEnabled()) return;
   tickActive = false;
-  const mode = env.workerLogRailCounts.toLowerCase();
+  const mode = re.workerLogRailCounts.toLowerCase();
 
   const rails = {};
   let total = 0;

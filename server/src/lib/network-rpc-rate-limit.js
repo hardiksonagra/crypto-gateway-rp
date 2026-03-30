@@ -1,4 +1,4 @@
-import { env } from "../config/env.js";
+import { re } from "../config/runtime-env.js";
 
 /**
  * Limits HTTP/RPC calls per upstream “network” (chain/provider bucket) so TronGrid, EVM RPC, etc.
@@ -16,7 +16,7 @@ const timestampsByKey = new Map();
  * @param {RpcBudgetKey} key
  */
 async function waitForSlot(key) {
-  const max = env.outboundRpcMaxPerSecond;
+  const max = re.outboundRpcMaxPerSecond;
   if (max <= 0) return;
 
   while (true) {
@@ -40,7 +40,7 @@ async function waitForSlot(key) {
  * @returns {Promise<void>}
  */
 export async function acquireOutboundRpcSlot(key) {
-  if (env.outboundRpcMaxPerSecond <= 0) return;
+  if (re.outboundRpcMaxPerSecond <= 0) return;
   const prev = tailByKey.get(key) ?? Promise.resolve();
   const done = prev.then(() => waitForSlot(key));
   tailByKey.set(

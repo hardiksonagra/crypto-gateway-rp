@@ -65,10 +65,8 @@ export async function simulateSandboxDeposit(input) {
   const wallet = await prisma.wallet.findFirst({
     where: {
       id: input.walletId,
-      user: {
-        merchantId: input.merchantId,
-        environment: MerchantGatewayEnv.sandbox,
-      },
+      merchantId: input.merchantId,
+      environment: MerchantGatewayEnv.sandbox,
     },
   });
   if (!wallet) {
@@ -87,6 +85,7 @@ export async function simulateSandboxDeposit(input) {
 
   await upsertIncomingTransaction({
     walletId: wallet.id,
+    payerUserId: wallet.assignedUserId ?? undefined,
     currency: wallet.currency,
     network: wallet.network,
     txHash,

@@ -1,5 +1,5 @@
 import { Chain } from "@prisma/client";
-import { env } from "./env.js";
+import { re } from "./runtime-env.js";
 import { nativeSymbolForChain } from "../services/native-symbols.js";
 
 /**
@@ -20,7 +20,7 @@ export const GATEWAY_RAILS = [
  * All (currency, network) rows created per underlying chain for scanner_state (EVM shares one block walk).
  * @type {Partial<Record<import("@prisma/client").Chain, Array<{ currency: string, network: string }>>>}
  */
-/** Only gateway rails; add chains here + worker + migration when you support more. */
+/** Only gateway rails; add chains here + cron tracker + migration when you support more. */
 export const SCANNER_STATE_ROWS_BY_CHAIN = {
   [Chain.ETH]: [{ currency: "USDT", network: "ERC20" }],
   [Chain.BNB]: [{ currency: "USDT", network: "BEP20" }],
@@ -144,7 +144,7 @@ export function walletAcceptsEvmErc20(chain, w, tokenSymbol) {
  * @returns {boolean}
  */
 export function merchantChainAllowsRail(merchant, rail) {
-  if (env.gatewayTronUsdtOnly) {
+  if (re.gatewayTronUsdtOnly) {
     if (
       rail.currency !== "USDT" ||
       rail.network !== "TRC20" ||
@@ -168,7 +168,7 @@ export function merchantChainAllowsRail(merchant, rail) {
  * @returns {Array<{ currency: string, network: string, chain: Chain }>}
  */
 function finalizeMerchantGatewayPairs(pairs) {
-  if (!env.gatewayTronUsdtOnly) return pairs;
+  if (!re.gatewayTronUsdtOnly) return pairs;
   const only = pairs.filter(
     (p) =>
       p.currency === "USDT" &&

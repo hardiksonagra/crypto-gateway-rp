@@ -84,6 +84,11 @@ export const env = {
   /** `0` = no TTL; new wallets get `scan_expires_at` null (always scanned). */
   walletScanTtlMinutes: intEnv("WALLET_SCAN_TTL_MINUTES", 10),
   /**
+   * How long a deposit address stays reserved for one end-user (minutes). Then it re-enters the merchant pool if unpaid.
+   * `0` = reserve until payment success only (no time-based release).
+   */
+  walletAssignmentHoldMinutes: intEnv("WALLET_ASSIGNMENT_HOLD_MINUTES", 10),
+  /**
    * Re-scan expired, zero-tx live wallets on TRON/TON/BTC (address APIs). `0` = off.
    * EVM chains are skipped (forward block cursor cannot recover old missed transfers).
    */
@@ -94,6 +99,14 @@ export const env = {
    * `off` — disable (no extra findUnique per scanned tx).
    */
   workerLogRailCounts: optional("WORKER_LOG_RAIL_COUNTS", "always"),
+  /**
+   * When true (default), `crypto-gateway-cron` deposit scanner runs **TRON only** (native + TRC20 such as USDT).
+   * Set `DEPOSIT_SCANNER_TRON_ONLY=false` to scan EVM (ETH/BNB) and TON on each tick again.
+   */
+  depositScannerTronOnly: (() => {
+    const v = optional("DEPOSIT_SCANNER_TRON_ONLY", "true").toLowerCase();
+    return v !== "false" && v !== "0";
+  })(),
 
   rpcEth: required("RPC_ETH"),
   rpcBnb: required("RPC_BNB"),
@@ -125,6 +138,40 @@ export const env = {
   sweepMasterBtc: optional("SWEEP_MASTER_BTC"),
   sweepMasterSolana: optional("SWEEP_MASTER_SOLANA"),
 
+  /**
+   * Hex private key (no 0x prefix ok) for a hot wallet that sends **native TRX** to deposit addresses
+   * when automated USDT·TRC20 sweep needs fee bandwidth. Must match funds on-chain.
+   */
+  sweepTrxFunderPrivateKey: optional("SWEEP_TRX_FUNDER_PRIVATE_KEY"),
+  /** Optional: expected base58 TRX address for the funder key (sanity check vs derived address). */
+  sweepTrxFunderAddress: optional("SWEEP_TRX_FUNDER_ADDRESS"),
+  /**
+   * Sun to send per top-up when a deposit wallet is short on TRX (actual send is max(this, shortfall+buffer)).
+   * @type {bigint}
+   */
+  sweepTrxTopupSun: (() => {
+    const n = intEnv("SWEEP_TRX_TOPUP_SUN", 15_000_000);
+    return BigInt(Math.max(1, n));
+  })(),
+  /**
+   * Minimum USDT balance (atomic units, 6 decimals) for automated sweep to run. Default 1_000_000 = 1 USDT.
+   * @type {bigint}
+   */
+  sweepTronUsdtMinAtomic: (() => {
+    const raw = process.env.SWEEP_TRON_USDT_MIN_ATOMIC?.trim();
+    if (!raw) return 1_000_000n;
+    try {
+      return BigInt(raw);
+    } catch {
+      return 1_000_000n;
+    }
+  })(),
+  /** When true, cron in `crypto-gateway-cron` runs TRON USDT auto-sweep on schedule. */
+  sweepTronAutoCronEnabled:
+    optional("SWEEP_TRON_AUTO_CRON_ENABLED", "false").toLowerCase() === "true",
+  /** Minutes between automated TRON USDT sweep cron ticks (default 30). */
+  sweepTronAutoCronMinutes: intEnv("SWEEP_TRON_AUTO_CRON_MINUTES", 30),
+
   /** Solana JSON RPC (mainnet-beta by default). */
   solanaRpcUrl: optional("SOLANA_RPC_URL", "https://api.mainnet-beta.solana.com"),
   /** SPL USDT mint (mainnet default). */
@@ -152,19 +199,13 @@ export const env = {
    * Max outbound RPC / explorer HTTP calls per rolling 1s **per network bucket** (EVM_ETH, TRON, …).
    * `0` = disable limiting. Requests wait (queue) instead of returning errors to integrators.
    */
-  outboundRpcMaxPerSecond: intEnv("OUTBOUND_RPC_MAX_PER_SECOND", 5),
+  outboundRpcMaxPerSecond: intEnv("OUTBOUND_RPC_MAX_PER_SECOND", 125),
 
   /**
    * Absolute or cwd-relative path to Vite `client/dist`. If unset, uses monorepo `client/dist` when it exists.
    * When set and the folder exists, Express serves the SPA and `GET /` is the React app (not JSON).
    */
   clientDistPath: clientDistPathResolved,
-
-  /**
-   * When `false`, `src/index.js` does not start the blockchain worker — run `src/worker-entry.js` under PM2 separately.
-   */
-  runInlineBlockchainWorker:
-    optional("RUN_BLOCKCHAIN_WORKER", "true").toLowerCase() !== "false",
 };
 
 export function parseJsonEnv(raw, fallback) {
@@ -176,31 +217,8 @@ export function parseJsonEnv(raw, fallback) {
   }
 }
 
-export function getErc20Contracts() {
-  return parseJsonEnv(optional("ERC20_CONTRACTS", "{}"), {});
-}
-
-const DEFAULT_TRC20_USDT = {
-  TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t: { symbol: "USDT", decimals: 6 },
-};
-
-export function getTrc20Contracts() {
-  const fromEnv = parseJsonEnv(optional("TRC20_CONTRACTS", "{}"), {});
-  return { ...DEFAULT_TRC20_USDT, ...fromEnv };
-}
-
-const DEFAULT_TON_JETTON_USDT = {
-  EQCxE6mUtQJKFnGfaROTKOt1lZbDiiX1kCixRv7Nw2Id_sDs: {
-    symbol: "USDT",
-    decimals: 6,
-  },
-  "0:b113a994b5024a16719f69139328eb759596c38a25f59028b146fecdc3621dfe": {
-    symbol: "USDT",
-    decimals: 6,
-  },
-};
-
-export function getTonJettonContracts() {
-  const fromEnv = parseJsonEnv(optional("TON_JETTON_CONTRACTS", "{}"), {});
-  return { ...DEFAULT_TON_JETTON_USDT, ...fromEnv };
-}
+export {
+  getErc20Contracts,
+  getTrc20Contracts,
+  getTonJettonContracts,
+} from "./runtime-contracts.js";

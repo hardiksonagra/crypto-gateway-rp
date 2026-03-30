@@ -1,6 +1,6 @@
 import { Chain } from "@prisma/client";
 import { Network } from "ethers";
-import { env } from "./env.js";
+import { re } from "./runtime-env.js";
 
 export const EVM_CHAINS = [
   Chain.ETH,
@@ -37,25 +37,25 @@ export function chainToStaticNetwork(chain) {
 export function chainToRpcUrl(chain) {
   switch (chain) {
     case Chain.ETH:
-      return env.rpcEth;
+      return re.rpcEth;
     case Chain.BNB:
-      return env.rpcBnb;
+      return re.rpcBnb;
     case Chain.POLYGON:
-      return env.rpcPolygon;
+      return re.rpcPolygon;
     case Chain.ARBITRUM:
-      return env.rpcArbitrum;
+      return re.rpcArbitrum;
     case Chain.OPTIMISM:
-      return env.rpcOptimism;
+      return re.rpcOptimism;
     default:
       throw new Error(`Not an EVM chain: ${chain}`);
   }
 }
 
 export function confirmationsForChain(chain) {
-  if (isEvmChain(chain)) return env.confirmationsEvm;
-  if (chain === Chain.TRON) return env.confirmationsTron;
-  if (chain === Chain.BTC) return env.confirmationsBtc;
-  if (chain === Chain.TON) return env.confirmationsTon;
-  if (chain === Chain.SOLANA) return env.confirmationsSolana;
-  return env.confirmationsEvm;
+  if (isEvmChain(chain)) return re.confirmationsEvm;
+  if (chain === Chain.TRON) return re.confirmationsTron;
+  if (chain === Chain.BTC) return re.confirmationsBtc;
+  if (chain === Chain.TON) return re.confirmationsTon;
+  if (chain === Chain.SOLANA) return re.confirmationsSolana;
+  return re.confirmationsEvm;
 }
