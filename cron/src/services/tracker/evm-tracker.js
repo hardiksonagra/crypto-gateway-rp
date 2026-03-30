@@ -78,15 +78,6 @@ export async function scanEvmChain(chain, options = {}) {
   const uniqueAddrs = [...new Set(walletRows.map((w) => w.address))];
   recordDepositScanPolledAddresses(chain, uniqueAddrs);
 
-  logger.log({
-    level: "info",
-    message: `EVM ${chain} deposit scan this tick: ${uniqueAddrs.length} wallet address(es) — ${uniqueAddrs.join(", ")}`,
-    event: "evm_addresses_this_tick",
-    chain: String(chain),
-    addresses: uniqueAddrs,
-    address_count: uniqueAddrs.length,
-  });
-
   const byAddr = groupWalletsByNormalizedAddress(chain, walletRows);
 
   const rawErc20 = getErc20Contracts()[chainConfigKey(chain)] ?? {};

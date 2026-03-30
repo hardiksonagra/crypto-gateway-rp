@@ -4,6 +4,8 @@ import { re } from "crypto-payment-gateway/src/config/runtime-env.js";
 import { logger } from "crypto-payment-gateway/src/lib/logger.js";
 import { loadWalletsForChainLateCatchup } from "crypto-payment-gateway/src/services/payment/transaction-upsert.js";
 import {
+  beginDepositScanAddressRound,
+  finishDepositScanAddressRound,
   finishWorkerDepositScanTick,
   startWorkerDepositScanTick,
 } from "crypto-payment-gateway/src/services/tracker/deposit-rail-metrics.js";
@@ -32,6 +34,7 @@ export function stopBlockchainWorker() {
 }
 
 async function runTick() {
+  beginDepositScanAddressRound();
   startWorkerDepositScanTick();
   try {
     if (!re.depositScannerTronOnly) {
@@ -61,6 +64,7 @@ async function runTick() {
     }
   } finally {
     finishWorkerDepositScanTick();
+    finishDepositScanAddressRound();
   }
   try {
     await maybeSweepTick();

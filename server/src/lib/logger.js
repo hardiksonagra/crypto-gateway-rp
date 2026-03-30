@@ -26,20 +26,8 @@ const devConsoleFormat = winston.format.combine(
       return `${ts} ${level}\n${msg}`;
     }
 
-    if (info.event === "tronscan_addresses_this_tick" && msg) {
-      return `${ts} ${level}\n${msg}`;
-    }
-
-    if (info.event === "evm_addresses_this_tick" && msg) {
-      return `${ts} ${level}\n${msg}`;
-    }
-
-    if (info.event === "tronscan_skipped_rail_mismatch" && msg) {
-      return `${ts} ${level}\n${msg}`;
-    }
-
-    if (info.event === "tronscan_fetch_transactions_summary" && msg) {
-      return `${ts} ${level}\n${msg}`;
+    if (info.event === "deposit_scan_addresses" && msg) {
+      return `${ts} ${level} ${msg}`;
     }
 
     if (msg) {
@@ -54,7 +42,8 @@ const devConsoleFormat = winston.format.combine(
         ) {
           continue;
         }
-        if (key === "event" && info.event === "worker_deposit_scan_tick") continue;
+        if (key === "event" && info.event === "worker_deposit_scan_tick")
+          continue;
         const v = info[key];
         if (v === undefined) continue;
         const s =
