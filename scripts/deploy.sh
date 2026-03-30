@@ -75,8 +75,9 @@ fi
 
 # `pm2 reload` often keeps the old exec_mode (e.g. cluster). Delete + start applies
 # ecosystem.config.cjs exactly (fork + instances:1) and fixes EADDRINUSE loops.
+# Remove this project’s PM2 names (incl. legacy single-cron app). Use `npm run pm2:resync` for `pm2 delete all`.
 log "PM2 restart from ecosystem.config.cjs (delete gateway apps, then start)"
-pm2 delete crypto-gateway-api crypto-gateway-worker crypto-gateway-cron-1 crypto-gateway-cron-2 2>/dev/null || true
+pm2 delete crypto-gateway-api crypto-gateway-worker crypto-gateway-cron-1 crypto-gateway-cron-2 crypto-gateway-cron 2>/dev/null || true
 pm2 start ecosystem.config.cjs
 
 pm2 save 2>/dev/null || true

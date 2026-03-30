@@ -13,6 +13,8 @@
  * Local all-in-one (no PM2 split): `npm run start -w cron` → `cron/src/index.js`.
  *
  * Multi-host / React vs API vs Cron: `docs/split-services.md`.
+ *
+ * Fresh PM2 slate: from repo root `npm run pm2:resync` runs `pm2 delete all` then starts these apps only.
  */
 module.exports = {
   apps: [
