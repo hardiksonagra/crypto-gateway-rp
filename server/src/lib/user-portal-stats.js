@@ -1,4 +1,4 @@
-import { Prisma, TxStatus } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { prisma } from "./prisma.js";
 import { formatAtomicAmountString } from "./format-atomic-amount.js";
 
@@ -130,11 +130,14 @@ export async function loadUserAssignmentHistory(userId, limit) {
  */
 export async function loadUserPayerDepositHistory(userId, limit) {
   const capped = Math.min(Math.max(1, Math.floor(limit)), 500);
-  const [totalAll, successAll, rows] = await Promise.all([
-    prisma.transaction.count({ where: { payerUserId: userId } }),
-    prisma.transaction.count({
-      where: { payerUserId: userId, status: TxStatus.success },
-    }),
+  const [countRows, rows] = await Promise.all([
+    prisma.$queryRaw`
+      SELECT
+        COUNT(*)::int AS "total_all",
+        COUNT(*) FILTER (WHERE t.status = 'success')::int AS "success_all"
+      FROM "transactions" t
+      WHERE t.payer_user_id = ${userId}
+    `,
     prisma.transaction.findMany({
       where: { payerUserId: userId },
       orderBy: { createdAt: "desc" },
@@ -152,6 +155,12 @@ export async function loadUserPayerDepositHistory(userId, limit) {
       },
     }),
   ]);
+
+  const agg = /** @type {{ total_all: number, success_all: number }[]} */ (
+    countRows
+  )[0] ?? { total_all: 0, success_all: 0 };
+  const totalAll = agg.total_all;
+  const successAll = agg.success_all;
 
   const events = rows.map((t) => ({
     id: t.id,

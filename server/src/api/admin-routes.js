@@ -103,7 +103,8 @@ router.get("/api/v1/admin/dashboard", async (req, res) => {
     wallet: { is: { environment: listEnv } },
   };
 
-  const [merchants, users, txs, successTxs] = await Promise.all([
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const [merchants, users, txs, successTxs, txs24h] = await Promise.all([
     prisma.adminUser.count({
       where: { role: AdminRole.MERCHANT, deletedAt: null },
     }),
@@ -112,14 +113,13 @@ router.get("/api/v1/admin/dashboard", async (req, res) => {
     prisma.transaction.count({
       where: { ...txEnvWhere, status: TxStatus.success },
     }),
+    prisma.transaction.count({
+      where: {
+        ...txEnvWhere,
+        createdAt: { gte: since },
+      },
+    }),
   ]);
-  const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
-  const txs24h = await prisma.transaction.count({
-    where: {
-      ...txEnvWhere,
-      createdAt: { gte: since },
-    },
-  });
   res.json({
     viewer_environment: listEnv,
     merchants,

@@ -197,6 +197,8 @@ model Transaction {
   @@index([toAddress, chain])
   @@index([status])
   @@index([payerUserId])
+  /// List txs per wallet (portal, gateway) ordered by time.
+  @@index([walletId, createdAt(sort: Desc)])
   @@map("transactions")
 }
 

@@ -608,24 +608,19 @@ router.get("/api/v1/gateway/transactions", async (req, res) => {
     typeof req.query.network === "string" ? req.query.network : "",
   );
 
-  const wallets = await prisma.wallet.findMany({
-    where: {
-      ...(address.startsWith("0x")
-        ? { address: { equals: address, mode: "insensitive" } }
-        : { address }),
-      ...(currencyF && networkF
-        ? { currency: currencyF, network: networkF }
-        : {}),
-    },
-    select: { id: true },
-  });
-  if (wallets.length === 0) {
-    res.json({ transactions: [] });
-    return;
-  }
+  const walletAddressFilter = address.startsWith("0x")
+    ? { equals: address, mode: "insensitive" }
+    : address;
 
   const txs = await prisma.transaction.findMany({
-    where: { walletId: { in: wallets.map((w) => w.id) } },
+    where: {
+      wallet: {
+        address: walletAddressFilter,
+        ...(currencyF && networkF
+          ? { currency: currencyF, network: networkF }
+          : {}),
+      },
+    },
     orderBy: { createdAt: "desc" },
     take: 200,
     include: {

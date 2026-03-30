@@ -31,23 +31,11 @@ export async function upsertIncomingTransaction(input) {
     logIndex: input.logIndex,
   };
 
-  let hadRowBefore = false;
-  if (
-    workerRailMetricsEnabled() &&
-    input.currency != null &&
-    input.network != null
-  ) {
-    const hit = await prisma.transaction.findUnique({
-      where: { tx_dedupe: dedupe },
-      select: { id: true },
-    });
-    hadRowBefore = Boolean(hit);
-  }
-
   const prior = await prisma.transaction.findUnique({
     where: { tx_dedupe: dedupe },
     select: { id: true, status: true, callbackDeliveredAt: true },
   });
+  const hadRowBefore = Boolean(prior);
 
   let payerUserIdForCreate = input.payerUserId ?? null;
   if (!hadRowBefore && payerUserIdForCreate == null) {

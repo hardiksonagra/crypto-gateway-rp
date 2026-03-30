@@ -119,20 +119,20 @@ router.get("/api/v1/merchant/dashboard", async (req, res) => {
   }
   const { environment } = gate;
 
-  const balances = await computeMerchantBalances(mid, environment);
   const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-  const recent = await prisma.transaction.findMany({
-    where: {
-      wallet: { merchantId: mid, environment },
-      createdAt: { gte: since },
-    },
-    orderBy: { createdAt: "desc" },
-    take: 8,
-    include: {
-      wallet: { select: { address: true } },
-    },
-  });
-  const [users, txs] = await Promise.all([
+  const [balances, recent, users, txs] = await Promise.all([
+    computeMerchantBalances(mid, environment),
+    prisma.transaction.findMany({
+      where: {
+        wallet: { merchantId: mid, environment },
+        createdAt: { gte: since },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 8,
+      include: {
+        wallet: { select: { address: true } },
+      },
+    }),
     prisma.user.count({ where: { merchantId: mid, environment } }),
     prisma.transaction.count({
       where: { wallet: { merchantId: mid, environment } },
