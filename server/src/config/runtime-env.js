@@ -131,6 +131,12 @@ export const re = {
     );
   },
 
+  get logTronscanWalletFetch() {
+    return getResolvedBool("LOG_TRONSCAN_WALLET_FETCH", () =>
+      env.logTronscanWalletFetch,
+    );
+  },
+
   get rpcEth() {
     return getResolvedString("RPC_ETH", () => env.rpcEth);
   },

@@ -47,6 +47,18 @@ function tronscanHostForLog() {
   }
 }
 
+/** PM2 visibility: log immediately before each TronScan HTTP request for this wallet. */
+function maybeLogTronscanWalletFetch(rail, address) {
+  if (!re.logTronscanWalletFetch) return;
+  logger.info("tronscan_wallet_fetch", {
+    event: "tronscan_wallet_fetch",
+    rail,
+    address,
+    note: "TronScan request (wallet incoming-tx poll)",
+    tronscan_host: tronscanHostForLog(),
+  });
+}
+
 function buildTrc20Lookup(cfg) {
   const map = new Map();
   for (const [k, meta] of Object.entries(cfg)) {
@@ -164,6 +176,7 @@ async function ingestTrxViaTronscan(base, address, targets, chain) {
   let data = {};
   try {
     await acquireOutboundRpcSlot("TRON");
+    maybeLogTronscanWalletFetch("TRON_TRX", address);
     const res = await fetch(url, { headers: getTronscanFetchHeaders() });
     const text = await res.text();
     try {
@@ -256,6 +269,7 @@ async function ingestTrc20ViaTronscan(base, address, targets, chain, trc20Map) {
   let data = {};
   try {
     await acquireOutboundRpcSlot("TRON");
+    maybeLogTronscanWalletFetch("TRON_TRC20", address);
     const res = await fetch(url, { headers: getTronscanFetchHeaders() });
     const text = await res.text();
     try {

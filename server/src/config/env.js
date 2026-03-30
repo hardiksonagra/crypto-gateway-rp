@@ -102,7 +102,8 @@ export const env = {
    */
   lateDepositRecheckHours: intEnv("LATE_DEPOSIT_RECHECK_HOURS", 6),
   /**
-   * Per worker tick: log counts of **new** `transactions` rows inserted, by deposit rail (CURRENCY|NETWORK).
+   * Per worker tick: log counts of **new** `transactions` rows inserted, by deposit rail (CURRENCY|NETWORK),
+   * plus **which on-chain addresses** were polled for incoming tx (see `polled_addresses_by_chain` / `message`).
    * `nonzero` — log only when at least one new row this tick. `always` — every tick (includes zeros).
    * `off` — disable (no extra findUnique per scanned tx).
    */
@@ -114,6 +115,14 @@ export const env = {
   depositScannerTronOnly: (() => {
     const v = optional("DEPOSIT_SCANNER_TRON_ONLY", "true").toLowerCase();
     return v !== "false" && v !== "0";
+  })(),
+  /**
+   * When true, worker logs `tronscan_wallet_fetch` (info) for **each** TronScan HTTP call (TRX + TRC20 per address).
+   * Default off (busy PM2); set `LOG_TRONSCAN_WALLET_FETCH=true` to confirm TronScan is being hit per wallet.
+   */
+  logTronscanWalletFetch: (() => {
+    const v = optional("LOG_TRONSCAN_WALLET_FETCH", "false").toLowerCase();
+    return v === "true" || v === "1" || v === "yes";
   })(),
 
   rpcEth: required("RPC_ETH"),

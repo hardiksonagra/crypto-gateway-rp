@@ -139,13 +139,20 @@ export const APP_SETTING_DEFINITIONS = [
   },
   {
     key: "WORKER_LOG_RAIL_COUNTS",
-    label: "Worker rail count logs (off / nonzero / always)",
+    label:
+      "Worker deposit tick logs: rail counts + polled wallet addresses (off / nonzero / always)",
     category: "Scanner / worker",
     type: "string",
   },
   {
     key: "DEPOSIT_SCANNER_TRON_ONLY",
     label: "Deposit scanner: TRON only (skip EVM + TON ticks)",
+    category: "Scanner / worker",
+    type: "bool",
+  },
+  {
+    key: "LOG_TRONSCAN_WALLET_FETCH",
+    label: "Log each TronScan wallet fetch in PM2 (info)",
     category: "Scanner / worker",
     type: "bool",
   },
