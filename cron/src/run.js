@@ -28,7 +28,7 @@ function shutdown(signal) {
       /* ignore */
     }
   }
-  logger.info("crypto-gateway-cron shutdown", {
+  logger.info("crypto-gateway-cron-combined shutdown", {
     signal,
     cronTasksStopped: tasks.length,
   });
@@ -38,7 +38,7 @@ function shutdown(signal) {
 process.on("SIGINT", () => shutdown("SIGINT"));
 process.on("SIGTERM", () => shutdown("SIGTERM"));
 
-logger.info("crypto-gateway-cron: ready", {
+logger.info("crypto-gateway-cron-combined: ready", {
   nodeCronTasks: tasks.length,
-  note: "blockchain poll uses WORKER_POLL_INTERVAL_MS from server env",
+  note: "blockchain poll uses WORKER_POLL_INTERVAL_MS; PM2 uses split worker + cron-1 + cron-2",
 });

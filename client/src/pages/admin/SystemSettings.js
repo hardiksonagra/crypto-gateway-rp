@@ -170,8 +170,11 @@ export default function SystemSettings() {
         Values here override the API / cron process environment for the keys listed below. Bootstrap
         secrets (database URL, mnemonic, JWT secret, encryption key, TRX funder private key) stay in{" "}
         <span className="font-mono text-white/80">.env</span> only. The running API reloads overrides
-        on save; restart the <span className="font-mono text-white/80">crypto-gateway-cron</span>{" "}
-        process if you change scanner poll interval or other cron-only behavior.
+        on save; restart PM2{" "}
+        <span className="font-mono text-white/80">crypto-gateway-worker</span> /{" "}
+        <span className="font-mono text-white/80">crypto-gateway-cron-1</span> /{" "}
+        <span className="font-mono text-white/80">crypto-gateway-cron-2</span> if you change scanner
+        poll interval or other cron-only behavior.
       </p>
 
       <div className="glass mt-8 w-full rounded-2xl p-6 lg:p-8">

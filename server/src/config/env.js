@@ -100,7 +100,7 @@ export const env = {
    */
   workerLogRailCounts: optional("WORKER_LOG_RAIL_COUNTS", "always"),
   /**
-   * When true (default), `crypto-gateway-cron` deposit scanner runs **TRON only** (native + TRC20 such as USDT).
+   * When true (default), PM2 `crypto-gateway-worker` deposit scanner runs **TRON only** (native + TRC20 such as USDT).
    * Set `DEPOSIT_SCANNER_TRON_ONLY=false` to scan EVM (ETH/BNB) and TON on each tick again.
    */
   depositScannerTronOnly: (() => {
@@ -166,7 +166,7 @@ export const env = {
       return 1_000_000n;
     }
   })(),
-  /** When true, cron in `crypto-gateway-cron` runs TRON USDT auto-sweep on schedule. */
+  /** When true, PM2 `crypto-gateway-cron-2` runs TRON USDT auto-sweep on schedule. */
   sweepTronAutoCronEnabled:
     optional("SWEEP_TRON_AUTO_CRON_ENABLED", "false").toLowerCase() === "true",
   /** Minutes between automated TRON USDT sweep cron ticks (default 30). */

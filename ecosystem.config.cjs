@@ -1,14 +1,18 @@
 /**
- * PM2 deploy from monorepo root (after `npm run build` + Prisma migrate + generate).
+ * PM2 from monorepo root (after `npm run build` + Prisma migrate + generate).
  *
- * Prereqs: `.env` at repo root or `server/.env` with DATABASE_URL, JWT_SECRET, MNEMONIC, RPC_*, etc.
+ * Apps:
+ * - `crypto-gateway-api` — HTTP + static client (no timers).
+ * - `crypto-gateway-worker` — deposit / transaction tracker (`WORKER_POLL_INTERVAL_MS`).
+ * - `crypto-gateway-cron-1` — maintenance schedules (example heartbeat, wallet-pool holds).
+ * - `crypto-gateway-cron-2` — TRON USDT auto-sweep (and similar heavy jobs).
  *
- * - API (`crypto-gateway-api`): HTTP + React static (`client/dist` when present). No timers.
- * - Cron (`crypto-gateway-cron`): **all** scheduled/timer work in **one** process (`cron/src/run.js`):
- *   - Deposit / transaction tracker: `startBlockchainWorker()` (`WORKER_POLL_INTERVAL_MS`)
- *   - `node-cron` jobs from `cron/src/jobs/index.js`: example heartbeat, wallet-pool expired holds, TRON USDT auto-sweep
+ * Add another process: copy the cron-2 block, add `jobs/group3.js`, `run-cron-3.js`, `entry-cron-3.js`,
+ * register jobs in the new group only (do not duplicate jobs across processes).
  *
- * `pm2 start ecosystem.config.cjs` starts both apps; you do **not** need a separate PM2 app per cron expression.
+ * Local all-in-one (no PM2 split): `npm run start -w cron` → `cron/src/index.js`.
+ *
+ * Multi-host / React vs API vs Cron: `docs/split-services.md`.
  */
 module.exports = {
   apps: [
@@ -17,21 +21,18 @@ module.exports = {
       cwd: "./server",
       script: "src/index.js",
       interpreter: "node",
-      // Fork: cluster mode + this app caused EADDRINUSE on PORT; reload does not always switch exec_mode.
       exec_mode: "fork",
       instances: 1,
       autorestart: true,
       max_memory_restart: "600M",
       env: {
         NODE_ENV: "production",
-        // Optional override if `client/dist` is not next to this repo layout:
-        // CLIENT_DIST_PATH: "/var/www/crypto-gateway/client/dist",
       },
     },
     {
-      name: "crypto-gateway-cron",
+      name: "crypto-gateway-worker",
       cwd: "./cron",
-      script: "src/index.js",
+      script: "src/entry-worker.js",
       interpreter: "node",
       exec_mode: "fork",
       instances: 1,
@@ -41,5 +42,42 @@ module.exports = {
         NODE_ENV: "production",
       },
     },
+    {
+      name: "crypto-gateway-cron-1",
+      cwd: "./cron",
+      script: "src/entry-cron-1.js",
+      interpreter: "node",
+      exec_mode: "fork",
+      instances: 1,
+      autorestart: true,
+      max_memory_restart: "400M",
+      env: {
+        NODE_ENV: "production",
+      },
+    },
+    {
+      name: "crypto-gateway-cron-2",
+      cwd: "./cron",
+      script: "src/entry-cron-2.js",
+      interpreter: "node",
+      exec_mode: "fork",
+      instances: 1,
+      autorestart: true,
+      max_memory_restart: "400M",
+      env: {
+        NODE_ENV: "production",
+      },
+    },
+    // {
+    //   name: "crypto-gateway-cron-3",
+    //   cwd: "./cron",
+    //   script: "src/entry-cron-3.js",
+    //   interpreter: "node",
+    //   exec_mode: "fork",
+    //   instances: 1,
+    //   autorestart: true,
+    //   max_memory_restart: "400M",
+    //   env: { NODE_ENV: "production" },
+    // },
   ],
 };

@@ -3,6 +3,7 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
+  "description": "React portal; set VITE_API_ORIGIN to API URL when API is on another host (see ../docs/split-services.md)",
   "scripts": {
     "dev": "vite",
     "build": "vite build",

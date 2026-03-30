@@ -1,15 +1,12 @@
-import { registerExampleHeartbeat } from "./example-heartbeat.js";
-import { registerTronUsdtAutoSweep } from "./tron-usdt-auto-sweep-cron.js";
-import { registerWalletPoolExpiredHolds } from "./wallet-pool-holds-cron.js";
+import { registerCronGroup1 } from "./group1.js";
+import { registerCronGroup2 } from "./group2.js";
 
 /**
- * Wire all cron jobs here. Each job module calls `schedule()` from this package’s runner.
- * All `node-cron` schedules run only in the **crypto-gateway-cron** Node process (see `ecosystem.config.cjs`).
+ * All scheduled jobs (combined process). Split groups: `group1.js` / `group2.js` + PM2 apps.
  *
- * @param {{ schedule: (expression: string, handler: () => void, options?: object) => import('node-cron').ScheduledTask }} ctx
+ * @param {{ schedule: (expression: string, handler: () => void, options?: object) => import("node-cron").ScheduledTask }} ctx
  */
 export function registerJobs(ctx) {
-  registerExampleHeartbeat(ctx);
-  registerWalletPoolExpiredHolds(ctx);
-  registerTronUsdtAutoSweep(ctx);
+  registerCronGroup1(ctx);
+  registerCronGroup2(ctx);
 }

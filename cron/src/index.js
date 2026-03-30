@@ -1,15 +1,8 @@
-import dotenv from "dotenv";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
+/**
+ * All-in-one: worker + every cron group (local dev / single process).
+ * Production PM2: use `entry-worker.js`, `entry-cron-1.js`, `entry-cron-2.js` instead.
+ */
+import { bootstrapCronRuntime } from "./bootstrap-runtime.js";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
-/** Must run before any `crypto-payment-gateway` import (loads server `env`). */
-dotenv.config({ path: path.resolve(__dirname, "../../.env") });
-dotenv.config({ path: path.resolve(__dirname, "../.env") });
-
-const { loadAppSettingsFromDatabase } = await import(
-  "crypto-payment-gateway/src/lib/app-settings-runtime.js",
-);
-await loadAppSettingsFromDatabase();
+await bootstrapCronRuntime();
 await import("./run.js");

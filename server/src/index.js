@@ -15,7 +15,7 @@ async function main() {
   });
 
   logger.info(
-    "deposit scanner runs in crypto-gateway-cron (`npm run start -w cron` or PM2 crypto-gateway-cron)",
+    "deposit scanner runs in PM2 crypto-gateway-worker (`npm run start:worker -w cron` or ecosystem.config.cjs)",
   );
 }
 

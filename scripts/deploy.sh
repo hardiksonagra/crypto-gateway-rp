@@ -68,16 +68,17 @@ fi
 if ! command -v pm2 >/dev/null 2>&1; then
   log "PM2 not found — skipping process manager. Install: sudo npm i -g pm2"
   log "Run API manually:  cd $ROOT/server && NODE_ENV=production node src/index.js"
-  log "Run cron+scanner: cd $ROOT/cron && NODE_ENV=production node src/index.js"
+  log "Run worker: cd $ROOT/cron && NODE_ENV=production node src/entry-worker.js"
+  log "Run crons:   cd $ROOT/cron && NODE_ENV=production node src/entry-cron-1.js  # and entry-cron-2.js"
   exit 0
 fi
 
 # `pm2 reload` often keeps the old exec_mode (e.g. cluster). Delete + start applies
 # ecosystem.config.cjs exactly (fork + instances:1) and fixes EADDRINUSE loops.
 log "PM2 restart from ecosystem.config.cjs (delete gateway apps, then start)"
-pm2 delete crypto-gateway-api crypto-gateway-cron 2>/dev/null || true
+pm2 delete crypto-gateway-api crypto-gateway-worker crypto-gateway-cron-1 crypto-gateway-cron-2 2>/dev/null || true
 pm2 start ecosystem.config.cjs
 
 pm2 save 2>/dev/null || true
 
-log "Done. Check: pm2 status (crypto-gateway-api + crypto-gateway-cron online) && pm2 logs crypto-gateway-api --lines 50"
+log "Done. Check: pm2 status (api + worker + cron-1 + cron-2 online) && pm2 logs crypto-gateway-api --lines 50"
