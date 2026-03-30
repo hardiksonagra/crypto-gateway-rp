@@ -87,13 +87,11 @@ export function createApp() {
         cb(null, false);
       },
       credentials: true,
-      methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-      allowedHeaders: [
-        "Content-Type",
-        "Authorization",
-        "Accept",
-        "X-Requested-With",
-      ],
+      // Must include GET/HEAD: requests with `Authorization` are not “simple” and trigger a
+      // preflight; browsers require the actual method (e.g. GET for /auth/me) in Allow-Methods.
+      methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+      // Omit allowedHeaders so the `cors` package mirrors `Access-Control-Request-Headers`
+      // (avoids preflight failures when browsers/extensions add extra request headers).
       maxAge: 86_400,
     }),
   );
