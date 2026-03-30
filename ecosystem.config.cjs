@@ -4,10 +4,10 @@
  * Apps:
  * - `crypto-gateway-api` — HTTP + static client (no timers).
  * - `crypto-gateway-worker` — deposit / transaction tracker (`WORKER_POLL_INTERVAL_MS`).
- * - `crypto-gateway-cron-1` — maintenance schedules (example heartbeat, wallet-pool holds).
- * - `crypto-gateway-cron-2` — TRON USDT auto-sweep (and similar heavy jobs).
+ * - `crypto-gateway-cron-maintenance` — example heartbeat + wallet-pool expired holds.
+ * - `crypto-gateway-cron-tron-sweep` — TRON USDT auto-sweep (and similar chain-heavy jobs).
  *
- * Add another process: copy the cron-2 block, add `jobs/group3.js`, `run-cron-3.js`, `entry-cron-3.js`,
+ * Add another process: copy the tron-sweep block, add `jobs/group3.js`, `run-cron-3.js`, `entry-cron-3.js`,
  * register jobs in the new group only (do not duplicate jobs across processes).
  *
  * Local all-in-one (no PM2 split): `npm run start -w cron` → `cron/src/index.js`.
@@ -45,7 +45,7 @@ module.exports = {
       },
     },
     {
-      name: "crypto-gateway-cron-1",
+      name: "crypto-gateway-cron-maintenance",
       cwd: "./cron",
       script: "src/entry-cron-1.js",
       interpreter: "node",
@@ -58,7 +58,7 @@ module.exports = {
       },
     },
     {
-      name: "crypto-gateway-cron-2",
+      name: "crypto-gateway-cron-tron-sweep",
       cwd: "./cron",
       script: "src/entry-cron-2.js",
       interpreter: "node",
@@ -71,7 +71,7 @@ module.exports = {
       },
     },
     // {
-    //   name: "crypto-gateway-cron-3",
+    //   name: "crypto-gateway-cron-your-feature",
     //   cwd: "./cron",
     //   script: "src/entry-cron-3.js",
     //   interpreter: "node",

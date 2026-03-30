@@ -9,7 +9,7 @@ export function registerExampleHeartbeat(ctx) {
   const opts = process.env.CRON_TZ ? { timezone: process.env.CRON_TZ } : undefined;
   ctx.schedule("*/5 * * * *", () => {
     console.info(
-      "crypto-gateway-cron-1: example heartbeat (set CRON_EXAMPLE_HEARTBEAT=false to disable)",
+      "crypto-gateway-cron-maintenance: example heartbeat (set CRON_EXAMPLE_HEARTBEAT=false to disable)",
     );
   }, opts);
 }

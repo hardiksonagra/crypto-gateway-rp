@@ -18,7 +18,7 @@ export async function releaseWalletAfterDepositSuccess(walletId) {
 
 /**
  * Clear stale pool assignments whose hold TTL passed (no successful deposit path cleared them yet).
- * Runs on a schedule in **crypto-gateway-cron-1** only.
+ * Runs on a schedule in **crypto-gateway-cron-maintenance** only.
  *
  * @returns {Promise<number>} rows updated
  */

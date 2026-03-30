@@ -14,8 +14,8 @@ flowchart LR
   end
   subgraph cronHost [Cron server]
     W[Worker]
-    C1[Cron-1]
-    C2[Cron-2]
+    C1[cron-maintenance]
+    C2[cron-tron-sweep]
   end
   DB[(PostgreSQL)]
 
@@ -63,11 +63,11 @@ npm run pm2:resync   # or pm2 start ecosystem.config.cjs
 
 - Today `cron` depends on **`crypto-payment-gateway` via `file:../server`** in `cron/package.json`. On a **dedicated cron VM** you can still clone the **full monorepo** and run only PM2 entries for worker/cron, **or** later replace that dependency with a **private npm package** or `git+ssh` URL pointing at the server package.
 - Env: same DB and chain-related variables as production API (copy the relevant keys). `cron/src/bootstrap-runtime.js` loads repo-root `.env` if present, then `cron/.env` (later values override earlier ones).
-- Processes: `node cron/src/entry-worker.js`, `entry-cron-1.js`, `entry-cron-2.js` (or `npm run start:worker -w cron`, etc. from root).
+- Processes: `entry-worker.js`, `entry-cron-1.js` (maintenance), `entry-cron-2.js` (tron sweep), or `npm run start:cron:maintenance -w cron`, `start:cron:tron-sweep`, `start:worker -w cron`.
 
 ## Adding another cron group (PM2)
 
-See comments in `ecosystem.config.cjs`: add `jobs/group3.js`, `run-cron-3.js`, `entry-cron-3.js`, uncomment the PM2 app, and add the new name to `pm2:resync` / `deploy.sh` delete list.
+See comments in `ecosystem.config.cjs`: add `jobs/group3.js`, `run-cron-3.js`, `entry-cron-3.js`, uncomment the PM2 app with a **descriptive** `name`, and add that name to `pm2:stop` / `deploy.sh` delete lists (optional for `pm2:resync` which uses `delete all`).
 
 ## Checklist before going multi-host
 

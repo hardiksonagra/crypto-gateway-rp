@@ -172,9 +172,9 @@ export default function SystemSettings() {
         <span className="font-mono text-white/80">.env</span> only. The running API reloads overrides
         on save; restart PM2{" "}
         <span className="font-mono text-white/80">crypto-gateway-worker</span> /{" "}
-        <span className="font-mono text-white/80">crypto-gateway-cron-1</span> /{" "}
-        <span className="font-mono text-white/80">crypto-gateway-cron-2</span> if you change scanner
-        poll interval or other cron-only behavior.
+        <span className="font-mono text-white/80">crypto-gateway-cron-maintenance</span> /{" "}
+        <span className="font-mono text-white/80">crypto-gateway-cron-tron-sweep</span> if you change
+        scanner poll interval or other cron-only behavior.
       </p>
 
       <div className="glass mt-8 w-full rounded-2xl p-6 lg:p-8">

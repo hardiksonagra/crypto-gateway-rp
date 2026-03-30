@@ -166,7 +166,7 @@ export const env = {
       return 1_000_000n;
     }
   })(),
-  /** When true, PM2 `crypto-gateway-cron-2` runs TRON USDT auto-sweep on schedule. */
+  /** When true, PM2 `crypto-gateway-cron-tron-sweep` runs TRON USDT auto-sweep on schedule. */
   sweepTronAutoCronEnabled:
     optional("SWEEP_TRON_AUTO_CRON_ENABLED", "false").toLowerCase() === "true",
   /** Minutes between automated TRON USDT sweep cron ticks (default 30). */

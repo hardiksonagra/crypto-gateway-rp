@@ -2,7 +2,7 @@ import { registerExampleHeartbeat } from "./example-heartbeat.js";
 import { registerWalletPoolExpiredHolds } from "./wallet-pool-holds-cron.js";
 
 /**
- * PM2 `crypto-gateway-cron-1` — maintenance-style schedules.
+ * PM2 `crypto-gateway-cron-maintenance` — heartbeat + wallet-pool holds.
  *
  * @param {{ schedule: (expression: string, handler: () => void, options?: object) => import("node-cron").ScheduledTask }} ctx
  */
