@@ -200,8 +200,6 @@ function envFallbackString(key) {
       return env.workerLogRailCounts;
     case "DEPOSIT_SCANNER_TRON_ONLY":
       return env.depositScannerTronOnly ? "true" : "false";
-    case "LOG_TRONSCAN_WALLET_FETCH":
-      return env.logTronscanWalletFetch ? "true" : "false";
     case "RPC_ETH":
       return env.rpcEth;
     case "RPC_BNB":

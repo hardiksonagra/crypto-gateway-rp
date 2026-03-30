@@ -150,12 +150,6 @@ export const APP_SETTING_DEFINITIONS = [
     category: "Scanner / worker",
     type: "bool",
   },
-  {
-    key: "LOG_TRONSCAN_WALLET_FETCH",
-    label: "Log each TronScan wallet fetch in PM2 (info)",
-    category: "Scanner / worker",
-    type: "bool",
-  },
 
   {
     key: "RPC_ETH",

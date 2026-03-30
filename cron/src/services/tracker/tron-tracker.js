@@ -7,7 +7,9 @@ import { logger } from "crypto-payment-gateway/src/lib/logger.js";
 import { acquireOutboundRpcSlot } from "crypto-payment-gateway/src/lib/network-rpc-rate-limit.js";
 import {
   getTronscanFetchHeaders,
+  logTronscanAddressHistoryRequest,
   tronFullNodeHostnameForLog,
+  tronscanApiHostnameForLog,
 } from "crypto-payment-gateway/src/lib/tron-node-client.js";
 import {
   nativeDecimalsForChain,
@@ -37,26 +39,6 @@ function tronGroupKey(address) {
   } catch {
     return address;
   }
-}
-
-function tronscanHostForLog() {
-  try {
-    return new URL(re.tronscanApiBase.replace(/\/$/, "")).hostname;
-  } catch {
-    return "tronscan_base_invalid";
-  }
-}
-
-/** PM2 visibility: log immediately before each TronScan HTTP request for this wallet. */
-function maybeLogTronscanWalletFetch(rail, address) {
-  if (!re.logTronscanWalletFetch) return;
-  logger.info("tronscan_wallet_fetch", {
-    event: "tronscan_wallet_fetch",
-    rail,
-    address,
-    note: "TronScan request (wallet incoming-tx poll)",
-    tronscan_host: tronscanHostForLog(),
-  });
 }
 
 function buildTrc20Lookup(cfg) {
@@ -176,7 +158,10 @@ async function ingestTrxViaTronscan(base, address, targets, chain) {
   let data = {};
   try {
     await acquireOutboundRpcSlot("TRON");
-    maybeLogTronscanWalletFetch("TRON_TRX", address);
+    logTronscanAddressHistoryRequest({
+      address,
+      kind: "TRX_TRANSFER",
+    });
     const res = await fetch(url, { headers: getTronscanFetchHeaders() });
     const text = await res.text();
     try {
@@ -188,7 +173,7 @@ async function ingestTrxViaTronscan(base, address, targets, chain) {
         address,
         request_url: url,
         httpStatus: res.status,
-        tronscan_host: tronscanHostForLog(),
+        tronscan_host: tronscanApiHostnameForLog(),
         tron_full_node_host: tronFullNodeHostnameForLog(),
         body_preview: text.slice(0, 400),
       });
@@ -201,7 +186,7 @@ async function ingestTrxViaTronscan(base, address, targets, chain) {
         address,
         request_url: url,
         httpStatus: res.status,
-        tronscan_host: tronscanHostForLog(),
+        tronscan_host: tronscanApiHostnameForLog(),
         tron_full_node_host: tronFullNodeHostnameForLog(),
         body_preview: text.slice(0, 400),
       });
@@ -213,7 +198,7 @@ async function ingestTrxViaTronscan(base, address, targets, chain) {
       rail: "TRON_TRX",
       address,
       request_url: url,
-      tronscan_host: tronscanHostForLog(),
+      tronscan_host: tronscanApiHostnameForLog(),
       tron_full_node_host: tronFullNodeHostnameForLog(),
       err: String(e),
     });
@@ -269,7 +254,10 @@ async function ingestTrc20ViaTronscan(base, address, targets, chain, trc20Map) {
   let data = {};
   try {
     await acquireOutboundRpcSlot("TRON");
-    maybeLogTronscanWalletFetch("TRON_TRC20", address);
+    logTronscanAddressHistoryRequest({
+      address,
+      kind: "TRC20_USDT_TRANSFER",
+    });
     const res = await fetch(url, { headers: getTronscanFetchHeaders() });
     const text = await res.text();
     try {
@@ -281,7 +269,7 @@ async function ingestTrc20ViaTronscan(base, address, targets, chain, trc20Map) {
         address,
         request_url: url,
         httpStatus: res.status,
-        tronscan_host: tronscanHostForLog(),
+        tronscan_host: tronscanApiHostnameForLog(),
         tron_full_node_host: tronFullNodeHostnameForLog(),
         body_preview: text.slice(0, 400),
       });
@@ -294,7 +282,7 @@ async function ingestTrc20ViaTronscan(base, address, targets, chain, trc20Map) {
         address,
         request_url: url,
         httpStatus: res.status,
-        tronscan_host: tronscanHostForLog(),
+        tronscan_host: tronscanApiHostnameForLog(),
         tron_full_node_host: tronFullNodeHostnameForLog(),
         body_preview: text.slice(0, 400),
       });
@@ -306,7 +294,7 @@ async function ingestTrc20ViaTronscan(base, address, targets, chain, trc20Map) {
       rail: "TRON_TRC20",
       address,
       request_url: url,
-      tronscan_host: tronscanHostForLog(),
+      tronscan_host: tronscanApiHostnameForLog(),
       tron_full_node_host: tronFullNodeHostnameForLog(),
       err: String(e),
     });

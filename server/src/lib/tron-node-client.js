@@ -1,5 +1,6 @@
 import { TronWeb } from "tronweb";
 import { re } from "../config/runtime-env.js";
+import { logger } from "./logger.js";
 
 /** TronWeb / wallet sweep base — no `/jsonrpc/` suffix. */
 export function getTronFullNodeBase() {
@@ -21,6 +22,33 @@ export function getTronscanFetchHeaders() {
     h["TRON-PRO-API-KEY"] = re.tronscanApiKey.trim();
   }
   return h;
+}
+
+/** Hostname for TronScan API logs (no path / secrets). */
+export function tronscanApiHostnameForLog() {
+  try {
+    return new URL(re.tronscanApiBase.replace(/\/$/, "")).hostname;
+  } catch {
+    return "tronscan_base_invalid";
+  }
+}
+
+/**
+ * Call immediately before any TronScan HTTP request that loads transfer / history for an address.
+ * @param {{ address: string, kind: string }} opts kind e.g. `TRX_TRANSFER` | `TRC20_USDT_TRANSFER`
+ */
+export function logTronscanAddressHistoryRequest(opts) {
+  const address = String(opts.address ?? "").trim();
+  const kind = String(opts.kind ?? "unknown");
+  const msg = address
+    ? `TronScan address history fetch: ${address} (${kind})`
+    : `TronScan address history fetch (${kind})`;
+  logger.info(msg, {
+    event: "tronscan_address_history_request",
+    address: address || undefined,
+    kind,
+    tronscan_host: tronscanApiHostnameForLog(),
+  });
 }
 
 /**
