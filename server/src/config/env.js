@@ -115,11 +115,10 @@ export const env = {
   rpcOptimism: required("RPC_OPTIMISM"),
 
   tronFullNode: optional("TRON_FULL_NODE", "https://api.trongrid.io"),
-  /**
-   * Base URL for TronGrid-style REST only: `GET /v1/accounts/{addr}/transactions` and `/trc20`.
-   * QuickNode full-node hosts often do not expose `/v1`; leave empty to use `TRON_FULL_NODE`, or set e.g. `https://api.trongrid.io`.
-   */
-  tronAccountApiBase: optional("TRON_ACCOUNT_API_BASE", ""),
+  /** TronScan HTTP API base (deposit tracker). Docs: https://docs.tronscan.org */
+  tronscanApiBase: optional("TRONSCAN_API_BASE", "https://apilist.tronscanapi.com"),
+  /** Required for deposit scanner rate limits; header `TRON-PRO-API-KEY` (TronScan dashboard). */
+  tronscanApiKey: optional("TRONSCAN_API_KEY", ""),
   tronSolidityNode: optional("TRON_SOLIDITY_NODE", "https://api.trongrid.io"),
   tronEventServer: optional("TRON_EVENT_SERVER", "https://api.trongrid.io"),
   tronApiKey: optional("TRON_API_KEY"),

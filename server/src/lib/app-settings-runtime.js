@@ -210,8 +210,10 @@ function envFallbackString(key) {
       return env.rpcOptimism;
     case "TRON_FULL_NODE":
       return env.tronFullNode;
-    case "TRON_ACCOUNT_API_BASE":
-      return env.tronAccountApiBase ?? "";
+    case "TRONSCAN_API_BASE":
+      return env.tronscanApiBase ?? "";
+    case "TRONSCAN_API_KEY":
+      return env.tronscanApiKey ?? "";
     case "TRON_SOLIDITY_NODE":
       return env.tronSolidityNode;
     case "TRON_EVENT_SERVER":

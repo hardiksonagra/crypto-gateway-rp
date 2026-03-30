@@ -149,25 +149,15 @@ export const re = {
     return getResolvedString("TRON_FULL_NODE", () => env.tronFullNode);
   },
 
-  /**
-   * Base for `GET /v1/accounts/{addr}/transactions` (deposit scanner).
-   * QuickNode full-node URLs do not expose `/v1`; when unset and `TRON_FULL_NODE` looks like QuickNode,
-   * defaults to public TronGrid for history only (TronWeb/sweep still use `tronFullNode`).
-   */
-  get tronAccountApiBase() {
-    const raw = getResolvedString("TRON_ACCOUNT_API_BASE", () =>
-      env.tronAccountApiBase ?? "",
-    );
-    const t = String(raw).trim();
-    if (t) return t.replace(/\/$/, "");
-    const fullNode = getResolvedString("TRON_FULL_NODE", () => env.tronFullNode).replace(
+  get tronscanApiBase() {
+    return getResolvedString("TRONSCAN_API_BASE", () => env.tronscanApiBase).replace(
       /\/$/,
       "",
     );
-    if (/quicknode\.pro/i.test(fullNode)) {
-      return "https://api.trongrid.io";
-    }
-    return fullNode;
+  },
+
+  get tronscanApiKey() {
+    return getResolvedString("TRONSCAN_API_KEY", () => env.tronscanApiKey ?? "");
   },
 
   get tronSolidityNode() {

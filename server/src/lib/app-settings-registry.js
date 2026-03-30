@@ -182,10 +182,17 @@ export const APP_SETTING_DEFINITIONS = [
     type: "string",
   },
   {
-    key: "TRON_ACCOUNT_API_BASE",
-    label: "TRON account history API base (TronGrid /v1; optional)",
+    key: "TRONSCAN_API_BASE",
+    label: "TronScan API base URL (deposit tracker)",
     category: "TRON",
     type: "string",
+  },
+  {
+    key: "TRONSCAN_API_KEY",
+    label: "TronScan API key (TRON-PRO-API-KEY header for tracker)",
+    category: "TRON",
+    type: "string",
+    sensitive: true,
   },
   {
     key: "TRON_SOLIDITY_NODE",

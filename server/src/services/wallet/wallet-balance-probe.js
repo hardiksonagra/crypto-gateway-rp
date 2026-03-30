@@ -1,6 +1,5 @@
 import { Chain } from "@prisma/client";
 import { Contract, JsonRpcProvider } from "ethers";
-import { TronWeb } from "tronweb";
 import { getAssociatedTokenAddressSync, getAccount, TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import { Connection, PublicKey } from "@solana/web3.js";
 import { getErc20Contracts } from "../../config/env.js";
@@ -16,21 +15,15 @@ import {
 } from "../../lib/network-rpc-rate-limit.js";
 import { postgresChainEnumHasSolana } from "../../lib/postgres-chain-enum-solana.js";
 import {
+  createReadOnlyTronWeb,
+  tronFullNodeHostnameForLog,
+} from "../../lib/tron-node-client.js";
+import {
   pickUsdtTrc20Contract,
   readTronUsdtBalanceAtomicForWallet,
 } from "../sweep/tron-usdt-sweep.js";
 
 const EVM_ERC20_ABI = ["function balanceOf(address account) view returns (uint256)"];
-
-/**
- * @returns {import("tronweb").TronWeb}
- */
-function createReadOnlyTronWeb() {
-  return new TronWeb({
-    fullHost: re.tronFullNode.replace(/\/$/, ""),
-    headers: re.tronApiKey ? { "TRON-PRO-API-KEY": re.tronApiKey } : {},
-  });
-}
 
 /**
  * @param {import("@prisma/client").Chain} chain
@@ -161,13 +154,22 @@ export async function probeWalletOnChainBalance(w) {
       error: "balance_probe_unsupported_rail",
     };
   } catch (e) {
-    logger.warn("wallet_balance_probe_failed", {
+    const base = {
+      event: "wallet_balance_probe_failed",
       walletId: w.id,
       chain: w.chain,
       currency: w.currency,
       network: w.network,
+      address: w.address,
       err: String(e),
-    });
+    };
+    if (w.chain === Chain.TRON) {
+      Object.assign(base, {
+        tron_full_node_host: tronFullNodeHostnameForLog(),
+        note: "same TronWeb fullHost+headers as tron tracker JSON-RPC probe / sweep",
+      });
+    }
+    logger.error("wallet_balance_probe_failed", base);
     return {
       display: null,
       atomic: null,

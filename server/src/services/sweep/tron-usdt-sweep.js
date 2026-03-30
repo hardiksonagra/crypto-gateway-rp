@@ -6,6 +6,10 @@ import { re } from "../../config/runtime-env.js";
 import { prisma } from "../../lib/prisma.js";
 import { logger } from "../../lib/logger.js";
 import { acquireOutboundRpcSlot } from "../../lib/network-rpc-rate-limit.js";
+import {
+  getTronFullNodeBase,
+  getTronProgApiKeyHeaders,
+} from "../../lib/tron-node-client.js";
 import { deriveTronPrivateKeyHex } from "../wallet/tron-wallet.js";
 
 /** Minimal ERC20 ABI for balance + transfer (TRC20). TronWeb ≥6 expects `stateMutability` on each function. */
@@ -34,20 +38,12 @@ const TRC20_ABI = [
 /** Rough minimum TRX (sun) so a TRC20 transfer can burn bandwidth/energy. */
 export const MIN_TRX_SUN_FOR_SWEEP = 12_000_000n;
 
-function tronHost() {
-  return re.tronFullNode.replace(/\/$/, "");
-}
-
-function tronHeaders() {
-  return re.tronApiKey ? { "TRON-PRO-API-KEY": re.tronApiKey } : {};
-}
-
 /** @param {string} privateKeyHex */
 export function createTronWebFromPrivateKeyHex(privateKeyHex) {
   const pk = privateKeyHex.replace(/^0x/i, "");
   return new TronWeb({
-    fullHost: tronHost(),
-    headers: tronHeaders(),
+    fullHost: getTronFullNodeBase(),
+    headers: getTronProgApiKeyHeaders(),
     privateKey: pk,
   });
 }

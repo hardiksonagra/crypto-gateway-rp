@@ -6,6 +6,10 @@ import { re } from "crypto-payment-gateway/src/config/runtime-env.js";
 import { logger } from "crypto-payment-gateway/src/lib/logger.js";
 import { acquireOutboundRpcSlot } from "crypto-payment-gateway/src/lib/network-rpc-rate-limit.js";
 import {
+  getTronscanFetchHeaders,
+  tronFullNodeHostnameForLog,
+} from "crypto-payment-gateway/src/lib/tron-node-client.js";
+import {
   nativeDecimalsForChain,
   nativeSymbolForChain,
 } from "crypto-payment-gateway/src/services/native-symbols.js";
@@ -13,6 +17,10 @@ import {
   loadWalletsForChain,
   upsertIncomingTransaction,
 } from "crypto-payment-gateway/src/services/payment/transaction-upsert.js";
+import { pickUsdtTrc20Contract } from "crypto-payment-gateway/src/services/sweep/tron-usdt-sweep.js";
+
+/** @type {boolean} */
+let loggedMissingTronscanKey = false;
 
 function tronAddrEq(a, b) {
   try {
@@ -30,19 +38,11 @@ function tronGroupKey(address) {
   }
 }
 
-function tronHeaders() {
-  const h = { "Content-Type": "application/json" };
-  if (re.tronApiKey) h["TRON-PRO-API-KEY"] = re.tronApiKey;
-  return h;
-}
-
-/** Safe host for logs (no path token). */
-function tronRestApiHostForLog() {
+function tronscanHostForLog() {
   try {
-    const u = new URL(re.tronAccountApiBase.replace(/\/$/, ""));
-    return u.hostname;
+    return new URL(re.tronscanApiBase.replace(/\/$/, "")).hostname;
   } catch {
-    return "tron_rest_base_invalid";
+    return "tronscan_base_invalid";
   }
 }
 
@@ -72,6 +72,43 @@ function lookupTrc20Meta(map, contract) {
   }
 }
 
+function transferListRows(data) {
+  if (Array.isArray(data)) return data;
+  return data?.data ?? [];
+}
+
+function trc20TransferListRows(data) {
+  if (Array.isArray(data)) return data;
+  return data?.token_transfers ?? data?.data ?? [];
+}
+
+function rowToAddress(row) {
+  return String(row.to_address ?? row.transferToAddress ?? row.transfer_to_address ?? "");
+}
+
+function rowFromAddress(row) {
+  return String(row.from_address ?? row.transferFromAddress ?? row.transfer_from_address ?? "");
+}
+
+function rowTxId(row) {
+  return String(row.transaction_id ?? row.hash ?? row.txID ?? "").trim();
+}
+
+function rowTrxAmountSun(row) {
+  const raw = row.amount ?? row.quant ?? row.amount_str;
+  if (raw === undefined || raw === null) return null;
+  const n = typeof raw === "number" ? raw : Number(String(raw).trim());
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/** After `token=_` TRX filter; skip obvious TRC10 rows if present. */
+function rowLooksLikeTrx(row) {
+  const abbr = row.token_abbr ?? row.tokenInfo?.token_abbr ?? row.token_id;
+  if (abbr === undefined || abbr === null || abbr === "") return true;
+  const s = String(abbr).toLowerCase();
+  return s === "trx" || s === "_";
+}
+
 /**
  * @param {{ wallets?: Array<{ id: string, address: string, currency: string, network: string }> }} [options]
  */
@@ -81,7 +118,18 @@ export async function scanTronChain(options = {}) {
     options.wallets ?? (await loadWalletsForChain(chain));
   if (wallets.length === 0) return;
 
-  const base = re.tronAccountApiBase.replace(/\/$/, "");
+  if (!re.tronscanApiKey?.trim()) {
+    if (!loggedMissingTronscanKey) {
+      loggedMissingTronscanKey = true;
+      logger.error("tronscan_api_key_missing", {
+        event: "tronscan_api_key_missing",
+        note: "Set TRONSCAN_API_KEY in .env or Admin → System settings (TronScan dashboard API key).",
+      });
+    }
+    return;
+  }
+
+  const base = re.tronscanApiBase.replace(/\/$/, "");
   const trc20Map = buildTrc20Lookup(getTrc20Contracts());
 
   const byHex = new Map();
@@ -96,181 +144,167 @@ export async function scanTronChain(options = {}) {
     const trxTargets = group.filter((w) => w.currency === "TRX" && w.network === "TRON");
     const usdtTargets = group.filter((w) => w.currency === "USDT" && w.network === "TRC20");
     if (trxTargets.length) {
-      await ingestTrxForTargets(base, address, trxTargets, chain);
+      await ingestTrxViaTronscan(base, address, trxTargets, chain);
     }
     if (usdtTargets.length) {
-      await ingestTrc20ForTargets(base, address, usdtTargets, chain, trc20Map);
+      await ingestTrc20ViaTronscan(base, address, usdtTargets, chain, trc20Map);
     }
   }
 }
 
 /**
- * @param {string} base
- * @param {string} address
- * @param {Array<{ id: string }>} targets
- * @param {import("@prisma/client").Chain} chain
+ * TronScan: TRX transfers for account (`token=_` = TRX only per TronScan API doc #13).
  */
-async function ingestTrxForTargets(base, address, targets, chain) {
-  const url = `${base}/v1/accounts/${address}/transactions?only_confirmed=true&limit=50`;
+async function ingestTrxViaTronscan(base, address, targets, chain) {
+  const url = `${base}/api/transfer?sort=-timestamp&limit=50&start=0&count=false&token=_&address=${encodeURIComponent(address)}`;
   let data = {};
   try {
     await acquireOutboundRpcSlot("TRON");
-    const res = await fetch(url, { headers: tronHeaders() });
+    const res = await fetch(url, { headers: getTronscanFetchHeaders() });
     const text = await res.text();
     try {
       data = JSON.parse(text);
     } catch {
-      logger.error("tron_trx_rest_non_json", {
-        event: "tron_trx_rest_non_json",
+      logger.error("tronscan_trx_non_json", {
+        event: "tronscan_trx_non_json",
         rail: "TRON_TRX",
         address,
         request_url: url,
         httpStatus: res.status,
-        tron_rest_host: tronRestApiHostForLog(),
+        tronscan_host: tronscanHostForLog(),
+        tron_full_node_host: tronFullNodeHostnameForLog(),
         body_preview: text.slice(0, 400),
       });
       return;
     }
     if (!res.ok) {
-      logger.error("tron_trx_rest_http_error", {
-        event: "tron_trx_rest_http_error",
+      logger.error("tronscan_trx_http_error", {
+        event: "tronscan_trx_http_error",
         rail: "TRON_TRX",
         address,
         request_url: url,
         httpStatus: res.status,
-        tron_rest_host: tronRestApiHostForLog(),
+        tronscan_host: tronscanHostForLog(),
+        tron_full_node_host: tronFullNodeHostnameForLog(),
         body_preview: text.slice(0, 400),
       });
       return;
     }
-    if (data.success === false) {
-      logger.error("tron_trx_rest_api_error", {
-        event: "tron_trx_rest_api_error",
-        rail: "TRON_TRX",
-        address,
-        request_url: url,
-        tron_rest_host: tronRestApiHostForLog(),
-        api_error: data.error,
-      });
-      return;
-    }
   } catch (e) {
-    logger.error("tron_trx_rest_fetch_failed", {
-      event: "tron_trx_rest_fetch_failed",
+    logger.error("tronscan_trx_fetch_failed", {
+      event: "tronscan_trx_fetch_failed",
       rail: "TRON_TRX",
       address,
       request_url: url,
-      tron_rest_host: tronRestApiHostForLog(),
+      tronscan_host: tronscanHostForLog(),
+      tron_full_node_host: tronFullNodeHostnameForLog(),
       err: String(e),
     });
     return;
   }
 
-  const list = data.data ?? [];
-  for (const tx of list) {
-    const txid = tx.txID;
-    if (!txid) continue;
-    const contracts = tx.raw_data?.contract ?? [];
-    for (const c of contracts) {
-      if (c.type !== "TransferContract") continue;
-      const v = c.parameter?.value;
-      const amt = v?.amount;
-      if (!v?.to_address || amt === undefined || amt === null || amt === "" || Number(amt) <= 0) {
-        continue;
-      }
-      if (!tronAddrEq(String(v.to_address), address)) continue;
+  for (const row of transferListRows(data)) {
+    const to = rowToAddress(row);
+    const from = rowFromAddress(row);
+    const txid = rowTxId(row);
+    const sun = rowTrxAmountSun(row);
+    if (!to || !txid || sun === null) continue;
+    if (!tronAddrEq(to, address)) continue;
+    if (!rowLooksLikeTrx(row)) continue;
 
-      for (const w of targets) {
-        await upsertIncomingTransaction({
-          walletId: w.id,
-          currency: w.currency,
-          network: w.network,
-          txHash: txid,
-          fromAddress: v.owner_address ?? "",
-          toAddress: address,
-          amount: String(amt),
-          tokenSymbol: nativeSymbolForChain(chain),
-          tokenDecimals: nativeDecimalsForChain(chain),
-          chain,
-          confirmations: confirmationsForChain(chain),
-          blockNumber: null,
-          logIndex: -1,
-        });
-      }
+    for (const w of targets) {
+      await upsertIncomingTransaction({
+        walletId: w.id,
+        currency: w.currency,
+        network: w.network,
+        txHash: txid,
+        fromAddress: from,
+        toAddress: address,
+        amount: String(Math.trunc(sun)),
+        tokenSymbol: nativeSymbolForChain(chain),
+        tokenDecimals: nativeDecimalsForChain(chain),
+        chain,
+        confirmations: confirmationsForChain(chain),
+        blockNumber: null,
+        logIndex: -1,
+      });
     }
   }
 }
 
 /**
- * @param {string} base
- * @param {string} address
- * @param {Array<{ id: string }>} targets
- * @param {import("@prisma/client").Chain} chain
- * @param {Map<string, { symbol: string, decimals: number }>} trc20Map
+ * TronScan: TRC20 transfers for contract + related account.
  */
-async function ingestTrc20ForTargets(base, address, targets, chain, trc20Map) {
-  const url = `${base}/v1/accounts/${address}/transactions/trc20?only_confirmed=true&limit=50`;
+async function ingestTrc20ViaTronscan(base, address, targets, chain, trc20Map) {
+  let usdtContract;
+  try {
+    usdtContract = pickUsdtTrc20Contract();
+  } catch {
+    logger.error("tronscan_trc20_no_usdt_contract", {
+      event: "tronscan_trc20_no_usdt_contract",
+      address,
+      note: "Configure USDT TRC20 in env / app settings (TRC20 contracts map).",
+    });
+    return;
+  }
+
+  const url = `${base}/api/token_trc20/transfers?limit=50&start=0&contract_address=${encodeURIComponent(usdtContract)}&relatedAddress=${encodeURIComponent(address)}&confirm=true`;
   let data = {};
   try {
     await acquireOutboundRpcSlot("TRON");
-    const res = await fetch(url, { headers: tronHeaders() });
+    const res = await fetch(url, { headers: getTronscanFetchHeaders() });
     const text = await res.text();
     try {
       data = JSON.parse(text);
     } catch {
-      logger.error("tron_trc20_rest_non_json", {
-        event: "tron_trc20_rest_non_json",
+      logger.error("tronscan_trc20_non_json", {
+        event: "tronscan_trc20_non_json",
         rail: "TRON_TRC20",
         address,
         request_url: url,
         httpStatus: res.status,
-        tron_rest_host: tronRestApiHostForLog(),
+        tronscan_host: tronscanHostForLog(),
+        tron_full_node_host: tronFullNodeHostnameForLog(),
         body_preview: text.slice(0, 400),
       });
       return;
     }
     if (!res.ok) {
-      logger.error("tron_trc20_rest_http_error", {
-        event: "tron_trc20_rest_http_error",
+      logger.error("tronscan_trc20_http_error", {
+        event: "tronscan_trc20_http_error",
         rail: "TRON_TRC20",
         address,
         request_url: url,
         httpStatus: res.status,
-        tron_rest_host: tronRestApiHostForLog(),
+        tronscan_host: tronscanHostForLog(),
+        tron_full_node_host: tronFullNodeHostnameForLog(),
         body_preview: text.slice(0, 400),
       });
       return;
     }
-    if (data.success === false) {
-      logger.error("tron_trc20_rest_api_error", {
-        event: "tron_trc20_rest_api_error",
-        rail: "TRON_TRC20",
-        address,
-        request_url: url,
-        tron_rest_host: tronRestApiHostForLog(),
-        api_error: data.error,
-      });
-      return;
-    }
   } catch (e) {
-    logger.error("tron_trc20_rest_fetch_failed", {
-      event: "tron_trc20_rest_fetch_failed",
+    logger.error("tronscan_trc20_fetch_failed", {
+      event: "tronscan_trc20_fetch_failed",
       rail: "TRON_TRC20",
       address,
       request_url: url,
-      tron_rest_host: tronRestApiHostForLog(),
+      tronscan_host: tronscanHostForLog(),
+      tron_full_node_host: tronFullNodeHostnameForLog(),
       err: String(e),
     });
     return;
   }
 
-  for (const row of data.data ?? []) {
-    const txid = row.transaction_id;
-    if (!txid || !row.to || !row.value) continue;
-    if (!tronAddrEq(String(row.to), address)) continue;
-    const contract = row.token_info?.address;
+  for (const row of trc20TransferListRows(data)) {
+    const to = rowToAddress(row);
+    const from = rowFromAddress(row);
+    const txid = rowTxId(row);
+    const val = row.quant ?? row.value ?? row.amount;
+    const contract = row.contract_address ?? row.token_info?.contract_address ?? row.tokenInfo?.address;
+    if (!to || !txid || val === undefined || val === null) continue;
+    if (!tronAddrEq(to, address)) continue;
     if (!contract) continue;
-    const cfg = lookupTrc20Meta(trc20Map, contract);
+    const cfg = lookupTrc20Meta(trc20Map, String(contract));
     if (!cfg) continue;
     if (String(cfg.symbol).toUpperCase() !== "USDT") continue;
 
@@ -280,11 +314,11 @@ async function ingestTrc20ForTargets(base, address, targets, chain, trc20Map) {
         currency: w.currency,
         network: w.network,
         txHash: txid,
-        fromAddress: row.from ?? "",
+        fromAddress: from,
         toAddress: address,
-        amount: row.value,
+        amount: String(val),
         tokenSymbol: cfg.symbol,
-        tokenDecimals: row.token_info?.decimals ?? cfg.decimals,
+        tokenDecimals: row.token_info?.decimals ?? row.tokenInfo?.decimals ?? cfg.decimals,
         chain,
         confirmations: confirmationsForChain(chain),
         blockNumber: null,

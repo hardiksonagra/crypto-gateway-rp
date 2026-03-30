@@ -6,24 +6,20 @@ import { re } from "../../config/runtime-env.js";
 import { prisma } from "../../lib/prisma.js";
 import { logger } from "../../lib/logger.js";
 import { acquireOutboundRpcSlot } from "../../lib/network-rpc-rate-limit.js";
+import {
+  getTronFullNodeBase,
+  getTronProgApiKeyHeaders,
+} from "../../lib/tron-node-client.js";
 import { deriveTronPrivateKeyHex } from "../wallet/tron-wallet.js";
 
 /** Keep this much TRX (sun) on the deposit account after sweep for future fees / rent. */
 const TRX_RESERVE_SUN = 2_000_000;
 
-function tronHost() {
-  return re.tronFullNode.replace(/\/$/, "");
-}
-
-function tronHeaders() {
-  return re.tronApiKey ? { "TRON-PRO-API-KEY": re.tronApiKey } : {};
-}
-
 function createTronWeb(privateKeyHex) {
   const pk = privateKeyHex.replace(/^0x/i, "");
   return new TronWeb({
-    fullHost: tronHost(),
-    headers: tronHeaders(),
+    fullHost: getTronFullNodeBase(),
+    headers: getTronProgApiKeyHeaders(),
     privateKey: pk,
   });
 }

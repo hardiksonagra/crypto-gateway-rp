@@ -8,9 +8,14 @@ import {
 startBlockchainWorker();
 logger.info("blockchain deposit / transaction tracker started (worker process)", {
   note: "poll interval: WORKER_POLL_INTERVAL_MS",
-  tron_deposit_scan_uses_v1_base: re.tronAccountApiBase.includes("trongrid.io")
-    ? "api.trongrid.io"
-    : "same_as_TRON_FULL_NODE_or_TRON_ACCOUNT_API_BASE",
+  tron_deposit_scan: "tronscan",
+  tronscan_host: (() => {
+    try {
+      return new URL(re.tronscanApiBase.replace(/\/$/, "")).hostname;
+    } catch {
+      return "invalid";
+    }
+  })(),
 });
 
 function shutdown(signal) {
