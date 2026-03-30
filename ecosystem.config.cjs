@@ -17,6 +17,8 @@ module.exports = {
       cwd: "./server",
       script: "src/index.js",
       interpreter: "node",
+      // Fork: cluster mode + this app caused EADDRINUSE on PORT; reload does not always switch exec_mode.
+      exec_mode: "fork",
       instances: 1,
       autorestart: true,
       max_memory_restart: "600M",
@@ -31,6 +33,7 @@ module.exports = {
       cwd: "./cron",
       script: "src/index.js",
       interpreter: "node",
+      exec_mode: "fork",
       instances: 1,
       autorestart: true,
       max_memory_restart: "500M",

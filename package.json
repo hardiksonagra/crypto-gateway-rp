@@ -11,6 +11,7 @@
     "dev:stack": "concurrently \"npm run dev -w server\" \"npm run dev -w client\" \"npm run dev -w cron\"",
     "build": "npm run build -w server && npm run build -w client && npm run build -w cron",
     "pm2:start": "pm2 start ecosystem.config.cjs",
+    "pm2:resync": "pm2 delete crypto-gateway-api crypto-gateway-cron 2>/dev/null; pm2 start ecosystem.config.cjs && pm2 save",
     "pm2:stop": "pm2 delete crypto-gateway-api crypto-gateway-cron",
     "prisma:generate": "npm run prisma:generate -w server",
     "prisma:migrate": "npm run prisma:migrate -w server",

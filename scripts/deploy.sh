@@ -72,12 +72,11 @@ if ! command -v pm2 >/dev/null 2>&1; then
   exit 0
 fi
 
-log "PM2 reload or start (ecosystem.config.cjs)"
-if pm2 describe crypto-gateway-api >/dev/null 2>&1; then
-  pm2 reload ecosystem.config.cjs --update-env
-else
-  pm2 start ecosystem.config.cjs
-fi
+# `pm2 reload` often keeps the old exec_mode (e.g. cluster). Delete + start applies
+# ecosystem.config.cjs exactly (fork + instances:1) and fixes EADDRINUSE loops.
+log "PM2 restart from ecosystem.config.cjs (delete gateway apps, then start)"
+pm2 delete crypto-gateway-api crypto-gateway-cron 2>/dev/null || true
+pm2 start ecosystem.config.cjs
 
 pm2 save 2>/dev/null || true
 
