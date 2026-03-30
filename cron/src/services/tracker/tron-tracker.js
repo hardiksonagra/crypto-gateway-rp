@@ -124,6 +124,7 @@ async function ingestTrxForTargets(base, address, targets, chain) {
         event: "tron_trx_rest_non_json",
         rail: "TRON_TRX",
         address,
+        request_url: url,
         httpStatus: res.status,
         tron_rest_host: tronRestApiHostForLog(),
         body_preview: text.slice(0, 400),
@@ -135,6 +136,7 @@ async function ingestTrxForTargets(base, address, targets, chain) {
         event: "tron_trx_rest_http_error",
         rail: "TRON_TRX",
         address,
+        request_url: url,
         httpStatus: res.status,
         tron_rest_host: tronRestApiHostForLog(),
         body_preview: text.slice(0, 400),
@@ -146,6 +148,7 @@ async function ingestTrxForTargets(base, address, targets, chain) {
         event: "tron_trx_rest_api_error",
         rail: "TRON_TRX",
         address,
+        request_url: url,
         tron_rest_host: tronRestApiHostForLog(),
         api_error: data.error,
       });
@@ -156,6 +159,7 @@ async function ingestTrxForTargets(base, address, targets, chain) {
       event: "tron_trx_rest_fetch_failed",
       rail: "TRON_TRX",
       address,
+      request_url: url,
       tron_rest_host: tronRestApiHostForLog(),
       err: String(e),
     });
@@ -218,6 +222,7 @@ async function ingestTrc20ForTargets(base, address, targets, chain, trc20Map) {
         event: "tron_trc20_rest_non_json",
         rail: "TRON_TRC20",
         address,
+        request_url: url,
         httpStatus: res.status,
         tron_rest_host: tronRestApiHostForLog(),
         body_preview: text.slice(0, 400),
@@ -229,6 +234,7 @@ async function ingestTrc20ForTargets(base, address, targets, chain, trc20Map) {
         event: "tron_trc20_rest_http_error",
         rail: "TRON_TRC20",
         address,
+        request_url: url,
         httpStatus: res.status,
         tron_rest_host: tronRestApiHostForLog(),
         body_preview: text.slice(0, 400),
@@ -240,6 +246,7 @@ async function ingestTrc20ForTargets(base, address, targets, chain, trc20Map) {
         event: "tron_trc20_rest_api_error",
         rail: "TRON_TRC20",
         address,
+        request_url: url,
         tron_rest_host: tronRestApiHostForLog(),
         api_error: data.error,
       });
@@ -250,6 +257,7 @@ async function ingestTrc20ForTargets(base, address, targets, chain, trc20Map) {
       event: "tron_trc20_rest_fetch_failed",
       rail: "TRON_TRC20",
       address,
+      request_url: url,
       tron_rest_host: tronRestApiHostForLog(),
       err: String(e),
     });
