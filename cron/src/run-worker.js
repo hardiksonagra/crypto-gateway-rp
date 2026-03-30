@@ -9,6 +9,8 @@ startBlockchainWorker();
 logger.info("blockchain deposit / transaction tracker started (worker process)", {
   note: "poll interval: WORKER_POLL_INTERVAL_MS",
   tron_deposit_scan: "tronscan",
+  deposit_scanner_tron_only: re.depositScannerTronOnly,
+  tronscan_key_configured: Boolean(re.tronscanApiKey?.trim()),
   tronscan_host: (() => {
     try {
       return new URL(re.tronscanApiBase.replace(/\/$/, "")).hostname;
@@ -16,6 +18,12 @@ logger.info("blockchain deposit / transaction tracker started (worker process)",
       return "invalid";
     }
   })(),
+  ...(re.depositScannerTronOnly
+    ? {
+        note_evm_ton:
+          "DEPOSIT_SCANNER_TRON_ONLY=true: ETH/BNB + TON deposit polling skipped — USDT·ERC20 rows will not appear in evm_addresses_this_tick logs. Set env false to scan EVM.",
+      }
+    : {}),
 });
 
 function shutdown(signal) {

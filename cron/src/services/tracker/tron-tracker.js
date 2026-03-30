@@ -155,6 +155,20 @@ export async function scanTronChain(options = {}) {
       address_count: addrList.length,
       tronscan_host: tronscanApiHostnameForLog(),
     });
+  } else if (wallets.length > 0) {
+    const max = 15;
+    const samples = wallets
+      .slice(0, max)
+      .map((w) => `${w.address} (${w.currency}|${w.network})`);
+    const more = wallets.length > max ? ` … +${wallets.length - max} more` : "";
+    logger.log({
+      level: "warn",
+      message: `TronScan: ${wallets.length} TRON wallet row(s) in worker scope but none match rails TRX+TRON or USDT+TRC20 — no TronScan HTTP calls. Examples: ${samples.join("; ")}${more}`,
+      event: "tronscan_skipped_rail_mismatch",
+      wallet_row_count: wallets.length,
+      sample_rails: samples,
+      tronscan_host: tronscanApiHostnameForLog(),
+    });
   }
 
   for (const { address, trxTargets, usdtTargets } of work) {
@@ -226,7 +240,11 @@ async function ingestTrxViaTronscan(base, address, targets, chain) {
     return;
   }
 
-  for (const row of transferListRows(data)) {
+  const trxRows = transferListRows(data);
+  let matchedIncomingTrx = 0;
+  /** @type {string[]} */
+  const sampleTrxTxIds = [];
+  for (const row of trxRows) {
     const to = rowToAddress(row);
     const from = rowFromAddress(row);
     const txid = rowTxId(row);
@@ -234,6 +252,9 @@ async function ingestTrxViaTronscan(base, address, targets, chain) {
     if (!to || !txid || sun === null) continue;
     if (!tronAddrEq(to, address)) continue;
     if (!rowLooksLikeTrx(row)) continue;
+
+    matchedIncomingTrx += 1;
+    if (sampleTrxTxIds.length < 15) sampleTrxTxIds.push(txid);
 
     for (const w of targets) {
       await upsertIncomingTransaction({
@@ -253,6 +274,22 @@ async function ingestTrxViaTronscan(base, address, targets, chain) {
       });
     }
   }
+
+  const sampleStr =
+    sampleTrxTxIds.length > 0
+      ? sampleTrxTxIds.slice(0, 5).join(", ") +
+        (sampleTrxTxIds.length > 5 ? ` … +${sampleTrxTxIds.length - 5} more` : "")
+      : "—";
+  logger.log({
+    level: "info",
+    message: `TronScan TRX result ${address}: API ${trxRows.length} transfer row(s), ${matchedIncomingTrx} incoming TRX to this address (tx: ${sampleStr})`,
+    event: "tronscan_fetch_transactions_summary",
+    address,
+    kind: "TRX_TRANSFER",
+    api_row_count: trxRows.length,
+    matched_incoming_count: matchedIncomingTrx,
+    sample_tx_hashes: sampleTrxTxIds,
+  });
 }
 
 /**
@@ -322,7 +359,11 @@ async function ingestTrc20ViaTronscan(base, address, targets, chain, trc20Map) {
     return;
   }
 
-  for (const row of trc20TransferListRows(data)) {
+  const trcRows = trc20TransferListRows(data);
+  let matchedIncomingTrc20 = 0;
+  /** @type {string[]} */
+  const sampleTrc20TxIds = [];
+  for (const row of trcRows) {
     const to = rowToAddress(row);
     const from = rowFromAddress(row);
     const txid = rowTxId(row);
@@ -334,6 +375,9 @@ async function ingestTrc20ViaTronscan(base, address, targets, chain, trc20Map) {
     const cfg = lookupTrc20Meta(trc20Map, String(contract));
     if (!cfg) continue;
     if (String(cfg.symbol).toUpperCase() !== "USDT") continue;
+
+    matchedIncomingTrc20 += 1;
+    if (sampleTrc20TxIds.length < 15) sampleTrc20TxIds.push(txid);
 
     for (const w of targets) {
       await upsertIncomingTransaction({
@@ -353,4 +397,20 @@ async function ingestTrc20ViaTronscan(base, address, targets, chain, trc20Map) {
       });
     }
   }
+
+  const trcSampleStr =
+    sampleTrc20TxIds.length > 0
+      ? sampleTrc20TxIds.slice(0, 5).join(", ") +
+        (sampleTrc20TxIds.length > 5 ? ` … +${sampleTrc20TxIds.length - 5} more` : "")
+      : "—";
+  logger.log({
+    level: "info",
+    message: `TronScan TRC20 result ${address}: API ${trcRows.length} transfer row(s), ${matchedIncomingTrc20} incoming USDT·TRC20 to this address (tx: ${trcSampleStr})`,
+    event: "tronscan_fetch_transactions_summary",
+    address,
+    kind: "TRC20_USDT_TRANSFER",
+    api_row_count: trcRows.length,
+    matched_incoming_count: matchedIncomingTrc20,
+    sample_tx_hashes: sampleTrc20TxIds,
+  });
 }
