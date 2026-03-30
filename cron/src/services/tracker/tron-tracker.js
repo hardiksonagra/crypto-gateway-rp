@@ -116,8 +116,8 @@ function rowLooksLikeTrx(row) {
 export async function scanTronChain(options = {}) {
   const chain = Chain.TRON;
   const wallets = options.wallets ?? (await loadWalletsForChain(chain));
-  if (wallets.length === 0) return;
 
+  if (wallets.length === 0) return;
   if (!re.tronscanApiKey?.trim()) {
     if (!loggedMissingTronscanKey) {
       loggedMissingTronscanKey = true;
@@ -141,6 +141,7 @@ export async function scanTronChain(options = {}) {
 
   /** @type {Array<{ address: string, trxTargets: typeof wallets, usdtTargets: typeof wallets }>} */
   const work = [];
+
   for (const group of byHex.values()) {
     const address = group[0].address;
     const trxTargets = group.filter(

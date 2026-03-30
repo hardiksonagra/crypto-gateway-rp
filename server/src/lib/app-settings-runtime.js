@@ -283,43 +283,6 @@ function envFallbackString(key) {
 
 /**
  * @param {string} key
- * @param {string} normalized — already validated / normalized storage form
- * @returns {boolean}
- */
-function nonSensitiveMatchesEnvDefault(key, normalized) {
-  const def = APP_SETTING_DEF_BY_KEY.get(key);
-  if (!def || def.sensitive) return false;
-  const envVal = envFallbackString(key);
-  if (def.type === "json") {
-    try {
-      return (
-        JSON.stringify(JSON.parse(normalized)) ===
-        JSON.stringify(JSON.parse(envVal || "{}"))
-      );
-    } catch {
-      return normalized.trim() === envVal.trim();
-    }
-  }
-  if (def.type === "comma_origins") {
-    const a = normalized
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean)
-      .sort()
-      .join(",");
-    const b = envVal
-      .split(",")
-      .map((s) => s.trim())
-      .filter(Boolean)
-      .sort()
-      .join(",");
-    return a === b;
-  }
-  return normalized.trim() === envVal.trim();
-}
-
-/**
- * @param {string} key
  * @param {string} stored
  */
 function validateStoredValue(key, stored) {
@@ -487,18 +450,26 @@ export function buildAppSettingsAdminList() {
 }
 
 /**
+ * Applies admin UI save: every submitted field is written (upsert) or cleared (delete when empty).
+ * Values that match `.env` are still stored in `app_settings` so the full form round-trips from DB.
+ *
  * @param {Record<string, string | null | undefined>} patch
  */
 export async function applyAppSettingsPatch(patch) {
+  for (const k of Object.keys(patch)) {
+    if (!APP_SETTING_DEF_BY_KEY.has(k)) {
+      throw new Error(`Unknown setting key: ${k}`);
+    }
+  }
+
   /** @type {{ type: "delete" | "upsert", key: string, value?: string }[]} */
   const ops = [];
 
-  for (const [key, raw] of Object.entries(patch)) {
-    if (!APP_SETTING_DEF_BY_KEY.has(key)) {
-      throw new Error(`Unknown setting key: ${key}`);
-    }
-    const def = APP_SETTING_DEF_BY_KEY.get(key);
+  for (const def of APP_SETTING_DEFINITIONS) {
+    const key = def.key;
+    if (!Object.prototype.hasOwnProperty.call(patch, key)) continue;
 
+    const raw = patch[key];
     if (raw === null || raw === undefined) continue;
 
     const str = String(raw);
@@ -522,12 +493,6 @@ export async function applyAppSettingsPatch(patch) {
     }
 
     const normalized = validateStoredValue(key, t);
-    if (nonSensitiveMatchesEnvDefault(key, normalized)) {
-      if (hasDbOverride(key)) {
-        ops.push({ type: "delete", key });
-      }
-      continue;
-    }
     ops.push({ type: "upsert", key, value: normalized });
   }
 

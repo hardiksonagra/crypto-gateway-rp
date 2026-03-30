@@ -6,6 +6,18 @@ import helmet from "helmet";
 import { env, normalizeBrowserOrigin } from "./config/env.js";
 import { re } from "./config/runtime-env.js";
 import { logger } from "./lib/logger.js";
+
+/** When `CLIENT_ORIGINS` (env or DB) omits Vite/React dev URLs, local CORS still works. */
+const LOCAL_DEV_BROWSER_ORIGINS = new Set(
+  [
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:4173",
+    "http://127.0.0.1:4173",
+  ].map(normalizeBrowserOrigin),
+);
 import { authRouter } from "./api/auth-routes.js";
 import { gatewayRouter } from "./api/gateway-routes.js";
 import { adminRouter } from "./api/admin-routes.js";
@@ -26,9 +38,15 @@ export function createApp() {
               if (!origin) return cb(null, true);
               const norm = normalizeBrowserOrigin(origin);
               if (re.clientOrigins.includes(norm)) return cb(null, true);
+              if (
+                env.nodeEnv === "development" &&
+                LOCAL_DEV_BROWSER_ORIGINS.has(norm)
+              ) {
+                return cb(null, true);
+              }
               logger.warn("cors_origin_rejected", {
                 origin,
-                hint: "Add this exact value (scheme + host, no path) to CLIENT_ORIGINS on the API server.",
+                hint: "Add this exact value (scheme + host, no path) to CLIENT_ORIGINS on the API server (Admin → System settings or .env). In development, localhost / 127.0.0.1 on ports 5173, 3000, 4173 are also allowed.",
               });
               cb(null, false);
             }

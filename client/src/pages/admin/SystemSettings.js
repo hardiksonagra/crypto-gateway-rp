@@ -167,7 +167,8 @@ export default function SystemSettings() {
     <div className="w-full max-w-none">
       <h1 className="font-display text-2xl font-semibold text-white">System settings</h1>
       <p className="mt-2 max-w-3xl text-sm text-white/55 text-pretty">
-        Values here override the API / cron process environment for the keys listed below. Bootstrap
+        Saving writes every field below to the database (even when a value matches{" "}
+        <span className="font-mono text-white/80">.env</span>). Bootstrap
         secrets (database URL, mnemonic, JWT secret, encryption key, TRX funder private key) stay in{" "}
         <span className="font-mono text-white/80">.env</span> only. The running API reloads overrides
         on save; restart PM2{" "}
@@ -187,9 +188,13 @@ export default function SystemSettings() {
           onSubmit={async (values, { setStatus, setSubmitting }) => {
             setStatus(undefined);
             try {
+              /** Full payload: one entry per registered key so the server updates every field on save. */
+              const payload = Object.fromEntries(
+                items.map((i) => [i.key, values[i.key] ?? ""]),
+              );
               const r = await api("/api/v1/admin/system-settings", {
                 method: "PUT",
-                json: values,
+                json: payload,
               });
               setItems(r.items ?? items);
             } catch (e) {

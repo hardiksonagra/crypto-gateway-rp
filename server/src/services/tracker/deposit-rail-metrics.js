@@ -68,9 +68,7 @@ export function finishDepositScanAddressRound() {
   addressScanLogRoundActive = false;
 
   const flat = [
-    ...new Set(
-      [...tickScanAddressesOnly.values()].flatMap((set) => [...set]),
-    ),
+    ...new Set([...tickScanAddressesOnly.values()].flatMap((set) => [...set])),
   ].sort();
   tickScanAddressesOnly = new Map();
 
@@ -113,7 +111,8 @@ export function recordDepositScanPolledAddresses(chain, addresses) {
     }
   }
   if (addressScanLogRoundActive) {
-    if (!tickScanAddressesOnly.has(ck)) tickScanAddressesOnly.set(ck, new Set());
+    if (!tickScanAddressesOnly.has(ck))
+      tickScanAddressesOnly.set(ck, new Set());
     const setOnly = tickScanAddressesOnly.get(ck);
     for (const a of addresses) {
       const s = a != null ? String(a).trim() : "";
