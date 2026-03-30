@@ -107,6 +107,12 @@ export const re = {
     );
   },
 
+  get walletPoolHoldReleaseCronMinutes() {
+    return getResolvedInt("WALLET_POOL_HOLD_RELEASE_CRON_MINUTES", () =>
+      env.walletPoolHoldReleaseCronMinutes,
+    );
+  },
+
   get lateDepositRecheckHours() {
     return getResolvedInt("LATE_DEPOSIT_RECHECK_HOURS", () =>
       env.lateDepositRecheckHours,

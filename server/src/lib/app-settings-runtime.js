@@ -192,6 +192,8 @@ function envFallbackString(key) {
       return String(env.walletScanTtlMinutes);
     case "WALLET_ASSIGNMENT_HOLD_MINUTES":
       return String(env.walletAssignmentHoldMinutes);
+    case "WALLET_POOL_HOLD_RELEASE_CRON_MINUTES":
+      return String(env.walletPoolHoldReleaseCronMinutes);
     case "LATE_DEPOSIT_RECHECK_HOURS":
       return String(env.lateDepositRecheckHours);
     case "WORKER_LOG_RAIL_COUNTS":

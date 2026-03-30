@@ -126,6 +126,12 @@ export const APP_SETTING_DEFINITIONS = [
     type: "int",
   },
   {
+    key: "WALLET_POOL_HOLD_RELEASE_CRON_MINUTES",
+    label: "Wallet pool hold release cron interval (minutes, 1–59)",
+    category: "Scanner / worker",
+    type: "int",
+  },
+  {
     key: "LATE_DEPOSIT_RECHECK_HOURS",
     label: "Late deposit recheck (hours, 0 = off)",
     category: "Scanner / worker",

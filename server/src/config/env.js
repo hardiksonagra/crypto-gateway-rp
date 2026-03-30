@@ -89,6 +89,14 @@ export const env = {
    */
   walletAssignmentHoldMinutes: intEnv("WALLET_ASSIGNMENT_HOLD_MINUTES", 10),
   /**
+   * Maintenance cron (`crypto-gateway-cron-maintenance`): how often to clear expired pooled-wallet holds (minutes).
+   * Clamped to 1–59 for the minute field (every N minutes in node-cron). Tunable in Admin → System settings.
+   */
+  walletPoolHoldReleaseCronMinutes: intEnv(
+    "WALLET_POOL_HOLD_RELEASE_CRON_MINUTES",
+    30,
+  ),
+  /**
    * Re-scan expired, zero-tx live wallets on TRON/TON/BTC (address APIs). `0` = off.
    * EVM chains are skipped (forward block cursor cannot recover old missed transfers).
    */
