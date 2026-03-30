@@ -36,6 +36,16 @@ function tronHeaders() {
   return h;
 }
 
+/** Safe host for logs (no path token). */
+function tronRestApiHostForLog() {
+  try {
+    const u = new URL(re.tronAccountApiBase.replace(/\/$/, ""));
+    return u.hostname;
+  } catch {
+    return "tron_rest_base_invalid";
+  }
+}
+
 function buildTrc20Lookup(cfg) {
   const map = new Map();
   for (const [k, meta] of Object.entries(cfg)) {
@@ -110,27 +120,45 @@ async function ingestTrxForTargets(base, address, targets, chain) {
     try {
       data = JSON.parse(text);
     } catch {
-      logger.warn("tron trx: non-json response", {
+      logger.error("tron_trx_rest_non_json", {
+        event: "tron_trx_rest_non_json",
+        rail: "TRON_TRX",
         address,
-        status: res.status,
-        body: text.slice(0, 200),
+        httpStatus: res.status,
+        tron_rest_host: tronRestApiHostForLog(),
+        body_preview: text.slice(0, 400),
       });
       return;
     }
     if (!res.ok) {
-      logger.warn("tron trx: http error", {
+      logger.error("tron_trx_rest_http_error", {
+        event: "tron_trx_rest_http_error",
+        rail: "TRON_TRX",
         address,
-        status: res.status,
-        body: text.slice(0, 300),
+        httpStatus: res.status,
+        tron_rest_host: tronRestApiHostForLog(),
+        body_preview: text.slice(0, 400),
       });
       return;
     }
     if (data.success === false) {
-      logger.warn("tron trx: api error", { address, err: data.error });
+      logger.error("tron_trx_rest_api_error", {
+        event: "tron_trx_rest_api_error",
+        rail: "TRON_TRX",
+        address,
+        tron_rest_host: tronRestApiHostForLog(),
+        api_error: data.error,
+      });
       return;
     }
   } catch (e) {
-    logger.warn("tron trx fetch failed", { address, err: String(e) });
+    logger.error("tron_trx_rest_fetch_failed", {
+      event: "tron_trx_rest_fetch_failed",
+      rail: "TRON_TRX",
+      address,
+      tron_rest_host: tronRestApiHostForLog(),
+      err: String(e),
+    });
     return;
   }
 
@@ -186,27 +214,45 @@ async function ingestTrc20ForTargets(base, address, targets, chain, trc20Map) {
     try {
       data = JSON.parse(text);
     } catch {
-      logger.warn("tron trc20: non-json response", {
+      logger.error("tron_trc20_rest_non_json", {
+        event: "tron_trc20_rest_non_json",
+        rail: "TRON_TRC20",
         address,
-        status: res.status,
-        body: text.slice(0, 200),
+        httpStatus: res.status,
+        tron_rest_host: tronRestApiHostForLog(),
+        body_preview: text.slice(0, 400),
       });
       return;
     }
     if (!res.ok) {
-      logger.warn("tron trc20: http error", {
+      logger.error("tron_trc20_rest_http_error", {
+        event: "tron_trc20_rest_http_error",
+        rail: "TRON_TRC20",
         address,
-        status: res.status,
-        body: text.slice(0, 300),
+        httpStatus: res.status,
+        tron_rest_host: tronRestApiHostForLog(),
+        body_preview: text.slice(0, 400),
       });
       return;
     }
     if (data.success === false) {
-      logger.warn("tron trc20: api error", { address, err: data.error });
+      logger.error("tron_trc20_rest_api_error", {
+        event: "tron_trc20_rest_api_error",
+        rail: "TRON_TRC20",
+        address,
+        tron_rest_host: tronRestApiHostForLog(),
+        api_error: data.error,
+      });
       return;
     }
   } catch (e) {
-    logger.warn("tron trc20 fetch failed", { address, err: String(e) });
+    logger.error("tron_trc20_rest_fetch_failed", {
+      event: "tron_trc20_rest_fetch_failed",
+      rail: "TRON_TRC20",
+      address,
+      tron_rest_host: tronRestApiHostForLog(),
+      err: String(e),
+    });
     return;
   }
 

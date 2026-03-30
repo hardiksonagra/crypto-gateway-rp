@@ -46,7 +46,11 @@ async function runTick() {
     try {
       await scanTronChain();
     } catch (e) {
-      logger.error("tron scan failed", { err: String(e) });
+      logger.error("tron_scan_failed", {
+        event: "tron_scan_failed",
+        err: String(e),
+        stack: e instanceof Error ? e.stack : undefined,
+      });
     }
     if (!re.depositScannerTronOnly) {
       try {
