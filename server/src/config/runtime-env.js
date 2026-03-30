@@ -149,6 +149,16 @@ export const re = {
     return getResolvedString("TRON_FULL_NODE", () => env.tronFullNode);
   },
 
+  /** TronGrid `/v1/accounts/...` base; falls back to `tronFullNode` when unset. */
+  get tronAccountApiBase() {
+    const raw = getResolvedString("TRON_ACCOUNT_API_BASE", () =>
+      env.tronAccountApiBase ?? "",
+    );
+    const t = String(raw).trim();
+    if (t) return t;
+    return getResolvedString("TRON_FULL_NODE", () => env.tronFullNode);
+  },
+
   get tronSolidityNode() {
     return getResolvedString("TRON_SOLIDITY_NODE", () => env.tronSolidityNode);
   },

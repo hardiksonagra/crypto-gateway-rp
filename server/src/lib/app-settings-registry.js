@@ -182,6 +182,12 @@ export const APP_SETTING_DEFINITIONS = [
     type: "string",
   },
   {
+    key: "TRON_ACCOUNT_API_BASE",
+    label: "TRON account history API base (TronGrid /v1; optional)",
+    category: "TRON",
+    type: "string",
+  },
+  {
     key: "TRON_SOLIDITY_NODE",
     label: "TRON solidity node URL",
     category: "TRON",

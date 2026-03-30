@@ -71,7 +71,7 @@ export async function scanTronChain(options = {}) {
     options.wallets ?? (await loadWalletsForChain(chain));
   if (wallets.length === 0) return;
 
-  const base = re.tronFullNode.replace(/\/$/, "");
+  const base = re.tronAccountApiBase.replace(/\/$/, "");
   const trc20Map = buildTrc20Lookup(getTrc20Contracts());
 
   const byHex = new Map();
