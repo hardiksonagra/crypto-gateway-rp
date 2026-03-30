@@ -9,6 +9,58 @@ import {
 /** @type {Map<string, string>} */
 let cacheMap = new Map();
 
+const USDT6_DECIMALS = 6;
+const USDT6_FACTOR = 1_000_000n;
+
+/**
+ * @param {string} atomicStr
+ * @returns {string}
+ */
+export function atomicUsdt6ToDecimalDisplay(atomicStr) {
+  const t = String(atomicStr ?? "").trim();
+  if (!t) return "";
+  let b;
+  try {
+    b = BigInt(t);
+  } catch {
+    return t;
+  }
+  if (b < 0n) return t;
+  const whole = b / USDT6_FACTOR;
+  const frac = b % USDT6_FACTOR;
+  if (frac === 0n) return whole.toString();
+  const fracStr = frac
+    .toString()
+    .padStart(USDT6_DECIMALS, "0")
+    .replace(/0+$/, "");
+  return `${whole}.${fracStr}`;
+}
+
+/**
+ * Admin-entered USDT amount (e.g. `1`, `0.5`) → atomic string for DB (6 decimals).
+ *
+ * @param {string} s
+ * @returns {string}
+ */
+export function parseAdminUsdtAmountToAtomicString(s) {
+  const t = String(s).trim();
+  if (!t) throw new Error("empty value");
+  if (!/^\d+(\.\d{0,6})?$/.test(t)) {
+    throw new Error(
+      "enter a USDT amount with up to 6 decimal places (e.g. 1 or 0.5)",
+    );
+  }
+  const [intPart, fracPart = ""] = t.split(".");
+  const whole = BigInt(intPart === "" ? "0" : intPart);
+  const fracPadded = (fracPart + "000000").slice(0, USDT6_DECIMALS);
+  const frac = BigInt(fracPadded || "0");
+  const atomic = whole * USDT6_FACTOR + frac;
+  if (atomic < 1n) {
+    throw new Error("must be at least 0.000001 USDT");
+  }
+  return atomic.toString();
+}
+
 /**
  * @param {string} key
  * @returns {boolean}
@@ -147,6 +199,9 @@ function coerceEnvStringForDisplay(def, envValue) {
     } catch {
       return envValue;
     }
+  }
+  if (def.type === "usdt6" && envValue?.trim()) {
+    return atomicUsdt6ToDecimalDisplay(envValue);
   }
   return envValue ?? "";
 }
@@ -316,6 +371,14 @@ function validateStoredValue(key, stored) {
         throw e;
       }
     }
+    case "usdt6": {
+      try {
+        return parseAdminUsdtAmountToAtomicString(s);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        throw new Error(`${key}: ${msg}`);
+      }
+    }
     case "json": {
       const p = JSON.parse(s);
       if (p === null || typeof p !== "object" || Array.isArray(p)) {
@@ -345,7 +408,8 @@ function shouldWriteEnvValueToAppSettings(def, raw) {
     return t !== "" && t !== "{}";
   }
   if (def.type === "bool" || def.type === "bool_tron_gateway") return true;
-  if (def.type === "int" || def.type === "bigint") return true;
+  if (def.type === "int" || def.type === "bigint" || def.type === "usdt6")
+    return true;
   return Boolean(raw?.trim());
 }
 
@@ -362,7 +426,18 @@ export async function upsertAppSettingsFromCurrentEnv() {
     const raw = envFallbackString(def.key);
     if (!shouldWriteEnvValueToAppSettings(def, raw)) continue;
     try {
-      const normalized = validateStoredValue(def.key, raw);
+      let normalized;
+      if (def.type === "usdt6") {
+        const b = env.sweepTronUsdtMinAtomic;
+        if (b < 1n) {
+          throw new Error(
+            "SWEEP_TRON_USDT_MIN_ATOMIC must be >= 1 (atomic unit)",
+          );
+        }
+        normalized = b.toString();
+      } else {
+        normalized = validateStoredValue(def.key, raw);
+      }
       ops.push({ key: def.key, value: normalized });
     } catch (e) {
       logger.warn("sync_app_settings_skip_invalid", {
@@ -372,15 +447,17 @@ export async function upsertAppSettingsFromCurrentEnv() {
     }
   }
 
-  await prisma.$transaction(async (tx) => {
-    for (const op of ops) {
-      await tx.appSetting.upsert({
-        where: { key: op.key },
-        create: { key: op.key, value: op.value },
-        update: { value: op.value },
-      });
-    }
-  });
+  if (ops.length > 0) {
+    await prisma.$transaction(
+      ops.map((op) =>
+        prisma.appSetting.upsert({
+          where: { key: op.key },
+          create: { key: op.key, value: op.value },
+          update: { value: op.value },
+        }),
+      ),
+    );
+  }
 
   await loadAppSettingsFromDatabase();
 
@@ -395,9 +472,7 @@ export function buildAppSettingsAdminList() {
   return APP_SETTING_DEFINITIONS.map((def) => {
     const envVal = envFallbackString(def.key);
     const dbVal = hasDbOverride(def.key) ? rawDbValue(def.key) : null;
-    const effective = hasDbOverride(def.key)
-      ? String(dbVal ?? "")
-      : envVal;
+    const effective = hasDbOverride(def.key) ? String(dbVal ?? "") : envVal;
     let displayEffective = effective;
     if (def.sensitive && (dbVal?.trim() || envVal?.trim())) {
       displayEffective = MASK;
@@ -408,6 +483,9 @@ export function buildAppSettingsAdminList() {
       } catch {
         /* keep raw */
       }
+    }
+    if (def.type === "usdt6" && effective?.trim()) {
+      displayEffective = atomicUsdt6ToDecimalDisplay(effective);
     }
     return {
       key: def.key,
@@ -430,21 +508,25 @@ export function buildAppSettingsAdminList() {
                 return s === "true" || s === "1" ? "true" : "false";
               })()
             : ""
-        : def.type === "json"
-          ? (() => {
-              const src = hasDbOverride(def.key)
+          : def.type === "json"
+            ? (() => {
+                const src = hasDbOverride(def.key)
+                  ? String(dbVal ?? "")
+                  : envVal;
+                if (!src?.trim()) return "{}";
+                try {
+                  return JSON.stringify(JSON.parse(src), null, 2);
+                } catch {
+                  return src;
+                }
+              })()
+            : def.type === "usdt6"
+              ? atomicUsdt6ToDecimalDisplay(
+                  hasDbOverride(def.key) ? String(dbVal ?? "") : envVal,
+                )
+              : hasDbOverride(def.key)
                 ? String(dbVal ?? "")
-                : envVal;
-              if (!src?.trim()) return "{}";
-              try {
-                return JSON.stringify(JSON.parse(src), null, 2);
-              } catch {
-                return src;
-              }
-            })()
-          : hasDbOverride(def.key)
-            ? String(dbVal ?? "")
-            : envVal,
+                : envVal,
     };
   });
 }
@@ -496,19 +578,19 @@ export async function applyAppSettingsPatch(patch) {
     ops.push({ type: "upsert", key, value: normalized });
   }
 
-  await prisma.$transaction(async (tx) => {
-    for (const op of ops) {
-      if (op.type === "delete") {
-        await tx.appSetting.deleteMany({ where: { key: op.key } });
-      } else {
-        await tx.appSetting.upsert({
-          where: { key: op.key },
-          create: { key: op.key, value: op.value ?? "" },
-          update: { value: op.value ?? "" },
-        });
-      }
-    }
-  });
+  if (ops.length > 0) {
+    await prisma.$transaction(
+      ops.map((op) =>
+        op.type === "delete"
+          ? prisma.appSetting.deleteMany({ where: { key: op.key } })
+          : prisma.appSetting.upsert({
+              where: { key: op.key },
+              create: { key: op.key, value: op.value ?? "" },
+              update: { value: op.value ?? "" },
+            }),
+      ),
+    );
+  }
 
   await loadAppSettingsFromDatabase();
 }

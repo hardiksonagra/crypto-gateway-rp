@@ -35,8 +35,138 @@ const TRC20_ABI = [
   },
 ];
 
-/** Rough minimum TRX (sun) so a TRC20 transfer can burn bandwidth/energy. */
-export const MIN_TRX_SUN_FOR_SWEEP = 12_000_000n;
+/**
+ * Buffer on top of on-chain fee math (pricing drift, bandwidth variance).
+ * Not a fixed “minimum wallet balance” — see {@link estimateTrxSunRequiredForTrc20Transfer}.
+ */
+export const TRON_SWEEP_TRX_SAFETY_BUFFER_SUN = 500_000n;
+
+/** If `estimateEnergy` fails, assume this many energy units (typical USDT·TRC20 transfer scale). */
+const FALLBACK_TRC20_TRANSFER_ENERGY = 70_000n;
+
+/** Bandwidth points (bytes) to plan for when sizing a TRC20 `transfer` tx. */
+const TRC20_TRANSFER_BANDWIDTH_POINTS = 400n;
+
+/** @param {unknown} raw */
+function chainParamBigInt(raw) {
+  if (raw == null) return null;
+  try {
+    const n = BigInt(String(raw).trim());
+    return n >= 0n ? n : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Approximate TRX (sun) the `owner` address must hold to burn fees for one TRC20 `transfer`
+ * (energy + bandwidth shortfalls vs free/staked resources), plus {@link TRON_SWEEP_TRX_SAFETY_BUFFER_SUN}.
+ *
+ * @param {import("tronweb").TronWeb} tw
+ * @param {string} ownerBase58
+ * @param {string} contractBase58
+ * @param {string} toBase58
+ * @param {bigint} amountAtomic
+ * @returns {Promise<bigint>}
+ */
+export async function estimateTrxSunRequiredForTrc20Transfer(
+  tw,
+  ownerBase58,
+  contractBase58,
+  toBase58,
+  amountAtomic,
+) {
+  await acquireOutboundRpcSlot("TRON");
+  let energyRequired = FALLBACK_TRC20_TRANSFER_ENERGY;
+  try {
+    const est = await tw.transactionBuilder.estimateEnergy(
+      contractBase58,
+      "transfer(address,uint256)",
+      {},
+      [
+        { type: "address", value: toBase58 },
+        { type: "uint256", value: amountAtomic.toString() },
+      ],
+      ownerBase58,
+    );
+    const er = est?.energy_required;
+    if (er != null) {
+      if (typeof er === "bigint" && er > 0n && er < 1_000_000_000n) {
+        energyRequired = er;
+      } else {
+        const num = Number(typeof er === "string" ? er.trim() : er);
+        if (Number.isFinite(num) && num > 0) {
+          const n = BigInt(Math.ceil(num));
+          if (n < 1_000_000_000n) {
+            energyRequired = n;
+          }
+        }
+      }
+    }
+  } catch (e) {
+    logger.warn("tron_sweep_estimate_energy_failed", {
+      event: "tron_sweep_estimate_energy_failed",
+      at: new Date().toISOString(),
+      owner: ownerBase58,
+      err: String(e),
+    });
+  }
+
+  let freeBwLeft = 0n;
+  let stakeBwLeft = 0n;
+  let energyLeft = 0n;
+  try {
+    await acquireOutboundRpcSlot("TRON");
+    const res = await tw.trx.getAccountResources(ownerBase58);
+    const freeNetLimit = chainParamBigInt(res?.freeNetLimit ?? res?.FreeNetLimit) ?? 600n;
+    const freeNetUsed = chainParamBigInt(res?.freeNetUsed ?? res?.FreeNetUsed) ?? 0n;
+    const netLimit = chainParamBigInt(res?.NetLimit ?? res?.netLimit) ?? 0n;
+    const netUsed = chainParamBigInt(res?.NetUsed ?? res?.netUsed) ?? 0n;
+    const energyLimit = chainParamBigInt(res?.EnergyLimit ?? res?.energyLimit) ?? 0n;
+    const energyUsed = chainParamBigInt(res?.EnergyUsed ?? res?.energyUsed) ?? 0n;
+    freeBwLeft = freeNetLimit > freeNetUsed ? freeNetLimit - freeNetUsed : 0n;
+    stakeBwLeft = netLimit > netUsed ? netLimit - netUsed : 0n;
+    energyLeft = energyLimit > energyUsed ? energyLimit - energyUsed : 0n;
+  } catch (e) {
+    logger.warn("tron_sweep_get_account_resources_failed", {
+      event: "tron_sweep_get_account_resources_failed",
+      at: new Date().toISOString(),
+      owner: ownerBase58,
+      err: String(e),
+    });
+  }
+
+  let energyPriceSun = 420n;
+  let bandwidthPriceSun = 1000n;
+  try {
+    await acquireOutboundRpcSlot("TRON");
+    const chainParams = await tw.trx.getChainParameters();
+    const paramBig = (key) => {
+      const p = chainParams.find((x) => x.key === key);
+      return chainParamBigInt(p?.value);
+    };
+    energyPriceSun = paramBig("getEnergyFee") ?? 420n;
+    bandwidthPriceSun = paramBig("getTransactionFee") ?? 1000n;
+  } catch (e) {
+    logger.warn("tron_sweep_get_chain_parameters_failed", {
+      event: "tron_sweep_get_chain_parameters_failed",
+      at: new Date().toISOString(),
+      err: String(e),
+    });
+  }
+
+  const totalBwLeft = freeBwLeft + stakeBwLeft;
+  const bwBurnPoints =
+    TRC20_TRANSFER_BANDWIDTH_POINTS > totalBwLeft
+      ? TRC20_TRANSFER_BANDWIDTH_POINTS - totalBwLeft
+      : 0n;
+  const bandwidthBurnSun = bwBurnPoints * bandwidthPriceSun;
+
+  const energyShortfall = energyRequired > energyLeft ? energyRequired - energyLeft : 0n;
+  const energyBurnSun = energyShortfall * energyPriceSun;
+
+  return bandwidthBurnSun + energyBurnSun + TRON_SWEEP_TRX_SAFETY_BUFFER_SUN;
+}
 
 /** @param {string} privateKeyHex */
 export function createTronWebFromPrivateKeyHex(privateKeyHex) {
@@ -256,7 +386,8 @@ export async function readTronUsdtBalanceAtomicForWallet(wallet, contractAddr) {
 }
 
 /**
- * Full USDT·TRC20 balance from deposit wallet → master (caller must ensure TRX ≥ {@link MIN_TRX_SUN_FOR_SWEEP}).
+ * Full USDT·TRC20 balance from deposit wallet → master.
+ * TRX requirement is computed dynamically ({@link estimateTrxSunRequiredForTrc20Transfer}).
  *
  * @param {{ id: string, address: string, derivationIndex: number }} wallet
  * @param {string} master
@@ -289,16 +420,6 @@ export async function sweepTronUsdtTransferFullBalanceFromDepositWallet(
     return { ok: false, error: "DERIVED_ADDRESS_MISMATCH" };
   }
 
-  await acquireOutboundRpcSlot("TRON");
-  const trxSun = BigInt(await tw.trx.getBalance(wallet.address));
-  if (trxSun < MIN_TRX_SUN_FOR_SWEEP) {
-    return {
-      ok: false,
-      error: "INSUFFICIENT_TRX_FOR_FEE",
-      detail: `Need at least ${MIN_TRX_SUN_FOR_SWEEP} sun; have ${trxSun}`,
-    };
-  }
-
   const contract = tw.contract(TRC20_ABI, contractAddr);
   await acquireOutboundRpcSlot("TRON");
   const balRaw = await contract.balanceOf(wallet.address).call();
@@ -309,6 +430,24 @@ export async function sweepTronUsdtTransferFullBalanceFromDepositWallet(
       skipped: true,
       reason: "zero_usdt_balance",
       balance_atomic: amount.toString(),
+    };
+  }
+
+  const neededTrxSun = await estimateTrxSunRequiredForTrc20Transfer(
+    tw,
+    wallet.address,
+    contractAddr,
+    master,
+    amount,
+  );
+
+  await acquireOutboundRpcSlot("TRON");
+  const trxSun = BigInt(await tw.trx.getBalance(wallet.address));
+  if (trxSun < neededTrxSun) {
+    return {
+      ok: false,
+      error: "INSUFFICIENT_TRX_FOR_FEE",
+      detail: `Need ~${neededTrxSun} sun (estimated for fees); have ${trxSun}`,
     };
   }
 

@@ -7,8 +7,8 @@ import { prisma } from "../../lib/prisma.js";
 import { acquireOutboundRpcSlot } from "../../lib/network-rpc-rate-limit.js";
 import { deriveTronPrivateKeyHex } from "../wallet/tron-wallet.js";
 import {
-  MIN_TRX_SUN_FOR_SWEEP,
   createTronWebFromPrivateKeyHex,
+  estimateTrxSunRequiredForTrc20Transfer,
   pickUsdtTrc20Contract,
   readTronUsdtBalanceAtomicForWallet,
   sweepTronUsdtTransferFullBalanceFromDepositWallet,
@@ -17,8 +17,8 @@ import {
 /** After native TRX top-up, wait before re-reading balance / sweeping. */
 const TOPUP_SETTLE_MS = 12_000;
 
-/** Extra sun above the shortfall when computing top-up size. */
-const TOPUP_BUFFER_SUN = 1_000_000n;
+/** Small cushion on top-up size only (fee estimate vs actual inbound rounding). */
+const TOPUP_SEND_BUFFER_SUN = 150_000n;
 
 /** Keep this much sun on funder after each outbound (approx. one more fee). */
 const FUNDER_RESERVE_SUN = 3_000_000n;
@@ -134,7 +134,6 @@ async function sendTrxTopUpFromFunder(toAddress, amountSun) {
  */
 export async function sweepTronUsdtOneWithAutoTopUp(wallet, master, contractAddr) {
   const minAtomic = re.sweepTronUsdtMinAtomic;
-  const topupBase = re.sweepTrxTopupSun;
 
   if (tronAddrEq(wallet.address, master)) {
     return { status: "skipped", reason: "source_is_master" };
@@ -183,12 +182,20 @@ export async function sweepTronUsdtOneWithAutoTopUp(wallet, master, contractAddr
   const pkHex = deriveTronPrivateKeyHex(wallet.derivationIndex, env.mnemonic);
   const depositTw = createTronWebFromPrivateKeyHex(pkHex);
 
+  const neededTrxSun = await estimateTrxSunRequiredForTrc20Transfer(
+    depositTw,
+    wallet.address,
+    contractAddr,
+    master,
+    usdtAtomic,
+  );
+
   await acquireOutboundRpcSlot("TRON");
   let trxSun = BigInt(await depositTw.trx.getBalance(wallet.address));
 
-  if (trxSun < MIN_TRX_SUN_FOR_SWEEP) {
-    const shortfall = MIN_TRX_SUN_FOR_SWEEP - trxSun + TOPUP_BUFFER_SUN;
-    const sendSun = shortfall > topupBase ? shortfall : topupBase;
+  if (trxSun < neededTrxSun) {
+    const gap = neededTrxSun - trxSun;
+    const sendSun = gap + TOPUP_SEND_BUFFER_SUN;
 
     if (!env.sweepTrxFunderPrivateKey?.trim()) {
       logger.warn("tron_auto_sweep_need_trx_no_funder", {
@@ -197,13 +204,13 @@ export async function sweepTronUsdtOneWithAutoTopUp(wallet, master, contractAddr
         wallet_id: wallet.id,
         deposit_address: wallet.address,
         trx_sun_have: trxSun.toString(),
-        trx_sun_need: MIN_TRX_SUN_FOR_SWEEP.toString(),
+        trx_sun_need_estimated: neededTrxSun.toString(),
         usdt_atomic: usdtAtomic.toString(),
       });
       return {
         status: "failed",
         error: "INSUFFICIENT_TRX_NO_FUNDER",
-        detail: `have ${trxSun} sun, set SWEEP_TRX_FUNDER_PRIVATE_KEY`,
+        detail: `have ${trxSun} sun, need ~${neededTrxSun} sun (estimated), set SWEEP_TRX_FUNDER_PRIVATE_KEY`,
       };
     }
 
@@ -333,7 +340,7 @@ export async function runAutomatedTronUsdtSweepRound() {
     master_address: master,
     wallet_count: wallets.length,
     min_usdt_atomic: re.sweepTronUsdtMinAtomic.toString(),
-    trx_topup_base_sun: re.sweepTrxTopupSun.toString(),
+    trx_fee_model: "dynamic_estimate_energy_bandwidth",
     funder_configured: Boolean(env.sweepTrxFunderPrivateKey?.trim()),
   });
 

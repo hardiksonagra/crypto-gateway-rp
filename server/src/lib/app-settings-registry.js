@@ -2,7 +2,7 @@
  * Admin-editable settings: DB row overrides process env when present.
  * Bootstrap secrets (DATABASE_URL, MNEMONIC, JWT_SECRET, ENCRYPTION_KEY, funder private key) stay env-only.
  *
- * @typedef {{ key: string, label: string, category: string, type: "string" | "int" | "bool" | "bool_tron_gateway" | "bigint" | "json" | "comma_origins", sensitive?: boolean }} AppSettingDef
+ * @typedef {{ key: string, label: string, category: string, type: "string" | "int" | "bool" | "bool_tron_gateway" | "bigint" | "usdt6" | "json" | "comma_origins", sensitive?: boolean }} AppSettingDef
  */
 
 /** @type {AppSettingDef[]} */
@@ -292,15 +292,15 @@ export const APP_SETTING_DEFINITIONS = [
   },
   {
     key: "SWEEP_TRX_TOPUP_SUN",
-    label: "TRX top-up base (sun)",
+    label: "TRX top-up base (sun, legacy — auto-sweep uses dynamic fee estimate)",
     category: "Sweep · TRON auto",
     type: "bigint",
   },
   {
     key: "SWEEP_TRON_USDT_MIN_ATOMIC",
-    label: "Min USDT (atomic, 6 decimals) for auto-sweep",
+    label: "Min USDT for auto-sweep",
     category: "Sweep · TRON auto",
-    type: "bigint",
+    type: "usdt6",
   },
   {
     key: "SWEEP_TRON_AUTO_CRON_ENABLED",

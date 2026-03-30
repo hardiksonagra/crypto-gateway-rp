@@ -163,7 +163,8 @@ export const env = {
   /** Optional: expected base58 TRX address for the funder key (sanity check vs derived address). */
   sweepTrxFunderAddress: optional("SWEEP_TRX_FUNDER_ADDRESS"),
   /**
-   * Sun to send per top-up when a deposit wallet is short on TRX (actual send is max(this, shortfall+buffer)).
+   * Legacy setting (still in Admin DB for compatibility). Automated USDT sweep now sizes TRX top-ups from
+   * `estimateEnergy` + account resources; this value is not applied to top-up amount.
    * @type {bigint}
    */
   sweepTrxTopupSun: (() => {
@@ -171,7 +172,8 @@ export const env = {
     return BigInt(Math.max(1, n));
   })(),
   /**
-   * Minimum USDT balance (atomic units, 6 decimals) for automated sweep to run. Default 1_000_000 = 1 USDT.
+   * Minimum USDT balance (atomic units, 6 decimals) for automated sweep. Default 1_000_000 = 1 USDT.
+   * `.env` keeps this as atomic; Admin System settings edits the same key as a USDT amount (e.g. `1`).
    * @type {bigint}
    */
   sweepTronUsdtMinAtomic: (() => {

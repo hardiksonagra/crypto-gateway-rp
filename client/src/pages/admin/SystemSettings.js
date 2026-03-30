@@ -13,7 +13,7 @@ const textarea = `${input} min-h-[120px] font-mono text-xs leading-relaxed`;
  *   key: string,
  *   label: string,
  *   category: string,
- *   type: string,
+ *   type: string, // includes "usdt6" for USDT decimal admin fields
  *   sensitive: boolean,
  *   has_db_override: boolean,
  *   env_display: string,
@@ -50,6 +50,39 @@ function FieldForItem({ it }) {
             Database override active — choose “Use .env default” and save to clear it.
           </p>
         ) : null}
+      </div>
+    );
+  }
+
+  if (it.type === "usdt6") {
+    return (
+      <div className="lg:col-span-1">
+        <label className={label} htmlFor={name}>
+          {it.label}
+        </label>
+        <Field
+          id={name}
+          name={name}
+          type="text"
+          inputMode="decimal"
+          autoComplete="off"
+          placeholder="1"
+          className={input}
+        />
+        <p className="mt-1 text-[11px] text-white/45">
+          USDT amount (example: <span className="font-mono text-white/70">1</span> = 1 USDT). Server stores 6-decimal
+          atomic units; <span className="font-mono text-white/70">.env</span> default shown as USDT below.
+        </p>
+        <p className="mt-0.5 text-[11px] text-white/35">
+          Effective now: <span className="font-mono text-emerald-200/90">{it.effective_display || "—"} USDT</span>
+          {" · "}
+          .env: <span className="font-mono text-white/55">{it.env_display || "—"} USDT</span>
+        </p>
+        <ErrorMessage
+          name={name}
+          component="p"
+          className="mt-1 text-xs text-rose-400"
+        />
       </div>
     );
   }
@@ -132,7 +165,7 @@ export default function SystemSettings() {
 
   const validationSchema = useMemo(() => {
     if (!items?.length) return buildSystemSettingsSchema([]);
-    return buildSystemSettingsSchema(items.map((i) => i.key));
+    return buildSystemSettingsSchema(items);
   }, [items]);
 
   const byCategory = useMemo(() => {

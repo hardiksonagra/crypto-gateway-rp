@@ -4,8 +4,8 @@ import { runAutomatedTronUsdtSweepRound } from "crypto-payment-gateway/src/servi
 
 /**
  * Every N minutes (default 30): live TRON USDT·TRC20 deposit wallets, line by line —
- * if USDT ≥ `SWEEP_TRON_USDT_MIN_ATOMIC`, optionally top up TRX from `SWEEP_TRX_FUNDER_PRIVATE_KEY`,
- * then sweep USDT to `SWEEP_MASTER_TRON`. Structured logs on server logger.
+ * if USDT ≥ `SWEEP_TRON_USDT_MIN_ATOMIC`, optionally top up TRX from `SWEEP_TRX_FUNDER_PRIVATE_KEY`
+ * (amount = estimated fee shortfall only — dynamic `estimateEnergy` + resources), then sweep USDT to `SWEEP_MASTER_TRON`.
  *
  * @param {{ schedule: (expression: string, handler: () => void, options?: object) => import('node-cron').ScheduledTask }} ctx
  */
