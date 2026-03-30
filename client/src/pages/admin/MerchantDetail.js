@@ -21,6 +21,11 @@ import {
   merchantDetailWalletsFilterSchema,
 } from "../../admin/merchantSchemas";
 import { formatTokenAmount } from "../../lib/formatTokenAmount.js";
+import {
+  UserAssignmentHistoryModal,
+  UserHistoryCountButton,
+  UserPayerDepositHistoryModal,
+} from "../../components/UserHistoryModals.js";
 
 const DEFAULT_PAGE_SIZE = DEFAULT_LIST_PAGE_SIZE;
 const TX_STATUS_OPTIONS = ["pending", "success", "failed"];
@@ -67,6 +72,8 @@ export default function MerchantDetail() {
 
   const [userPage, setUserPage] = useState(1);
   const [userDrawer, setUserDrawer] = useState(false);
+  const [userAssignmentModalId, setUserAssignmentModalId] = useState(null);
+  const [userDepositModalId, setUserDepositModalId] = useState(null);
   const [userApplied, setUserApplied] = useState({
     q: "",
     created_from: "",
@@ -1280,25 +1287,27 @@ export default function MerchantDetail() {
 
         <div className="mt-6 space-y-4">
           <div className="data-table-surface">
-            <table className="data-table min-w-[520px]">
+            <table className="data-table min-w-[680px]">
               <thead>
                 <tr>
                   <th>External id</th>
-                  <th>Wallets</th>
+                  <th>Active</th>
+                  <th>Assign #</th>
+                  <th>Tx #</th>
                   <th>Created</th>
                 </tr>
               </thead>
               <tbody>
                 {usersQ.isLoading ? (
                   <tr>
-                    <td colSpan={3} className="!py-12 text-center text-sm text-white/40">
+                    <td colSpan={5} className="!py-12 text-center text-sm text-white/40">
                       Loading…
                     </td>
                   </tr>
                 ) : null}
                 {!usersQ.isLoading && users.length === 0 ? (
                   <tr>
-                    <td colSpan={3} className="!py-12 text-center text-sm text-white/45">
+                    <td colSpan={5} className="!py-12 text-center text-sm text-white/45">
                       No record found.
                     </td>
                   </tr>
@@ -1307,7 +1316,23 @@ export default function MerchantDetail() {
                   users.map((u) => (
                     <tr key={u.id}>
                       <td className="font-mono text-xs text-white/75">{u.external_user_id}</td>
-                      <td>{u.wallets_count}</td>
+                      <td className="font-mono text-xs text-white/70">{u.wallets_now_assigned ?? 0}</td>
+                      <td>
+                        <UserHistoryCountButton
+                          count={u.wallet_assignment_event_count ?? 0}
+                          disabled={false}
+                          title={`${u.distinct_wallets_in_assignment_log ?? 0} distinct wallet addresses in log`}
+                          onClick={() => setUserAssignmentModalId(u.id)}
+                        />
+                      </td>
+                      <td>
+                        <UserHistoryCountButton
+                          count={u.payer_transaction_count ?? 0}
+                          disabled={false}
+                          title={`${u.payer_success_transaction_count ?? 0} successful`}
+                          onClick={() => setUserDepositModalId(u.id)}
+                        />
+                      </td>
                       <td className="text-xs text-white/45">{u.created_at.slice(0, 10)}</td>
                     </tr>
                   ))}
@@ -1325,6 +1350,21 @@ export default function MerchantDetail() {
           </div>
         </div>
       </div>
+
+      <UserAssignmentHistoryModal
+        open={userAssignmentModalId != null}
+        userId={userAssignmentModalId}
+        panel="admin"
+        adminMerchantId={merchantId}
+        onClose={() => setUserAssignmentModalId(null)}
+      />
+      <UserPayerDepositHistoryModal
+        open={userDepositModalId != null}
+        userId={userDepositModalId}
+        panel="admin"
+        adminMerchantId={merchantId}
+        onClose={() => setUserDepositModalId(null)}
+      />
     </div>
   );
 }

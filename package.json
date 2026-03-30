@@ -25,6 +25,7 @@
     "prisma:migrate": "npm run prisma:migrate -w server",
     "prisma:reset": "npm run prisma:reset -w server",
     "prisma:deploy": "npm run prisma:deploy -w server",
+    "migrate:deploy": "prisma migrate deploy --schema server/prisma/schema.prisma",
     "prisma:studio": "npm run prisma:studio -w server",
     "db:seed": "npm run db:seed -w server",
     "sync-settings-from-env": "npm run sync-settings-from-env -w server",

@@ -87,6 +87,7 @@ model AdminUser {
   endUsers      User[]
   withdrawals   Withdrawal[]
   pooledWallets Wallet[]
+  walletAssignmentEvents WalletAssignmentEvent[]
 
   @@index([deletedAt])
   @@map("admin_users")
@@ -103,6 +104,7 @@ model User {
 
   assignedWallets Wallet[] @relation("WalletPoolAssignment")
   payerTransactions Transaction[]
+  assignmentEvents WalletAssignmentEvent[]
 
   @@unique([merchantId, externalUserId, environment])
   @@index([merchantId, environment])
@@ -136,6 +138,7 @@ model Wallet {
   cachedBalanceUpdatedAt DateTime? @map("cached_balance_updated_at")
 
   transactions Transaction[]
+  assignmentEvents WalletAssignmentEvent[]
 
   @@unique([merchantId, environment, chain, currency, network, address])
   @@index([merchantId, environment, chain, currency, network])
@@ -145,6 +148,26 @@ model Wallet {
   @@index([address])
   @@index([scanExpiresAt])
   @@map("wallets")
+}
+
+/// Logged on each gateway wallet resolution (deposit-address / create-wallet). Not retroactive for data before migration.
+model WalletAssignmentEvent {
+  id          String   @id @default(cuid())
+  walletId    String   @map("wallet_id")
+  userId      String   @map("user_id")
+  merchantId  String   @map("merchant_id")
+  environment MerchantGatewayEnv @map("environment")
+  /// existing_session | pool_pick | new_wallet
+  source      String   @map("source") @db.VarChar(24)
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  wallet   Wallet    @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  merchant AdminUser @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([merchantId, environment])
+  @@map("wallet_assignment_events")
 }
 
 model Transaction {

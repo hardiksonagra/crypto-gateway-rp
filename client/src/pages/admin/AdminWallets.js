@@ -14,10 +14,12 @@ import {
   listFilterSecondaryButtonClass,
 } from "../../components/ListFilterChrome";
 import { adminWalletsFilterSchema } from "../../admin/merchantSchemas";
+import WalletDepositActivityModal from "../../components/WalletDepositActivityModal";
 
 export default function AdminWallets() {
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
+  const [activityWalletId, setActivityWalletId] = useState(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [applied, setApplied] = useState({
     q: "",
@@ -102,9 +104,10 @@ export default function AdminWallets() {
         <div className="min-w-0 flex-1">
           <h1 className="font-display text-2xl font-semibold text-white">All wallets</h1>
           <p className="mt-1 max-w-3xl text-sm text-white/50 text-pretty">
-            Every deposit wallet across merchants. Use <span className="text-white/75">Refresh balances</span> to
-            query on-chain balances and store them here (TRON USDT/TRX, EVM USDT, Solana USDT·SPL). Other rails show
-            an error until supported.
+            Every deposit wallet across merchants. <span className="text-white/65">Payers / success</span> counts come
+            from recorded on-chain deposits (not every API assignment). Use <span className="text-white/75">Activity</span>{" "}
+            for time, user, amount per deposit. Use <span className="text-white/75">Refresh balances</span> for
+            on-chain balances (TRON USDT/TRX, EVM USDT, Solana USDT·SPL).
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -235,19 +238,22 @@ export default function AdminWallets() {
               <th className={th}>Merchant</th>
               <th className={th}>Cached balance</th>
               <th className={th}>Balance updated</th>
-              <th className={th}>Tx count</th>
+              <th className={th}>Payers</th>
+              <th className={th}>Success</th>
+              <th className={th}>Tx rows</th>
+              <th className={th}>Activity</th>
             </tr>
           </thead>
           <tbody>
             {listQ.isLoading ? (
               <tr>
-                <td colSpan={7} className={`${td} text-white/45`}>
+                <td colSpan={10} className={`${td} text-white/45`}>
                   Loading…
                 </td>
               </tr>
             ) : wallets.length === 0 ? (
               <tr>
-                <td colSpan={7} className={`${td} text-white/45`}>
+                <td colSpan={10} className={`${td} text-white/45`}>
                   No wallets match.
                 </td>
               </tr>
@@ -285,7 +291,18 @@ export default function AdminWallets() {
                       ? new Date(w.cached_balance_updated_at).toLocaleString()
                       : "—"}
                   </td>
-                  <td className={td}>{w.transaction_count}</td>
+                  <td className={`${td} font-mono`}>{w.distinct_payer_users ?? 0}</td>
+                  <td className={`${td} font-mono text-emerald-200/85`}>{w.success_deposit_count ?? 0}</td>
+                  <td className={`${td} font-mono`}>{w.transaction_count}</td>
+                  <td className={td}>
+                    <button
+                      type="button"
+                      onClick={() => setActivityWalletId(w.id)}
+                      className="rounded-lg border border-white/15 bg-white/5 px-2.5 py-1 text-xs text-white/80 hover:bg-white/10"
+                    >
+                      View
+                    </button>
+                  </td>
                 </tr>
               ))
             )}
@@ -302,6 +319,13 @@ export default function AdminWallets() {
           total={total}
         />
       </div>
+
+      <WalletDepositActivityModal
+        open={activityWalletId != null}
+        walletId={activityWalletId}
+        panel="admin"
+        onClose={() => setActivityWalletId(null)}
+      />
 
       <ListFilterDrawer
         open={drawerOpen}

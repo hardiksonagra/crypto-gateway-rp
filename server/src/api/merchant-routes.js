@@ -12,6 +12,16 @@ import {
   walletScanTtlMinutes,
 } from "../lib/wallet-scan.js";
 import { prisma } from "../lib/prisma.js";
+import {
+  aggregateWalletTxStats,
+  loadWalletDepositActivity,
+} from "../lib/wallet-deposit-stats.js";
+import {
+  batchUserAssignmentStats,
+  batchUserPayerTxStats,
+  loadUserAssignmentHistory,
+  loadUserPayerDepositHistory,
+} from "../lib/user-portal-stats.js";
 import { requireAuth } from "../middleware/require-auth.js";
 import { logPanelMutations } from "../middleware/log-panel-mutations.js";
 import { parsePageQuery } from "../lib/pagination.js";
@@ -190,20 +200,129 @@ router.get("/api/v1/merchant/users", async (req, res) => {
       include: { _count: { select: { assignedWallets: true } } },
     }),
   ]);
+  const uids = rows.map((u) => u.id);
+  const [assignStats, payerStats] = await Promise.all([
+    batchUserAssignmentStats(uids),
+    batchUserPayerTxStats(uids),
+  ]);
   res.json({
     page,
     pageSize,
     total,
     environment,
-    users: rows.map((u) => ({
-      id: u.id,
-      external_user_id: u.externalUserId,
-      environment: u.environment,
-      wallets_count: u._count.assignedWallets,
-      created_at: u.createdAt,
-    })),
+    users: rows.map((u) => {
+      const asg = assignStats.get(u.id);
+      const pay = payerStats.get(u.id);
+      return {
+        id: u.id,
+        external_user_id: u.externalUserId,
+        environment: u.environment,
+        wallets_now_assigned: u._count.assignedWallets,
+        wallet_assignment_event_count: asg?.event_count ?? 0,
+        distinct_wallets_in_assignment_log: asg?.distinct_wallets ?? 0,
+        payer_transaction_count: pay?.total_tx ?? 0,
+        payer_success_transaction_count: pay?.success_tx ?? 0,
+        created_at: u.createdAt,
+      };
+    }),
   });
 });
+
+router.get(
+  "/api/v1/merchant/users/:userId/wallet-assignment-history",
+  async (req, res) => {
+    const mid = merchantId(req);
+    if (!mid) {
+      res.status(401).json({ error: "unauthorized" });
+      return;
+    }
+    const gate = await resolveMerchantPortalForLists(mid);
+    if (!gate.ok) {
+      res.status(gate.status).json({
+        error: gate.error,
+        ...(gate.message ? { message: gate.message } : {}),
+      });
+      return;
+    }
+    const { environment } = gate;
+    const userId =
+      typeof req.params.userId === "string" ? req.params.userId.trim() : "";
+    if (!userId) {
+      res.status(400).json({ error: "user_id_required" });
+      return;
+    }
+    const owns = await prisma.user.findFirst({
+      where: { id: userId, merchantId: mid, environment },
+      select: { id: true },
+    });
+    if (!owns) {
+      res.status(404).json({ error: "not_found" });
+      return;
+    }
+    const limRaw = req.query.limit;
+    const limit =
+      typeof limRaw === "string" && limRaw.trim()
+        ? parseInt(limRaw, 10)
+        : 200;
+    const events = await loadUserAssignmentHistory(
+      userId,
+      Number.isFinite(limit) ? limit : 200,
+    );
+    res.json({
+      user_id: userId,
+      events,
+      source_labels: {
+        existing_session: "Same rail wallet refreshed (deposit-address / create-wallet)",
+        pool_pick: "Picked from merchant pool",
+        new_wallet: "New address generated",
+      },
+    });
+  },
+);
+
+router.get(
+  "/api/v1/merchant/users/:userId/payer-deposit-history",
+  async (req, res) => {
+    const mid = merchantId(req);
+    if (!mid) {
+      res.status(401).json({ error: "unauthorized" });
+      return;
+    }
+    const gate = await resolveMerchantPortalForLists(mid);
+    if (!gate.ok) {
+      res.status(gate.status).json({
+        error: gate.error,
+        ...(gate.message ? { message: gate.message } : {}),
+      });
+      return;
+    }
+    const { environment } = gate;
+    const userId =
+      typeof req.params.userId === "string" ? req.params.userId.trim() : "";
+    if (!userId) {
+      res.status(400).json({ error: "user_id_required" });
+      return;
+    }
+    const owns = await prisma.user.findFirst({
+      where: { id: userId, merchantId: mid, environment },
+      select: { id: true },
+    });
+    if (!owns) {
+      res.status(404).json({ error: "not_found" });
+      return;
+    }
+    const limRaw = req.query.limit;
+    const limit =
+      typeof limRaw === "string" && limRaw.trim()
+        ? parseInt(limRaw, 10)
+        : 200;
+    const data = await loadUserPayerDepositHistory(
+      userId,
+      Number.isFinite(limit) ? limit : 200,
+    );
+    res.json({ user_id: userId, ...data });
+  },
+);
 
 router.get("/api/v1/merchant/wallets", async (req, res) => {
   const mid = merchantId(req);
@@ -252,6 +371,7 @@ router.get("/api/v1/merchant/wallets", async (req, res) => {
       },
     }),
   ]);
+  const statsByWallet = await aggregateWalletTxStats(rows.map((w) => w.id));
   const now = new Date();
   const ttlMin = walletScanTtlMinutes();
   res.json({
@@ -265,6 +385,7 @@ router.get("/api/v1/merchant/wallets", async (req, res) => {
       const exp = w.scanExpiresAt;
       const deposit_scan_active =
         txCount > 0 || exp == null || exp > now;
+      const st = statsByWallet.get(w.id);
       return {
         id: w.id,
         address: w.address,
@@ -275,11 +396,61 @@ router.get("/api/v1/merchant/wallets", async (req, res) => {
         created_at: w.createdAt,
         scan_expires_at: exp?.toISOString() ?? null,
         transaction_count: txCount,
+        distinct_payer_users: st?.distinct_payers ?? 0,
+        success_deposit_count: st?.success_tx ?? 0,
         deposit_scan_active,
       };
     }),
   });
 });
+
+router.get(
+  "/api/v1/merchant/wallets/:walletId/deposit-activity",
+  async (req, res) => {
+    const mid = merchantId(req);
+    if (!mid) {
+      res.status(401).json({ error: "unauthorized" });
+      return;
+    }
+    const gate = await resolveMerchantPortalForLists(mid);
+    if (!gate.ok) {
+      res.status(gate.status).json({
+        error: gate.error,
+        ...(gate.message ? { message: gate.message } : {}),
+      });
+      return;
+    }
+    const { environment } = gate;
+    const walletId =
+      typeof req.params.walletId === "string" ? req.params.walletId.trim() : "";
+    if (!walletId) {
+      res.status(400).json({ error: "wallet_id_required" });
+      return;
+    }
+    const owns = await prisma.wallet.findFirst({
+      where: { id: walletId, merchantId: mid, environment },
+      select: { id: true },
+    });
+    if (!owns) {
+      res.status(404).json({ error: "wallet_not_found" });
+      return;
+    }
+    const limRaw = req.query.limit;
+    const limit =
+      typeof limRaw === "string" && limRaw.trim()
+        ? parseInt(limRaw, 10)
+        : 100;
+    const data = await loadWalletDepositActivity(
+      walletId,
+      Number.isFinite(limit) ? limit : 100,
+    );
+    res.json({
+      wallet_id: walletId,
+      note: "Rows are on-chain deposits we recorded. API address assignments without a deposit are not listed.",
+      ...data,
+    });
+  },
+);
 
 router.post(
   "/api/v1/merchant/wallets/:walletId/reactivate-deposit-scan",

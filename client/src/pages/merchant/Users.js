@@ -15,11 +15,18 @@ import {
   listFilterSecondaryButtonClass,
 } from "../../components/ListFilterChrome";
 import { merchantUsersFilterSchema } from "../../admin/merchantSchemas";
+import {
+  UserAssignmentHistoryModal,
+  UserHistoryCountButton,
+  UserPayerDepositHistoryModal,
+} from "../../components/UserHistoryModals.js";
 
 const DEFAULT_PAGE_SIZE = DEFAULT_LIST_PAGE_SIZE;
 
 export default function MerchantUsers() {
   const [page, setPage] = useState(1);
+  const [assignmentUserId, setAssignmentUserId] = useState(null);
+  const [depositUserId, setDepositUserId] = useState(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [applied, setApplied] = useState({
     q: "",
@@ -96,6 +103,12 @@ export default function MerchantUsers() {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
           <h1 className="font-display text-2xl font-semibold text-white">Users</h1>
+          <p className="mt-2 max-w-3xl text-xs leading-relaxed text-white/40">
+            <span className="text-white/55">Active</span> = wallets currently reserved.{" "}
+            <span className="text-white/55">Assign #</span> = gateway gave an address (click for time &amp; wallet).{" "}
+            <span className="text-white/55">Tx #</span> = recorded deposits (click for amount per tx). New logging only
+            after deploy.
+          </p>
         </div>
         <ListFilterToolbar
           onOpenDrawer={() => setDrawerOpen(true)}
@@ -194,25 +207,27 @@ export default function MerchantUsers() {
 
       <div className="mt-10 space-y-4">
         <div className="data-table-surface">
-          <table className="data-table min-w-[480px]">
+            <table className="data-table min-w-[640px]">
             <thead>
               <tr>
                 <th>External id</th>
-                <th>Wallets</th>
+                <th>Active</th>
+                <th>Assign #</th>
+                <th>Tx #</th>
                 <th>Created</th>
               </tr>
             </thead>
             <tbody>
               {res.isLoading ? (
                 <tr>
-                  <td colSpan={3} className="!py-12 text-center text-sm text-white/40">
+                  <td colSpan={5} className="!py-12 text-center text-sm text-white/40">
                     Loading…
                   </td>
                 </tr>
               ) : null}
               {showEmpty ? (
                 <tr>
-                  <td colSpan={3} className="!py-12 text-center text-sm text-white/45">
+                  <td colSpan={5} className="!py-12 text-center text-sm text-white/45">
                     No record found.
                   </td>
                 </tr>
@@ -221,7 +236,23 @@ export default function MerchantUsers() {
                 users.map((u) => (
                   <tr key={u.id}>
                     <td className="font-mono text-xs text-white/75">{u.external_user_id}</td>
-                    <td>{u.wallets_count}</td>
+                    <td className="font-mono text-xs text-white/70">{u.wallets_now_assigned ?? 0}</td>
+                    <td>
+                      <UserHistoryCountButton
+                        count={u.wallet_assignment_event_count ?? 0}
+                        disabled={false}
+                        title={`${u.distinct_wallets_in_assignment_log ?? 0} distinct wallet addresses in log`}
+                        onClick={() => setAssignmentUserId(u.id)}
+                      />
+                    </td>
+                    <td>
+                      <UserHistoryCountButton
+                        count={u.payer_transaction_count ?? 0}
+                        disabled={false}
+                        title={`${u.payer_success_transaction_count ?? 0} successful`}
+                        onClick={() => setDepositUserId(u.id)}
+                      />
+                    </td>
                     <td className="text-xs text-white/45">{u.created_at.slice(0, 10)}</td>
                   </tr>
                 ))}
@@ -237,6 +268,19 @@ export default function MerchantUsers() {
           setPageSize={(n) => setApplied((a) => ({ ...a, pageSize: n }))}
         />
       </div>
+
+      <UserAssignmentHistoryModal
+        open={assignmentUserId != null}
+        userId={assignmentUserId}
+        panel="merchant"
+        onClose={() => setAssignmentUserId(null)}
+      />
+      <UserPayerDepositHistoryModal
+        open={depositUserId != null}
+        userId={depositUserId}
+        panel="merchant"
+        onClose={() => setDepositUserId(null)}
+      />
     </div>
   );
 }

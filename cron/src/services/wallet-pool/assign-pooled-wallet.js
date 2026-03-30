@@ -11,6 +11,20 @@ import { deriveSolanaAddressBase58 } from "crypto-payment-gateway/src/services/w
 
 /** @typedef {import("@prisma/client").Prisma.TransactionClient} Tx */
 
+/** @param {unknown} e */
+function isWalletAssignmentTableMissingError(e) {
+  const err = /** @type {{ code?: string, message?: string, meta?: { code?: string, message?: string } }} */ (
+    e && typeof e === "object" ? e : {}
+  );
+  const blob = `${String(err.message ?? "")} ${String(err.meta?.message ?? "")}`;
+  if (!blob.includes("wallet_assignment_events")) return false;
+  return (
+    err.code === "P2010" ||
+    err.code === "P2021" ||
+    err.meta?.code === "42P01"
+  );
+}
+
 /**
  * Assign a reusable deposit wallet for an end-user (merchant pool). Runs on gateway API request, not on a timer.
  * If this user already holds a row for the rail, refreshes hold/scan and returns it (including expired holds).
@@ -36,6 +50,11 @@ export async function assignPooledWalletForDeposit(tx, p) {
       : null;
   const scanAt = nextScanExpiresAt();
 
+  /** @type {import("@prisma/client").Wallet} */
+  let wallet;
+  /** @type {string} */
+  let source;
+
   const stillAssigned = await tx.wallet.findFirst({
     where: {
       merchantId,
@@ -47,56 +66,82 @@ export async function assignPooledWalletForDeposit(tx, p) {
     },
   });
   if (stillAssigned) {
-    return tx.wallet.update({
+    wallet = await tx.wallet.update({
       where: { id: stillAssigned.id },
       data: {
         holdExpiresAt: holdUntil,
         scanExpiresAt: scanAt,
       },
     });
+    source = "existing_session";
+  } else {
+    const pickArgs = {
+      merchantId,
+      environment,
+      chain,
+      currency,
+      network,
+      userId,
+      holdUntil,
+      scanAt,
+    };
+
+    let picked = await tryPickFreePoolWallet(tx, pickArgs);
+    if (picked) {
+      wallet = picked;
+      source = "pool_pick";
+    } else {
+      try {
+        wallet = await createNewPooledWallet(tx, {
+          merchantId,
+          environment,
+          userId,
+          chain,
+          currency,
+          network,
+          holdUntil,
+          scanAt,
+        });
+        source = "new_wallet";
+      } catch (e) {
+        const msg = String(e);
+        if (!msg.includes("Unique constraint") && !msg.includes("unique constraint")) throw e;
+        picked = await tryPickFreePoolWallet(tx, pickArgs);
+        if (picked) {
+          wallet = picked;
+          source = "pool_pick";
+        } else {
+          wallet = await createNewPooledWallet(tx, {
+            merchantId,
+            environment,
+            userId,
+            chain,
+            currency,
+            network,
+            holdUntil,
+            scanAt,
+          });
+          source = "new_wallet";
+        }
+      }
+    }
   }
-
-  const pickArgs = {
-    merchantId,
-    environment,
-    chain,
-    currency,
-    network,
-    userId,
-    holdUntil,
-    scanAt,
-  };
-
-  let picked = await tryPickFreePoolWallet(tx, pickArgs);
-  if (picked) return picked;
 
   try {
-    return await createNewPooledWallet(tx, {
-      merchantId,
-      environment,
-      userId,
-      chain,
-      currency,
-      network,
-      holdUntil,
-      scanAt,
+    await tx.walletAssignmentEvent.create({
+      data: {
+        walletId: wallet.id,
+        userId,
+        merchantId,
+        environment,
+        source,
+      },
     });
   } catch (e) {
-    const msg = String(e);
-    if (!msg.includes("Unique constraint") && !msg.includes("unique constraint")) throw e;
-    picked = await tryPickFreePoolWallet(tx, pickArgs);
-    if (picked) return picked;
-    return createNewPooledWallet(tx, {
-      merchantId,
-      environment,
-      userId,
-      chain,
-      currency,
-      network,
-      holdUntil,
-      scanAt,
-    });
+    if (!isWalletAssignmentTableMissingError(e)) throw e;
   }
+
+  return wallet;
 }
 
 /**

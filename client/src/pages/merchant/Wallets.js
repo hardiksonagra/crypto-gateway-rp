@@ -15,12 +15,14 @@ import {
   listFilterSecondaryButtonClass,
 } from "../../components/ListFilterChrome";
 import { merchantWalletsFilterSchema } from "../../admin/merchantSchemas";
+import WalletDepositActivityModal from "../../components/WalletDepositActivityModal";
 
 const DEFAULT_PAGE_SIZE = DEFAULT_LIST_PAGE_SIZE;
 
 export default function MerchantWallets() {
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
+  const [activityWalletId, setActivityWalletId] = useState(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [applied, setApplied] = useState({
     q: "",
@@ -118,6 +120,11 @@ export default function MerchantWallets() {
               <span className="font-mono text-white/55">{scanTtlMin}</span> minutes (no new address).
             </p>
           ) : null}
+          <p className="mt-2 max-w-3xl text-xs leading-relaxed text-white/40">
+            <span className="text-white/55">Payers / success / tx rows</span> are from on-chain deposits we recorded.
+            <span className="text-white/55"> Activity</span> shows each deposit time, external user, and amount. Pure API
+            assignments without a deposit are not in that history.
+          </p>
         </div>
         <ListFilterToolbar
           onOpenDrawer={() => setDrawerOpen(true)}
@@ -223,6 +230,9 @@ export default function MerchantWallets() {
                 <th>Asset</th>
                 <th>Chain</th>
                 <th>External user</th>
+                <th>Payers</th>
+                <th>Success</th>
+                <th>Tx rows</th>
                 <th>Deposit scan</th>
                 <th>Created</th>
                 <th className="whitespace-nowrap">Actions</th>
@@ -231,14 +241,14 @@ export default function MerchantWallets() {
             <tbody>
               {res.isLoading ? (
                 <tr>
-                  <td colSpan={7} className="!py-12 text-center text-sm text-white/40">
+                  <td colSpan={10} className="!py-12 text-center text-sm text-white/40">
                     Loading…
                   </td>
                 </tr>
               ) : null}
               {showEmpty ? (
                 <tr>
-                  <td colSpan={7} className="!py-12 text-center text-sm text-white/45">
+                  <td colSpan={10} className="!py-12 text-center text-sm text-white/45">
                     No record found.
                   </td>
                 </tr>
@@ -278,21 +288,31 @@ export default function MerchantWallets() {
                     </td>
                     <td className="font-mono text-xs text-white/65">{w.chain}</td>
                     <td className="font-mono text-xs text-white/75">{w.external_user_id}</td>
+                    <td className="font-mono text-xs text-white/75">{w.distinct_payer_users ?? 0}</td>
+                    <td className="font-mono text-xs text-emerald-200/85">{w.success_deposit_count ?? 0}</td>
+                    <td className="font-mono text-xs text-white/65">{txc}</td>
                     <td className="max-w-[200px] text-xs text-white/55">{scanLine}</td>
                     <td className="text-xs text-white/45">{w.created_at.slice(0, 10)}</td>
                     <td className="whitespace-nowrap">
-                      {canRestart ? (
+                      <div className="flex flex-col items-start gap-1.5">
                         <button
                           type="button"
-                          disabled={reactivateScan.isPending}
-                          onClick={() => reactivateScan.mutate(w.id)}
-                          className="rounded-lg border border-sky-500/35 bg-sky-500/15 px-2.5 py-1 text-xs font-medium text-sky-200/95 transition hover:border-sky-400/50 hover:bg-sky-500/25 disabled:opacity-50"
+                          onClick={() => setActivityWalletId(w.id)}
+                          className="rounded-lg border border-white/15 bg-white/5 px-2.5 py-1 text-xs text-white/80 hover:bg-white/10"
                         >
-                          Restart scan window
+                          Activity
                         </button>
-                      ) : (
-                        <span className="text-xs text-white/25">—</span>
-                      )}
+                        {canRestart ? (
+                          <button
+                            type="button"
+                            disabled={reactivateScan.isPending}
+                            onClick={() => reactivateScan.mutate(w.id)}
+                            className="rounded-lg border border-sky-500/35 bg-sky-500/15 px-2.5 py-1 text-xs font-medium text-sky-200/95 transition hover:border-sky-400/50 hover:bg-sky-500/25 disabled:opacity-50"
+                          >
+                            Restart scan
+                          </button>
+                        ) : null}
+                      </div>
                     </td>
                   </tr>
                 );
@@ -313,6 +333,13 @@ export default function MerchantWallets() {
           setPageSize={(n) => setApplied((a) => ({ ...a, pageSize: n }))}
         />
       </div>
+
+      <WalletDepositActivityModal
+        open={activityWalletId != null}
+        walletId={activityWalletId}
+        panel="merchant"
+        onClose={() => setActivityWalletId(null)}
+      />
     </div>
   );
 }

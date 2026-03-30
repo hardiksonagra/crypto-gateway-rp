@@ -35,6 +35,16 @@ import {
 import { redeliverPaymentSuccessWebhookAdmin } from "../services/callback-service.js";
 import { refreshAllWalletCachedBalances } from "../services/wallet/wallet-balance-probe.js";
 import {
+  aggregateWalletTxStats,
+  loadWalletDepositActivity,
+} from "../lib/wallet-deposit-stats.js";
+import {
+  batchUserAssignmentStats,
+  batchUserPayerTxStats,
+  loadUserAssignmentHistory,
+  loadUserPayerDepositHistory,
+} from "../lib/user-portal-stats.js";
+import {
   listTronUsdtSweepTargets,
   sweepTronUsdtAll,
   sweepTronUsdtOne,
@@ -813,20 +823,120 @@ router.get("/api/v1/admin/users", async (req, res) => {
     }),
   ]);
 
+  const uids = rows.map((u) => u.id);
+  const [assignStats, payerStats] = await Promise.all([
+    batchUserAssignmentStats(uids),
+    batchUserPayerTxStats(uids),
+  ]);
+
   res.json({
     page,
     pageSize,
     total,
     viewer_environment: listEnv,
-    users: rows.map((u) => ({
-      id: u.id,
-      external_user_id: u.externalUserId,
-      merchant: u.merchant,
-      wallets_count: u._count.assignedWallets,
-      created_at: u.createdAt,
-    })),
+    users: rows.map((u) => {
+      const asg = assignStats.get(u.id);
+      const pay = payerStats.get(u.id);
+      return {
+        id: u.id,
+        external_user_id: u.externalUserId,
+        merchant: u.merchant,
+        wallets_now_assigned: u._count.assignedWallets,
+        wallet_assignment_event_count: asg?.event_count ?? 0,
+        distinct_wallets_in_assignment_log: asg?.distinct_wallets ?? 0,
+        payer_transaction_count: pay?.total_tx ?? 0,
+        payer_success_transaction_count: pay?.success_tx ?? 0,
+        created_at: u.createdAt,
+      };
+    }),
   });
 });
+
+router.get(
+  "/api/v1/admin/users/:userId/wallet-assignment-history",
+  async (req, res) => {
+    const userId =
+      typeof req.params.userId === "string" ? req.params.userId.trim() : "";
+    if (!userId) {
+      res.status(400).json({ error: "user_id_required" });
+      return;
+    }
+    const listEnv = await adminListViewerEnvironment(req);
+    const merchantFilter =
+      typeof req.query.merchant_id === "string"
+        ? req.query.merchant_id.trim()
+        : "";
+    const u = await prisma.user.findFirst({
+      where: { id: userId, environment: listEnv },
+      select: { id: true, merchantId: true },
+    });
+    if (!u) {
+      res.status(404).json({ error: "not_found" });
+      return;
+    }
+    if (merchantFilter && u.merchantId !== merchantFilter) {
+      res.status(404).json({ error: "not_found" });
+      return;
+    }
+    const limRaw = req.query.limit;
+    const limit =
+      typeof limRaw === "string" && limRaw.trim()
+        ? parseInt(limRaw, 10)
+        : 200;
+    const events = await loadUserAssignmentHistory(
+      userId,
+      Number.isFinite(limit) ? limit : 200,
+    );
+    res.json({
+      user_id: userId,
+      events,
+      source_labels: {
+        existing_session: "Same rail wallet refreshed (deposit-address / create-wallet)",
+        pool_pick: "Picked from merchant pool",
+        new_wallet: "New address generated",
+      },
+    });
+  },
+);
+
+router.get(
+  "/api/v1/admin/users/:userId/payer-deposit-history",
+  async (req, res) => {
+    const userId =
+      typeof req.params.userId === "string" ? req.params.userId.trim() : "";
+    if (!userId) {
+      res.status(400).json({ error: "user_id_required" });
+      return;
+    }
+    const listEnv = await adminListViewerEnvironment(req);
+    const merchantFilter =
+      typeof req.query.merchant_id === "string"
+        ? req.query.merchant_id.trim()
+        : "";
+    const u = await prisma.user.findFirst({
+      where: { id: userId, environment: listEnv },
+      select: { id: true, merchantId: true },
+    });
+    if (!u) {
+      res.status(404).json({ error: "not_found" });
+      return;
+    }
+    if (merchantFilter && u.merchantId !== merchantFilter) {
+      res.status(404).json({ error: "not_found" });
+      return;
+    }
+    const limRaw = req.query.limit;
+    const limit =
+      typeof limRaw === "string" && limRaw.trim()
+        ? parseInt(limRaw, 10)
+        : 200;
+    const data = await loadUserPayerDepositHistory(
+      userId,
+      Number.isFinite(limit) ? limit : 200,
+    );
+    res.json({ user_id: userId, ...data });
+  },
+);
 
 router.get("/api/v1/admin/transactions", async (req, res) => {
   const { skip, take, page, pageSize } = parsePageQuery(req.query);
@@ -1091,6 +1201,8 @@ router.get("/api/v1/admin/wallets", async (req, res) => {
     }),
   ]);
 
+  const statsByWallet = await aggregateWalletTxStats(rows.map((w) => w.id));
+
   const now = new Date();
   const ttlMin = walletScanTtlMinutes();
   res.json({
@@ -1103,6 +1215,7 @@ router.get("/api/v1/admin/wallets", async (req, res) => {
       const exp = w.scanExpiresAt;
       const deposit_scan_active =
         txCount > 0 || exp == null || exp > now;
+      const st = statsByWallet.get(w.id);
       return {
         id: w.id,
         address: w.address,
@@ -1117,6 +1230,8 @@ router.get("/api/v1/admin/wallets", async (req, res) => {
         created_at: w.createdAt,
         scan_expires_at: exp?.toISOString() ?? null,
         transaction_count: txCount,
+        distinct_payer_users: st?.distinct_payers ?? 0,
+        success_deposit_count: st?.success_tx ?? 0,
         deposit_scan_active,
         cached_balance_display: w.cachedBalanceDisplay ?? null,
         cached_balance_atomic: w.cachedBalanceAtomic ?? null,
@@ -1124,6 +1239,34 @@ router.get("/api/v1/admin/wallets", async (req, res) => {
         cached_balance_updated_at: w.cachedBalanceUpdatedAt?.toISOString() ?? null,
       };
     }),
+  });
+});
+
+router.get("/api/v1/admin/wallets/:walletId/deposit-activity", async (req, res) => {
+  const walletId =
+    typeof req.params.walletId === "string" ? req.params.walletId.trim() : "";
+  if (!walletId) {
+    res.status(400).json({ error: "wallet_id_required" });
+    return;
+  }
+  const limRaw = req.query.limit;
+  const limit =
+    typeof limRaw === "string" && limRaw.trim()
+      ? parseInt(limRaw, 10)
+      : 100;
+  const w = await prisma.wallet.findUnique({
+    where: { id: walletId },
+    select: { id: true },
+  });
+  if (!w) {
+    res.status(404).json({ error: "wallet_not_found" });
+    return;
+  }
+  const data = await loadWalletDepositActivity(walletId, Number.isFinite(limit) ? limit : 100);
+  res.json({
+    wallet_id: walletId,
+    note: "Rows are on-chain deposits we recorded. API address assignments without a deposit are not listed.",
+    ...data,
   });
 });
 
