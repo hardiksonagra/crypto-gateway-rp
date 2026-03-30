@@ -34,7 +34,9 @@ export function getResolvedString(key, fallbackFn) {
   if (!APP_SETTING_DEF_BY_KEY.has(key)) return fallbackFn();
   if (hasDbOverride(key)) {
     const v = rawDbValue(key);
-    return v != null ? String(v) : fallbackFn();
+    const s = v != null ? String(v) : "";
+    /** Non-empty DB value wins over env; empty/whitespace row means “no override” (use .env fallback). */
+    if (s.trim() !== "") return s;
   }
   return fallbackFn();
 }

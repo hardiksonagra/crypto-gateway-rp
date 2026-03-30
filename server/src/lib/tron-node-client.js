@@ -43,9 +43,12 @@ export function logTronscanAddressHistoryRequest(opts) {
   const msg = address
     ? `TronScan address history fetch: ${address} (${kind})`
     : `TronScan address history fetch (${kind})`;
-  logger.info(msg, {
+  /** Single object so production JSON + dev printf always include `message` and `address`. */
+  logger.log({
+    level: "info",
+    message: msg,
     event: "tronscan_address_history_request",
-    address: address || undefined,
+    address: address || null,
     kind,
     tronscan_host: tronscanApiHostnameForLog(),
   });

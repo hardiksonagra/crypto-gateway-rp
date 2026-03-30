@@ -26,6 +26,10 @@ const devConsoleFormat = winston.format.combine(
       return `${ts} ${level}\n${msg}`;
     }
 
+    if (info.event === "tronscan_addresses_this_tick" && msg) {
+      return `${ts} ${level}\n${msg}`;
+    }
+
     if (msg) {
       const parts = [];
       for (const key of Object.keys(info)) {

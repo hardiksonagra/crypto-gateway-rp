@@ -126,7 +126,11 @@ export const env = {
   tronFullNode: optional("TRON_FULL_NODE", "https://api.trongrid.io"),
   /** TronScan HTTP API base (deposit tracker). Docs: https://docs.tronscan.org */
   tronscanApiBase: optional("TRONSCAN_API_BASE", "https://apilist.tronscanapi.com"),
-  /** Required for deposit scanner rate limits; header `TRON-PRO-API-KEY` (TronScan dashboard). */
+  /**
+   * TronScan `TRON-PRO-API-KEY` (deposit worker). Optional in .env if you store it in Admin → System settings
+   * (`app_settings.TRONSCAN_API_KEY`); non-empty DB value overrides this env var after `loadAppSettingsFromDatabase`.
+   * For per-address TronScan logs in PM2 (`tronscan_*` events), keep `LOG_LEVEL` at `info` (default) or lower.
+   */
   tronscanApiKey: optional("TRONSCAN_API_KEY", ""),
   tronSolidityNode: optional("TRON_SOLIDITY_NODE", "https://api.trongrid.io"),
   tronEventServer: optional("TRON_EVENT_SERVER", "https://api.trongrid.io"),

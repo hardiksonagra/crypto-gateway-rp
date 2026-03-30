@@ -134,12 +134,30 @@ export async function scanTronChain(options = {}) {
     byHex.get(k).push(w);
   }
 
-  const polled = [];
+  /** @type {Array<{ address: string, trxTargets: typeof wallets, usdtTargets: typeof wallets }>} */
+  const work = [];
   for (const group of byHex.values()) {
     const address = group[0].address;
     const trxTargets = group.filter((w) => w.currency === "TRX" && w.network === "TRON");
     const usdtTargets = group.filter((w) => w.currency === "USDT" && w.network === "TRC20");
-    if (trxTargets.length || usdtTargets.length) polled.push(address);
+    if (trxTargets.length || usdtTargets.length) {
+      work.push({ address, trxTargets, usdtTargets });
+    }
+  }
+
+  if (work.length) {
+    const addrList = work.map((w) => w.address);
+    logger.log({
+      level: "info",
+      message: `TronScan this tick: checking incoming tx for ${addrList.length} address(es): ${addrList.join(", ")}`,
+      event: "tronscan_addresses_this_tick",
+      addresses: addrList,
+      address_count: addrList.length,
+      tronscan_host: tronscanApiHostnameForLog(),
+    });
+  }
+
+  for (const { address, trxTargets, usdtTargets } of work) {
     if (trxTargets.length) {
       await ingestTrxViaTronscan(base, address, trxTargets, chain);
     }
@@ -147,7 +165,10 @@ export async function scanTronChain(options = {}) {
       await ingestTrc20ViaTronscan(base, address, usdtTargets, chain, trc20Map);
     }
   }
-  recordDepositScanPolledAddresses(Chain.TRON, polled);
+  recordDepositScanPolledAddresses(
+    Chain.TRON,
+    work.map((w) => w.address),
+  );
 }
 
 /**
@@ -157,11 +178,11 @@ async function ingestTrxViaTronscan(base, address, targets, chain) {
   const url = `${base}/api/transfer?sort=-timestamp&limit=50&start=0&count=false&token=_&address=${encodeURIComponent(address)}`;
   let data = {};
   try {
-    await acquireOutboundRpcSlot("TRON");
     logTronscanAddressHistoryRequest({
       address,
       kind: "TRX_TRANSFER",
     });
+    await acquireOutboundRpcSlot("TRON");
     const res = await fetch(url, { headers: getTronscanFetchHeaders() });
     const text = await res.text();
     try {
@@ -253,11 +274,11 @@ async function ingestTrc20ViaTronscan(base, address, targets, chain, trc20Map) {
   const url = `${base}/api/token_trc20/transfers?limit=50&start=0&contract_address=${encodeURIComponent(usdtContract)}&relatedAddress=${encodeURIComponent(address)}&confirm=true`;
   let data = {};
   try {
-    await acquireOutboundRpcSlot("TRON");
     logTronscanAddressHistoryRequest({
       address,
       kind: "TRC20_USDT_TRANSFER",
     });
+    await acquireOutboundRpcSlot("TRON");
     const res = await fetch(url, { headers: getTronscanFetchHeaders() });
     const text = await res.text();
     try {
