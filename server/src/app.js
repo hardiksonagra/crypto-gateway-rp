@@ -164,9 +164,18 @@ export function createApp() {
       maxAge: 86_400,
     }),
   );
-  const jsonParser = express.json({ limit: "512kb" });
+  // strict: false allows top-level JSON `null` / primitives (strict mode rejects them).
+  const jsonParser = express.json({ limit: "512kb", strict: false });
   app.use((req, res, next) => {
     if (["GET", "HEAD", "OPTIONS"].includes(req.method)) {
+      return next();
+    }
+    const ct = String(req.headers["content-type"] ?? "").toLowerCase();
+    if (
+      ct.includes("application/json") &&
+      req.headers["content-length"] === "0"
+    ) {
+      req.body = {};
       return next();
     }
     return jsonParser(req, res, next);
@@ -216,6 +225,18 @@ export function createApp() {
       });
     });
   }
+
+  app.use((err, req, res, next) => {
+    if (err?.type === "entity.parse.failed") {
+      res.status(400).json({
+        error: "invalid_json",
+        message:
+          "Body must be valid JSON when Content-Type is application/json (empty body: send {} or omit the header).",
+      });
+      return;
+    }
+    next(err);
+  });
 
   app.use((req, res) => {
     res.status(404).json({

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "../../api";
+import ConfirmModal from "../../components/ConfirmModal.js";
 
 /** Hidden state — password-style mask. */
 const API_KEY_MASK = "***** ***** ***** *****";
@@ -54,6 +55,9 @@ export default function GatewayApiKey() {
   const [showApiKey, setShowApiKey] = useState(false);
   const [loading, setLoading] = useState(true);
   const [copyState, setCopyState] = useState("idle");
+  const [confirmRegenOpen, setConfirmRegenOpen] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
+  const [regenError, setRegenError] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -104,11 +108,57 @@ export default function GatewayApiKey() {
     }
   }
 
+  async function confirmRegenerate() {
+    setRegenError(null);
+    setRegenerating(true);
+    try {
+      const data = await api("/api/v1/merchant/gateway-api-key/regenerate", {
+        method: "POST",
+        json: {},
+      });
+      const secret =
+        typeof data?.api_key === "string" && data.api_key.trim()
+          ? data.api_key.trim()
+          : null;
+      const hint =
+        typeof data?.api_key_hint === "string" && data.api_key_hint.trim()
+          ? data.api_key_hint.trim()
+          : null;
+      setApiKeyInfo({
+        secret,
+        hint,
+        cipherPresent: Boolean(secret),
+      });
+      setShowApiKey(true);
+      setConfirmRegenOpen(false);
+    } catch (e) {
+      setRegenError(String(e).replace(/^Error:\s*/, "") || "Could not regenerate.");
+    } finally {
+      setRegenerating(false);
+    }
+  }
+
   const btnBase =
     "flex shrink-0 items-center justify-center rounded-lg border border-white/10 bg-black/30 px-3 text-sm font-medium transition";
 
   return (
     <div className="w-full">
+      <ConfirmModal
+        open={confirmRegenOpen}
+        title="Regenerate API key?"
+        danger
+        confirmLabel={regenerating ? "Regenerating…" : "Regenerate"}
+        cancelLabel="Cancel"
+        isLoading={regenerating}
+        onCancel={() => !regenerating && setConfirmRegenOpen(false)}
+        onConfirm={confirmRegenerate}
+      >
+        <p>
+          Your current key will stop working immediately for live and sandbox gateway calls. Update every server
+          and secret store with the new key before continuing traffic.
+        </p>
+      </ConfirmModal>
+
       <h1 className="font-display text-2xl font-semibold text-white">API key</h1>
 
       <div className="glass mt-8 w-full rounded-2xl p-6 lg:p-8">
@@ -119,8 +169,7 @@ export default function GatewayApiKey() {
           Gateway API key
         </label>
         <p className="mt-1 text-xs text-white/35">
-          Do not expose in browsers or mobile apps. If it leaks, ask an admin to regenerate
-          it (Edit merchant).
+          Do not expose in browsers or mobile apps. If it leaks, regenerate here or ask an admin (Edit merchant).
         </p>
         <div className="mt-2 flex flex-wrap items-stretch gap-2">
           <div
@@ -155,7 +204,20 @@ export default function GatewayApiKey() {
           >
             {copyState === "ok" ? "Copied" : copyState === "err" ? "Failed" : "Copy"}
           </button>
+          <button
+            type="button"
+            onClick={() => {
+              setRegenError(null);
+              setConfirmRegenOpen(true);
+            }}
+            className={`${btnBase} border-rose-500/30 bg-rose-950/25 text-rose-100/90 hover:border-rose-400/40 hover:bg-rose-950/40`}
+          >
+            Regenerate
+          </button>
         </div>
+        {regenError ? (
+          <p className="mt-2 text-xs text-rose-300/90">{regenError}</p>
+        ) : null}
         {showApiKey && !keyRow.secret && keyRow.hint && !keyRow.cipherPresent ? (
           <p className="mt-2 text-xs text-amber-200/80">
             This account still has only a hash + hint from before encrypted storage. The full secret cannot be

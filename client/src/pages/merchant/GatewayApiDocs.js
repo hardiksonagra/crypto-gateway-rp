@@ -10,6 +10,7 @@ import {
   railKeyFromParts,
   splitRailKey,
 } from "../../admin/depositRailOptions.js";
+import { GATEWAY_X_TOKEN_SNIPPETS } from "./gatewayXTokenCodeSnippets.js";
 
 const API_EXAMPLE_BASE =
   String(import.meta.env.VITE_API_ORIGIN ?? "").replace(/\/$/, "") ||
@@ -135,6 +136,67 @@ function gatewayApiKeyJsonLiteral(hint) {
   return JSON.stringify("<merchant_api_key>");
 }
 
+/** @param {number | null} id */
+function merchantIdForDocs(id) {
+  return typeof id === "number" && Number.isFinite(id) && id >= 1
+    ? String(id)
+    : "<merchant_id_from_GET_/api/v1/auth/me>";
+}
+
+/**
+ * X-Token reference code with language dropdown (same algorithm as `server/src/lib/gateway-x-token.js`).
+ */
+function XTokenMultiLangCodeBlock() {
+  const [lang, setLang] = useState("nodejs");
+  const snippet =
+    GATEWAY_X_TOKEN_SNIPPETS.find((s) => s.id === lang) ??
+    GATEWAY_X_TOKEN_SNIPPETS[0];
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(snippet.code);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2000);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  return (
+    <div className="mt-2 overflow-hidden rounded-lg border border-white/10 bg-black/40">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 bg-black/30 px-2 py-1.5">
+        <label className="flex min-w-0 items-center gap-2 text-[10px] font-medium uppercase tracking-wide text-white/55">
+          <span className="shrink-0">Language</span>
+          <select
+            value={lang}
+            onChange={(e) => setLang(e.target.value)}
+            className="max-w-[min(100%,16rem)] rounded-md border border-white/15 bg-black/60 py-1 pl-2 pr-8 text-xs font-normal normal-case tracking-normal text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white/25"
+            aria-label="X-Token code sample language"
+          >
+            {GATEWAY_X_TOKEN_SNIPPETS.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button
+          type="button"
+          onClick={handleCopy}
+          className={COPY_BTN_CLASS}
+          aria-label={copied ? "Copied" : "Copy code to clipboard"}
+        >
+          {copied ? "Copied" : "Copy"}
+        </button>
+      </div>
+      <pre className="overflow-x-auto whitespace-pre-wrap break-all p-4 text-xs leading-relaxed text-zinc-200/90">
+        {snippet.code}
+      </pre>
+    </div>
+  );
+}
+
 /**
  * Code block with copy-to-clipboard (copies rendered text, including interpolated examples).
  * @param {{ children: import("react").ReactNode, breakAll?: boolean }} props
@@ -181,6 +243,7 @@ function Pre({ children, breakAll }) {
 export default function GatewayApiDocs() {
   const [railRows, setRailRows] = useState(null);
   const [apiKeyHint, setApiKeyHint] = useState(null);
+  const [merchantNumericId, setMerchantNumericId] = useState(null);
   const [hasSandboxApiKey, setHasSandboxApiKey] = useState(false);
   /** Saved webhook URL from portal (`callbackUrl`); null if unset or not loaded yet */
   const [merchantCallbackUrl, setMerchantCallbackUrl] = useState(null);
@@ -194,6 +257,9 @@ export default function GatewayApiDocs() {
         setRailRows(keys.map(rowForRailKey));
         const h = u.apiKeyHint;
         setApiKeyHint(typeof h === "string" && h.trim() ? h.trim() : null);
+        setMerchantNumericId(
+          typeof u.id === "number" && Number.isFinite(u.id) ? u.id : null,
+        );
         setHasSandboxApiKey(Boolean(u.hasSandboxApiKey));
         const cb = u.callbackUrl;
         setMerchantCallbackUrl(
@@ -204,6 +270,7 @@ export default function GatewayApiDocs() {
         if (!cancelled) {
           setRailRows([]);
           setApiKeyHint(null);
+          setMerchantNumericId(null);
           setHasSandboxApiKey(false);
           setMerchantCallbackUrl(null);
         }
@@ -234,20 +301,42 @@ export default function GatewayApiDocs() {
           ) : null}
         </p>
         <p className="mt-3 text-sm text-white/55">
-          POST bodies use <span className="font-mono">Content-Type: application/json</span> and{" "}
-          <span className="font-mono">api_key</span>. If you use one secret for both live and sandbox,
-          the gateway picks <span className="font-mono">live</span> vs{" "}
-          <span className="font-mono">sandbox</span> from your portal environment (Settings); you can
-          still send optional <span className="font-mono">gateway_environment</span> to override.
-          Your merchant secret is only on the{" "}
+          <span className="font-medium text-white/70">Recommended:</span> send{" "}
+          <span className="font-mono">X-Token</span> and{" "}
+          <span className="font-mono">X-Merchant-Id</span> (your numeric{" "}
+          <span className="font-mono">id</span> from{" "}
+          <span className="font-mono">GET /api/v1/auth/me</span>). The JSON body is the same as
+          before but <span className="font-medium text-white/70">without</span>{" "}
+          <span className="font-mono">api_key</span>.{" "}
+          <span className="font-mono">X-Token</span> is{" "}
+          <span className="font-mono">AES-256-GCM</span> of the{" "}
+          <span className="font-medium text-white/70">canonical JSON</span> string of that body
+          (sorted object keys at every level), using <span className="font-mono">SHA-256</span> of
+          your API secret as the 32-byte AES key. The gateway decrypts and must get an exact string
+          match — otherwise <span className="font-mono">401 invalid_x_token</span>.{" "}
+          <span className="font-medium text-white/70">Exception:</span>{" "}
+          <span className="font-mono">GET /api/v1/gateway/supported-currency</span> has no body — build{" "}
+          <span className="font-mono">X-Token</span> from canonical JSON{" "}
+          <span className="font-mono">{"{\"api_key\":\"<your_full_secret>\"}"}</span> only (secret
+          never sent in the clear).
+        </p>
+        <p className="mt-2 text-sm text-white/55">
+          Live vs sandbox follows your merchant portal profile (Settings). You do{" "}
+          <span className="font-medium text-white/70">not</span> need{" "}
+          <span className="font-mono">gateway_environment</span> unless you override (one shared key, other env than Settings).
+          Your gateway secret is only on the{" "}
           <Link
             to="/api-key"
             className="text-sky-300/90 underline decoration-white/20 underline-offset-2 hover:decoration-sky-300/60"
           >
             API key
           </Link>{" "}
-          page — not repeated here.
+          page.
         </p>
+        <p className="mt-3 text-xs font-medium text-white/45">
+          Build <span className="font-mono">X-Token</span> (choose language)
+        </p>
+        <XTokenMultiLangCodeBlock />
       </div>
 
       <section className="glass w-full rounded-2xl p-6 lg:p-8">
@@ -289,7 +378,7 @@ export default function GatewayApiDocs() {
             "/api/v1/gateway/supported-currency",
           )}
         >
-          <span className="text-white/55">POST</span>{" "}
+          <span className="text-sky-300/90">GET</span>{" "}
           /api/v1/gateway/supported-currency
         </EndpointRow>
         <p className="mt-3 text-sm text-white/55">
@@ -298,23 +387,32 @@ export default function GatewayApiDocs() {
           on the gateway, in order (same rules as the table above — use it to
           build checkout dropdowns on your backend).
         </p>
-        <p className="mt-3 text-xs font-medium text-white/45">Body</p>
+        <p className="mt-3 text-xs font-medium text-white/45">
+          GET + headers (no JSON body)
+        </p>
         <ul className="mt-1 list-inside list-disc text-sm text-white/55">
           <li>
-            <span className="font-mono text-white/60">api_key</span>{" "}
-            (required)
+            <span className="font-mono text-white/60">X-Merchant-Id</span> — numeric
+            id from <span className="font-mono">GET /api/v1/auth/me</span>
           </li>
           <li>
-            <span className="font-mono text-white/60">gateway_environment</span>{" "}
-            (optional) — override; otherwise matches portal Live/Sandbox
+            <span className="font-mono text-white/60">X-Token</span> —{" "}
+            <span className="font-mono">buildXToken</span> on the canonical JSON of exactly{" "}
+            <span className="font-mono">{"{\"api_key\":\"<your_full_gateway_secret>\"}"}</span>{" "}
+            (same AES-GCM + SHA-256 key rules as above). The secret appears only inside the ciphertext.
+          </li>
+          <li>
+            <span className="font-medium text-white/70">Environment:</span> defaults to your portal{" "}
+            <span className="font-mono">Live</span>/<span className="font-mono">Sandbox</span> (Settings). No query param required. Optional:{" "}
+            <span className="font-mono text-white/60">?gateway_environment=live</span> or{" "}
+            <span className="font-mono">sandbox</span> only to override when using one shared key.
           </li>
         </ul>
-        <Pre>{`POST /api/v1/gateway/supported-currency
-Content-Type: application/json
-
-{
-  "api_key": ${gatewayApiKeyJsonLiteral(apiKeyHint)}
-}`}</Pre>
+        <Pre>{`GET /api/v1/gateway/supported-currency
+X-Merchant-Id: ${merchantIdForDocs(merchantNumericId)}
+X-Token: <base64 from buildXToken on canonical JSON of:
+  {"api_key":${gatewayApiKeyJsonLiteral(apiKeyHint)}}
+  (use your real full secret in code, not the masked doc example)>`}</Pre>
         <p className="mt-4 text-xs font-medium text-white/45">200 response</p>
         <Pre>{`{
   "pairs": [
@@ -324,8 +422,7 @@ Content-Type: application/json
   "default_network": "TRC20"
 }`}</Pre>
         <p className="mt-4 text-xs text-white/45">
-          <span className="font-mono">401 invalid_api_key</span> if the key is
-          invalid or the merchant account is inactive.
+          <span className="font-mono">401 invalid_x_token</span> if auth fails.
         </p>
       </section>
 
@@ -347,15 +444,22 @@ Content-Type: application/json
           <span className="font-mono">currency</span>/
           <span className="font-mono">network</span> returns the same address.
         </p>
+        <p className="mt-3 text-xs font-medium text-white/45">
+          Headers (recommended — no secret in JSON)
+        </p>
+        <ul className="mt-1 list-inside list-disc text-sm text-white/55">
+          <li>
+            <span className="font-mono text-white/60">X-Merchant-Id</span>,{" "}
+            <span className="font-mono text-white/60">X-Token</span> — encrypt canonical JSON of this POST body{" "}
+            <span className="font-medium text-white/70">without</span>{" "}
+            <span className="font-mono">api_key</span>
+          </li>
+        </ul>
         <p className="mt-3 text-xs font-medium text-white/45">Body</p>
         <ul className="mt-1 list-inside list-disc text-sm text-white/55">
           <li>
-            <span className="font-mono text-white/60">api_key</span>{" "}
-            (required)
-          </li>
-          <li>
             <span className="font-mono text-white/60">gateway_environment</span>{" "}
-            (optional) — override; otherwise matches portal Live/Sandbox
+            (optional) — omit to use portal Live/Sandbox (Settings); add only to override with a unified key
           </li>
           <li>
             <span className="font-mono text-white/60">
@@ -375,12 +479,14 @@ Content-Type: application/json
             <span className="font-mono">success</span> or when the deposit scan
             countdown ends
           </li>
+          <li>Do not send <span className="font-mono">api_key</span> when using headers</li>
         </ul>
         <Pre>{`POST /api/v1/gateway/deposit-address
 Content-Type: application/json
+X-Merchant-Id: ${merchantIdForDocs(merchantNumericId)}
+X-Token: <base64 from buildXToken on canonical JSON of body>
 
 {
-  "api_key": ${gatewayApiKeyJsonLiteral(apiKeyHint)},
   "external_user_id": "user-123",
   "currency": "USDT",
   "network": "TRC20",
@@ -405,7 +511,7 @@ Content-Type: application/json
           Errors: <span className="font-mono">400</span> missing fields or{" "}
           <span className="font-mono">unsupported_currency_network</span> or{" "}
           <span className="font-mono">invalid_redirect_url</span>;{" "}
-          <span className="font-mono">401 invalid_api_key</span>;{" "}
+          <span className="font-mono">401 invalid_x_token</span>;{" "}
           <span className="font-mono">403 rail_not_enabled_for_merchant</span>;{" "}
           <span className="font-mono">
             500 merchant_default_pair_misconfigured
@@ -423,8 +529,9 @@ Content-Type: application/json
           transaction and sends the same{" "}
           <span className="font-mono">payment.success</span> webhook as a real
           confirmed deposit — so your backend can test parsing and idempotency
-          without sending crypto. Use the same <span className="font-mono">api_key</span>{" "}
-          as other gateway calls; this route always targets sandbox data. First
+          without sending crypto. Use the same{" "}
+          <span className="font-mono">X-Token</span> +{" "}
+          <span className="font-mono">X-Merchant-Id</span> auth as other calls; this route always targets sandbox data. First
           get a sandbox <span className="font-mono">wallet_id</span> from{" "}
           <span className="font-mono">deposit-address</span> (portal set to Sandbox, or optional{" "}
           <span className="font-mono">gateway_environment: "sandbox"</span> if portal is Live).
@@ -443,12 +550,18 @@ Content-Type: application/json
           <span className="text-white/55">POST</span>{" "}
           /api/v1/gateway/sandbox/simulate-deposit
         </EndpointRow>
-        <p className="mt-3 text-xs font-medium text-white/45">Body</p>
+        <p className="mt-3 text-xs font-medium text-white/45">
+          Headers (recommended)
+        </p>
         <ul className="mt-1 list-inside list-disc text-sm text-white/55">
           <li>
-            <span className="font-mono text-white/60">api_key</span> — same
-            merchant secret as live
+            <span className="font-mono text-white/60">X-Merchant-Id</span>,{" "}
+            <span className="font-mono text-white/60">X-Token</span> — encrypt the canonical JSON of the body (no{" "}
+            <span className="font-mono">api_key</span>)
           </li>
+        </ul>
+        <p className="mt-3 text-xs font-medium text-white/45">Body</p>
+        <ul className="mt-1 list-inside list-disc text-sm text-white/55">
           <li>
             <span className="font-mono text-white/60">wallet_id</span> — from{" "}
             <span className="font-mono">deposit-address</span> for a sandbox user (portal Sandbox or
@@ -462,9 +575,10 @@ Content-Type: application/json
         </ul>
         <Pre>{`POST /api/v1/gateway/sandbox/simulate-deposit
 Content-Type: application/json
+X-Merchant-Id: ${merchantIdForDocs(merchantNumericId)}
+X-Token: <base64 from buildXToken on canonical JSON of body>
 
 {
-  "api_key": ${gatewayApiKeyJsonLiteral(apiKeyHint)},
   "wallet_id": "<from_deposit_address_response>",
   "amount": "1000000"
 }`}</Pre>

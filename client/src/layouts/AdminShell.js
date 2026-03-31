@@ -4,6 +4,7 @@ import { api, getToken, setToken } from "../api";
 import { useSidebarLayout } from "../hooks/useSidebarLayout.js";
 import { useMerchantPortalEnvironment } from "../hooks/useMerchantPortalEnvironment.js";
 import { useTheme } from "../hooks/useTheme.js";
+import { BrandMark } from "../components/BrandMark.js";
 import { ShellNavLink } from "./ShellNavLink.js";
 import {
   IconActivity,
@@ -62,14 +63,6 @@ function IconMoon() {
   return (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
       <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
-    </svg>
-  );
-}
-
-function IconBolt() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-      <path d="M13 2L4.09 12.97A1 1 0 005 14.5h6.5l-1 7.5L19.91 11A1 1 0 0019 9.5h-6.5L13 2z" />
     </svg>
   );
 }
@@ -135,18 +128,11 @@ export default function AdminShell() {
       >
         {/* Logo row */}
         <div className={`mb-6 flex items-center ${collapsed ? "justify-center" : "justify-between"}`}>
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[#5a6fff] to-[#9b59ff] text-white shadow-lg"
-                 style={{ boxShadow: "0 4px 16px rgba(90,111,255,0.4)" }}>
-              <IconBolt />
-            </div>
-            {!collapsed && (
-              <div className="min-w-0">
-                <p className="font-display text-[10px] font-bold tracking-[0.2em] uppercase"
-                   style={{ color: "var(--text-3)" }}>Crypto</p>
-                <p className="font-display text-sm font-bold truncate"
-                   style={{ color: "var(--text-1)" }}>Gateway</p>
-              </div>
+          <div className="flex min-w-0 items-center gap-2.5">
+            {collapsed ? (
+              <BrandMark variant="icon" />
+            ) : (
+              <BrandMark variant="full" className="max-h-[4.5rem] max-w-[22rem]" />
             )}
           </div>
           <button

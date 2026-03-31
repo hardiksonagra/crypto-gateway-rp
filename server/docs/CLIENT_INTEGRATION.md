@@ -2,36 +2,33 @@
 
 Share your **HTTPS base URL** (e.g. `https://payments.example.com`) with integrators. All paths below are **relative** to that base.
 
-**Merchants** using the portal and integrating their backend should also read **[MERCHANT_API_INTEGRATION.md](./MERCHANT_API_INTEGRATION.md)** (JWT login vs `api_key`, settings, rails).
+**Merchants** using the portal and integrating their backend should also read **[MERCHANT_API_INTEGRATION.md](./MERCHANT_API_INTEGRATION.md)** (JWT login vs gateway auth: `X-Token` or legacy `api_key`, settings, rails).
 
 ---
 
 ## 1. Overview
 
-
-| Item               | Description                                                                                                                                                                                                                                                         |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Purpose**        | Issue **per-customer deposit addresses**, detect incoming transfers, and **POST webhooks** to the merchant’s configured callback URL when a payment is confirmed.                                                                                                   |
-| **Format**         | JSON over HTTPS (`Content-Type: application/json`)                                                                                                                                                                                                                  |
-| **Authentication** | `**api_key`** on gateway routes identifies the **merchant**. Keys are created in the **admin portal** when a merchant is provisioned (shown **once**).                                                                                                              |
-| **Rails**          | Deposits are identified by `**currency`** + `**network`** (e.g. `USDT` + `TRC20`). Merchants configure **supported chains** and **supported rails** in the portal; if omitted on `deposit-address`, the merchant’s **default** pair is used (first supported rail). |
-
+| Item               | Description                                                                                                                                                                                                                                                       |
+| ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Purpose**        | Issue **per-customer deposit addresses**, detect incoming transfers, and **POST webhooks** to the merchant’s configured callback URL when a payment is confirmed.                                                                                                 |
+| **Format**         | JSON over HTTPS (`Content-Type: application/json`)                                                                                                                                                                                                                |
+| **Authentication** | Preferred: **`X-Token`** + **`X-Merchant-Id`**. Legacy: **`api_key`** in JSON. Keys are created in the **admin portal** when a merchant is provisioned (shown **once**). See [MERCHANT_API_INTEGRATION.md](./MERCHANT_API_INTEGRATION.md) §3.                                                                                                          |
+| **Rails**          | Deposits are identified by `**currency`** + `**network`** (e.g. `USDT`+`TRC20`). Merchants configure **supported chains** and **supported rails** in the portal; if omitted on `deposit-address`, the merchant’s **default** pair is used (first supported rail). |
 
 ---
 
 ## 2. Flow
 
 1. Merchant configures **callback URL**, **supported chains**, and **supported currency/network rails** in the portal (`/m/settings`).
-2. Integrator calls `**POST /api/v1/gateway/deposit-address`** with `api_key` + `external_user_id`, and optionally `currency` + `network`.
+2. Integrator calls `**POST /api/v1/gateway/deposit-address`** with gateway auth (`X-Token` + `X-Merchant-Id`, or legacy `api_key`) and `external_user_id`, and optionally `currency` + `network`.
 3. Response includes `address`, `chain`, `currency`, `network` (idempotent per customer + rail).
-4. Optional: `**POST /api/v1/gateway/create-wallet`** with `api_key`, `user_id`, `currency`, and `network` for another rail for the same user.
+4. Optional: `**POST /api/v1/gateway/create-wallet`** with the same auth style, `user_id`, `currency`, and `network` for another rail for the same user.
 5. User sends crypto to the shown address on the **correct network**.
-6. When confirmations pass, the gateway POSTs `**payment.success`** to the merchant **callback URL**.
+6. When confirmations pass, the gateway POSTs **`payment.success`** to the merchant **callback URL**.
 
 ---
 
 ## 3. Supported `chain` values (response / internal)
-
 
 | `chain`    | Network         |
 | ---------- | --------------- |
@@ -44,13 +41,11 @@ Share your **HTTPS base URL** (e.g. `https://payments.example.com`) with integra
 | `BTC`      | Bitcoin         |
 | `TON`      | TON             |
 
-
 **EVM note:** The same **0x address** may repeat across EVM chains; the integrator **must** match the `chain` / `network` returned to what the end user is shown.
 
 ---
 
 ## 4. Supported gateway rails (`currency` + `network`)
-
 
 | `currency` | `network` | `chain` |
 | ---------- | --------- | ------- |
@@ -59,7 +54,6 @@ Share your **HTTPS base URL** (e.g. `https://payments.example.com`) with integra
 | `USDT`     | `TON`     | TON     |
 | `USDT`     | `BEP20`   | BNB     |
 | `TRX`      | `TRON`    | TRON    |
-
 
 Merchants may restrict which of these are allowed via portal settings.
 
@@ -84,14 +78,13 @@ POST /api/v1/gateway/deposit-address
 Content-Type: application/json
 ```
 
-
 | Field              | Type   | Required | Description                                                          |
 | ------------------ | ------ | -------- | -------------------------------------------------------------------- |
-| `api_key`          | string | Yes      | Merchant API secret (`cpg_live_…`).                                  |
+| `api_key`          | string | Legacy   | Merchant API secret; omit when using `X-Token` + `X-Merchant-Id`.   |
 | `external_user_id` | string | Yes      | Stable unique id of the payer on **your** system.                    |
 | `currency`         | string | No       | Upper-case token symbol (e.g. `USDT`). Defaults to merchant default. |
 | `network`          | string | No       | Network label (e.g. `TRC20`). Defaults to merchant default.          |
-
+| (headers)          |        | Preferred | `X-Token`, `X-Merchant-Id` — see MERCHANT_API_INTEGRATION.md §3.1. |
 
 **200**
 
@@ -108,14 +101,26 @@ Content-Type: application/json
 }
 ```
 
-
 | Error                           | HTTP | Meaning                                    |
 | ------------------------------- | ---- | ------------------------------------------ |
-| `invalid_api_key`               | 401  | Unknown or inactive merchant key.          |
+| `invalid_api_key`               | 401  | Unknown or inactive merchant key (legacy). |
+| `invalid_x_token`               | 401  | `X-Token` does not match body / secret.    |
+| `gateway_auth_required`         | 400  | No `api_key` or `X-Token` auth.            |
 | `rail_not_enabled_for_merchant` | 403  | Rail not in merchant’s supported list.     |
 | `unsupported_currency_network`  | 400  | Unknown pair.                              |
-| Missing fields                  | 400  | `api_key` and `external_user_id` required. |
+| Missing fields                  | 400  | `external_user_id` required (and gateway auth). |
 
+---
+
+### 5.2b List supported currency options
+
+```http
+GET /api/v1/gateway/supported-currency
+X-Merchant-Id: {merchant numeric id}
+X-Token: {see MERCHANT_API_INTEGRATION.md — encrypt canonical {"api_key":"<secret>"}}
+```
+
+**200** — `pairs`, `default_currency`, `default_network`, `gateway_environment` (reflects resolved live/sandbox from the merchant **portal profile** unless you overrode with `gateway_environment`).
 
 ---
 
@@ -126,14 +131,13 @@ POST /api/v1/gateway/create-wallet
 Content-Type: application/json
 ```
 
-
 | Field      | Type   | Required | Description                      |
 | ---------- | ------ | -------- | -------------------------------- |
-| `api_key`  | string | Yes      | Merchant API secret.             |
+| `api_key`  | string | Legacy   | Omit when using `X-Token` auth. |
 | `user_id`  | string | Yes      | From `deposit-address` response. |
 | `currency` | string | Yes      | e.g. `USDT`                      |
 | `network`  | string | Yes      | e.g. `ERC20`                     |
-
+| (headers)  |        | Preferred | `X-Token`, `X-Merchant-Id`.   |
 
 **200** — `{ "address": "…", "chain": "ETH", "currency": "USDT", "network": "ERC20", "wallet_id": "cl…" }`
 
@@ -155,7 +159,7 @@ Up to **200** recent rows; `amount` is in **smallest units**; use `token_decimal
 
 ## 6. Webhooks (`payment.success`)
 
-When a row reaches `**success`**, the gateway POSTs once (with retries until `2xx`) to the merchant’s `**callback_url`**.
+When a row reaches `**success`**, the gateway POSTs once (with retries until `2xx`) to the merchant’s `**callback_url`\*\*.
 
 ```http
 POST {callback_url}
@@ -189,12 +193,10 @@ X-Webhook-Event: payment.success
 
 After migration + seed (see operator runbook):
 
-
 | Role     | Email                    | Password          |
 | -------- | ------------------------ | ----------------- |
 | Admin    | `admin@gateway.local`    | `Admin#ChangeMe1` |
 | Merchant | `merchant@gateway.local` | `Merchant#Demo1`  |
-
 
 **Demo API key** (matches bundled seed): `cpg_live_demo_dev_only_change_me`
 
@@ -204,21 +206,19 @@ After migration + seed (see operator runbook):
 
 ## 8. Portal routes (human UI)
 
-
 | Audience | Base path | Use                                                          |
 | -------- | --------- | ------------------------------------------------------------ |
 | Admin    | `/admin`  | Merchants CRUD, all users & transactions, dashboard.         |
 | Merchant | `/m`      | Dashboard, own users & txs, withdraw (EVM native), settings. |
 
-
 REST for the SPA (Bearer JWT after `POST /api/v1/auth/login`):
 
 - `GET /api/v1/auth/me`
-- Admin: `/api/v1/admin/`*
+- Admin: `/api/v1/admin/`\*
 - Merchant: `/api/v1/merchant/*`
 
 ---
 
 ## 9. Versioning
 
-Integrators should target `**/api/v1/...`** prefixes. Breaking changes will bump the major version or be announced in advance.
+Integrators should target `**/api/v1/...`\*\* prefixes. Breaking changes will bump the major version or be announced in advance.

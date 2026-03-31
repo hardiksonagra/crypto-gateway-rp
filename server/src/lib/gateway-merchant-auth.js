@@ -6,7 +6,7 @@ import { hashApiKey } from "./api-key.js";
  * @param {import("@prisma/client").Merchant} merchant
  * @returns {boolean}
  */
-function isUnifiedGatewayApiKey(merchant) {
+export function isUnifiedGatewayApiKey(merchant) {
   return (
     Boolean(merchant.apiKeyHash) &&
     merchant.apiKeyHash === merchant.sandboxApiKeyHash

@@ -3,16 +3,9 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../api";
 import { resetPasswordSchema } from "../authSchemas";
 import { useTheme } from "../hooks/useTheme.js";
+import { BrandMark } from "../components/BrandMark.js";
 
 const initial = { new_password: "", new_password_confirm: "" };
-
-function IconBolt() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-      <path d="M13 2L4.09 12.97A1 1 0 005 14.5h6.5l-1 7.5L19.91 11A1 1 0 0019 9.5h-6.5L13 2z"/>
-    </svg>
-  );
-}
 
 function IconSun() {
   return (
@@ -74,14 +67,8 @@ export default function ResetPasswordPage() {
   );
 
   const logoMark = (
-    <div className="mb-6 flex items-center gap-2.5">
-      <div className="flex h-9 w-9 items-center justify-center rounded-xl text-white"
-           style={{ background: "linear-gradient(135deg,#5a6fff,#9b59ff)", boxShadow: "0 4px 14px rgba(90,111,255,0.35)" }}>
-        <IconBolt />
-      </div>
-      <span className="font-display text-sm font-bold" style={{ color: "var(--text-1)" }}>
-        Crypto Gateway
-      </span>
+    <div className="mb-6">
+      <BrandMark variant="full" className="max-h-20 max-w-[440px]" />
     </div>
   );
 

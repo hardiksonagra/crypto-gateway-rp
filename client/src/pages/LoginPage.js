@@ -3,16 +3,9 @@ import { Link, useLocation, useNavigate } from "react-router-dom";
 import { api, clearImpersonationAdminToken, setToken } from "../api";
 import { loginSchema } from "../admin/merchantSchemas";
 import { useTheme } from "../hooks/useTheme.js";
+import { BrandMark } from "../components/BrandMark.js";
 
 const initial = { email: "", password: "" };
-
-function IconBolt() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-      <path d="M13 2L4.09 12.97A1 1 0 005 14.5h6.5l-1 7.5L19.91 11A1 1 0 0019 9.5h-6.5L13 2z"/>
-    </svg>
-  );
-}
 
 function IconSun() {
   return (
@@ -63,18 +56,7 @@ export default function LoginPage() {
              style={{ background: "rgba(155,89,255,0.06)" }} aria-hidden />
 
         <div className="relative">
-          {/* Logo */}
-          <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl text-white"
-                 style={{ background: "linear-gradient(135deg,#5a6fff,#9b59ff)", boxShadow: "0 4px 16px rgba(90,111,255,0.4)" }}>
-              <IconBolt />
-            </div>
-            <div>
-              <p className="font-display text-[10px] font-bold uppercase tracking-[0.22em]"
-                 style={{ color: "var(--text-3)" }}>Crypto</p>
-              <p className="text-sm font-medium" style={{ color: "var(--text-2)" }}>Gateway</p>
-            </div>
-          </div>
+          <BrandMark variant="full" className="h-24 max-h-28 max-w-none" />
 
           <h1 className="font-display mt-12 max-w-[20ch] text-4xl font-bold leading-[1.1] tracking-tight sm:text-5xl"
               style={{ color: "var(--text-1)" }}>

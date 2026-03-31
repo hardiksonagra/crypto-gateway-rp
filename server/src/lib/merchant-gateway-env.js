@@ -21,6 +21,25 @@ export function parseGatewayEnvironmentFromBody(body) {
 }
 
 /**
+ * Same values as `parseGatewayEnvironmentFromBody`, for query strings (e.g. GET supported-currency).
+ *
+ * @param {import("express").Request["query"] | Record<string, unknown> | null | undefined} query
+ * @returns {"live" | "sandbox" | undefined}
+ */
+export function parseGatewayEnvironmentFromQuery(query) {
+  const raw =
+    query?.gateway_environment ?? query?.gatewayEnvironment ?? "";
+  const v = String(
+    Array.isArray(raw) ? raw[0] : raw ?? "",
+  )
+    .trim()
+    .toLowerCase();
+  if (v === "sandbox") return "sandbox";
+  if (v === "live") return "live";
+  return undefined;
+}
+
+/**
  * If portal environment disagrees with gateway enable flags, persist a valid value (merchant rows only).
  *
  * @param {string | number} userId — account integer `id` or JWT `sub` (numeric string).

@@ -181,7 +181,7 @@ export default function PaymentPage() {
         )}
         <div className="text-center">
           <div className="mb-5 flex justify-center">
-            <BrandMark variant="full" className="mx-auto max-h-9 max-w-[200px]" />
+            <BrandMark variant="full" className="mx-auto max-h-[4.5rem] max-w-[400px]" />
           </div>
           <p className="font-display text-[10px] font-bold tracking-[0.2em] text-white/45 uppercase">
             Send {currency}

@@ -9,6 +9,7 @@ import {
 } from "../api";
 import { useSidebarLayout } from "../hooks/useSidebarLayout.js";
 import { useMerchantPortalEnvironment } from "../hooks/useMerchantPortalEnvironment.js";
+import { BrandMark } from "../components/BrandMark.js";
 import { ShellNavLink } from "./ShellNavLink.js";
 import {
   IconDashboard,
@@ -110,18 +111,14 @@ export default function MerchantShell() {
           className={`mb-6 flex items-start gap-2 ${collapsed ? "md:flex-col md:items-center" : ""}`}
         >
           <div className="flex min-w-0 flex-1 items-center gap-2.5">
-            <div
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/15 bg-white/5 font-display text-xs font-bold text-white"
-              aria-hidden
-            >
-              P
-            </div>
-            <div className={`min-w-0 ${collapsed ? "md:sr-only" : ""}`}>
-              <p className="font-display text-[10px] font-semibold tracking-[0.18em] text-white/55 uppercase">
-                Paython
-              </p>
-              <p className="truncate text-sm font-semibold text-white">Merchant</p>
-            </div>
+            {collapsed ? (
+              <BrandMark variant="icon" className="md:mx-auto" />
+            ) : (
+              <div className="min-w-0">
+                <BrandMark variant="full" className="max-h-[4.5rem] max-w-[22rem]" />
+                <p className="mt-1 truncate text-xs font-medium text-white/45">Merchant portal</p>
+              </div>
+            )}
           </div>
           <button
             type="button"

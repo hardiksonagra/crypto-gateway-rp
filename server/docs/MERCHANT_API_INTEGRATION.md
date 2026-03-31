@@ -7,7 +7,7 @@ There are **two separate auth mechanisms**:
 | Use case | How you authenticate | Base paths |
 |----------|----------------------|------------|
 | **Browser portal** (dashboard, settings, reports) | **JWT** after email/password login | `/api/v1/auth/*`, `/api/v1/merchant/*` |
-| **Your server calling the gateway** (deposit addresses, extra wallets) | **Merchant API key** (`api_key` in JSON body) | `/api/v1/gateway/*` |
+| **Your server calling the gateway** (deposit addresses, extra wallets) | **`X-Token` + `X-Merchant-Id` headers** (recommended), or legacy **`api_key`** in JSON body | `/api/v1/gateway/*` |
 
 The API key is **not** the same as the login JWT. End users of your product should **never** see the API key.
 
@@ -93,7 +93,28 @@ Configure these in the portal (**Settings** / `/m/settings`) or via `PATCH /api/
 
 - Issued when an **admin** creates the merchant or when you **regenerate** the key (old key stops working).
 - Shown **once** in the admin UI or modal — store it in **secrets** (environment variables, vault), not in git or frontend bundles.
-- Passed as JSON field **`api_key`** on `/api/v1/gateway/*` routes (no `Authorization` header required for those routes).
+- Gateway POST routes accept either **recommended header auth** (`X-Token`) or **legacy** JSON field **`api_key`**. No `Authorization` JWT is required for `/api/v1/gateway/*` (that JWT is for the browser portal only).
+
+### 3.1 Recommended: `X-Token` (secret not in the JSON body)
+
+For **POST** routes, send the **same JSON body as before but omit `api_key`**, and add headers below. **Live vs sandbox** defaults to the merchant **portal profile** (Settings); omit `gateway_environment` in JSON unless you need an override when live and sandbox share one secret.
+
+| Header | Value |
+|--------|--------|
+| `X-Merchant-Id` | Your numeric merchant id (positive integer). Same as `id` from `GET /api/v1/auth/me` when logged into the merchant portal. |
+| `X-Token` | Base64 string: **AES-256-GCM** encryption of the **canonical JSON** of the request body (UTF-8 plaintext). |
+
+**Canonical JSON:** at every object level, sort keys **lexicographically**; serialize with no extra whitespace (standard `JSON`-style primitives). Arrays keep element order. The string you encrypt must be **exactly** this canonical form of the body the server will parse (after `Content-Type: application/json` decoding).
+
+**Key material:** derive a 32-byte AES key as **SHA-256** (binary digest) of the merchant API secret string (UTF-8). Use **AES-256-GCM** with a random 12-byte IV per request; append the 16-byte GCM auth tag; wire format is **base64**( `IV || tag || ciphertext` ) (12 + 16 + ciphertext length).
+
+The server decrypts `X-Token` with your stored gateway secret and checks that the plaintext **equals** the canonical JSON of the received body. If not, the call fails with `invalid_x_token` (tampering or wrong secret). Do **not** send `api_key` in the body when using `X-Token` on **POST** routes (you would get `ambiguous_gateway_auth`).
+
+**GET** `/api/v1/gateway/supported-currency` has no body: build `X-Token` from canonical JSON `{"api_key":"<your_secret>"}` only (secret encrypted inside the token, not sent as plain text).
+
+### 3.2 Legacy: `api_key` in the JSON body
+
+You may still pass **`api_key`** in the body on the same routes. New integrations should prefer **`X-Token`** so the secret is not embedded in JSON logs or proxies.
 
 ---
 
@@ -115,7 +136,23 @@ Values are matched case-insensitively after trim.
 
 ## 5. Gateway API reference
 
-All gateway routes: `Content-Type: application/json`.
+Most gateway **POST** routes use `Content-Type: application/json`. **Supported currency list** is **GET** with headers only (see below).
+
+### List supported currency pairs
+
+**GET (no JSON body)**
+
+```http
+GET /api/v1/gateway/supported-currency
+X-Merchant-Id: {your numeric merchant id from GET /api/v1/auth/me}
+X-Token: {base64 AES-256-GCM ciphertext}
+```
+
+Build `X-Token` exactly like other gateway tokens, but the encrypted **plaintext** must be the **canonical JSON** string of a single object: `{"api_key":"<your full gateway secret>"}` (sorted keys; only field `api_key`). The secret is **not** sent in the clear on the wire.
+
+**Live vs sandbox:** you do **not** need to pass `gateway_environment`. The gateway uses the merchant’s **portal profile** (Live / Sandbox in **Settings** — same as the dashboard). Optional query `?gateway_environment=live` or `sandbox` is only for **overriding** that default when live and sandbox share **one** API key and you need the other environment without changing Settings.
+
+**200** — `{ "pairs": [...], "default_currency", "default_network", "gateway_environment" }`.
 
 ### 5.1 Get or create deposit address
 
@@ -125,10 +162,12 @@ POST /api/v1/gateway/deposit-address
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `api_key` | Yes | Merchant API secret. |
+| `api_key` | Legacy only | Merchant API secret; omit when using `X-Token` + `X-Merchant-Id`. |
 | `external_user_id` | Yes | Stable unique id of the payer on **your** system. |
 | `currency` | No | e.g. `USDT`. If omitted, merchant **default** pair is used. |
 | `network` | No | e.g. `TRC20`. If omitted, merchant **default** pair is used. |
+| `gateway_environment` | No | **Omit** to use the merchant portal **Live/Sandbox** setting (Settings). Optional override only when live and sandbox share one secret and you need the other environment. |
+| Headers | With `X-Token` | `X-Token` (required), `X-Merchant-Id` (required). |
 
 **200**
 
@@ -147,8 +186,14 @@ POST /api/v1/gateway/deposit-address
 
 | HTTP | `error` | Meaning |
 |------|---------|---------|
-| 400 | (message) | Missing `api_key` / `external_user_id`, or unsupported pair. |
-| 401 | `invalid_api_key` | Bad or inactive key. |
+| 400 | `gateway_auth_required` | Neither `api_key` nor `X-Token` auth provided. |
+| 400 | `x_merchant_id_required` | `X-Token` sent without `X-Merchant-Id`. |
+| 400 | `ambiguous_gateway_auth` | Both `api_key` and `X-Token` sent. |
+| 400 | (message) | Missing `external_user_id`, or unsupported pair. |
+| 401 | `invalid_api_key` | Bad or inactive key (legacy body auth). |
+| 401 | `invalid_x_token` | Token does not match body / secret. |
+| 401 | `invalid_x_merchant_id` | Unknown or inactive merchant id. |
+| 503 | `gateway_secret_unavailable` | Server cannot verify `X-Token` (missing cipher; regenerate key). |
 | 403 | `rail_not_enabled_for_merchant` | Pair not in your supported rails (when configured). |
 | 400 | `unsupported_currency_network` | Unknown `currency`/`network` combination. |
 
@@ -162,10 +207,11 @@ POST /api/v1/gateway/create-wallet
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `api_key` | Yes | Merchant API secret. |
+| `api_key` | Legacy only | Omit when using `X-Token` + `X-Merchant-Id`. |
 | `user_id` | Yes | Gateway `user_id` from `deposit-address`. |
 | `currency` | Yes | e.g. `USDT` |
 | `network` | Yes | e.g. `ERC20` |
+| Headers | With `X-Token` | `X-Token`, `X-Merchant-Id`. |
 
 **200** — same shape as deposit-address wallet fields (`address`, `chain`, `currency`, `network`, `wallet_id`).
 
@@ -204,8 +250,8 @@ The gateway does not sign webhooks by default — protect your endpoint (secret 
 ## 7. Minimal integration checklist
 
 1. Log in to `/m`, set **callback URL**, **chains**, and **supported rails** (order = default rail first).
-2. Store **`api_key`** from admin onboarding in server-side config.
-3. On checkout, call **`deposit-address`** with `external_user_id` and optionally `currency` / `network`.
+2. Store **`api_key`** from admin onboarding in server-side secrets; note your **`id`** from `GET /api/v1/auth/me` for `X-Merchant-Id` when using header auth.
+3. On checkout, call **`deposit-address`** with `external_user_id` and optionally `currency` / `network`, using **`X-Token`** (recommended) or legacy **`api_key`** in the body.
 4. Show the user the returned **`address`** and the correct **`network`** label (e.g. TRC20 vs ERC20).
 5. Handle **`payment.success`** on your callback URL.
 

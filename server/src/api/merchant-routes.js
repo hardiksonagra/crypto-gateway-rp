@@ -52,6 +52,8 @@ import {
   pickMerchantDefaultPair,
 } from "../lib/merchant-default-pair.js";
 import { ethers } from "ethers";
+import { generateApiKey, hashApiKey } from "../lib/api-key.js";
+import { encryptMerchantApiKey } from "../lib/merchant-api-key-cipher.js";
 
 const CHAIN_SET = new Set(Object.values(Chain));
 
@@ -120,6 +122,58 @@ async function resolveMerchantPortalForLists(mid) {
     },
   };
 }
+
+/**
+ * Merchant rotates the unified gateway secret (live + sandbox). Old key stops working immediately.
+ */
+router.post("/api/v1/merchant/gateway-api-key/regenerate", async (req, res) => {
+  const mid = merchantId(req);
+  if (!mid) {
+    res.status(401).json({ error: "unauthorized" });
+    return;
+  }
+  const existing = await prisma.merchant.findUnique({
+    where: { id: mid },
+    select: { id: true, deletedAt: true, isActive: true },
+  });
+  if (!existing || existing.deletedAt != null) {
+    res.status(404).json({ error: "not_found" });
+    return;
+  }
+  if (!existing.isActive) {
+    res.status(403).json({
+      error: "merchant_inactive",
+      message: "Account is inactive.",
+    });
+    return;
+  }
+  const k = generateApiKey();
+  const h = hashApiKey(k);
+  const cipher = encryptMerchantApiKey(k);
+  const row = await prisma.merchant.update({
+    where: { id: mid },
+    data: {
+      apiKeyHash: h,
+      apiKeyHint: k.slice(-6),
+      apiKeyCipher: cipher,
+      sandboxApiKeyHash: h,
+      sandboxApiKeyHint: k.slice(-6),
+      sandboxApiKeyCipher: cipher,
+    },
+    select: {
+      apiKeyHint: true,
+      sandboxApiKeyHint: true,
+    },
+  });
+  res.json({
+    api_key: k,
+    sandbox_api_key: k,
+    api_key_hint: row.apiKeyHint,
+    sandbox_api_key_hint: row.sandboxApiKeyHint,
+    message:
+      "New gateway API key (live + sandbox). Update your servers now; the previous key no longer works.",
+  });
+});
 
 router.get("/api/v1/merchant/dashboard", async (req, res) => {
   const mid = merchantId(req);
