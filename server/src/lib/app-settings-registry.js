@@ -133,7 +133,15 @@ export const APP_SETTING_DEFINITIONS = [
   },
   {
     key: "LATE_DEPOSIT_RECHECK_HOURS",
-    label: "Late deposit recheck (hours, 0 = off)",
+    label:
+      "Legacy: no longer used by worker (use DEPOSIT_FULL_SCAN_INTERVAL_HOURS + wallet TTL + rescan).",
+    category: "Scanner / worker",
+    type: "int",
+  },
+  {
+    key: "DEPOSIT_FULL_SCAN_INTERVAL_HOURS",
+    label:
+      "Full live-wallet deposit scan (hours, 0 = off). Runs once per interval from maintenance cron.",
     category: "Scanner / worker",
     type: "int",
   },

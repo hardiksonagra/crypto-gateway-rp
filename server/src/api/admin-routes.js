@@ -1314,6 +1314,7 @@ router.post(
         ok: true,
         wallet_id: row.id,
         scan_expires_at: row.scanExpiresAt?.toISOString() ?? null,
+        deposit_scan_queued_next_worker_tick: true,
         deposit_scan_ttl_minutes: walletScanTtlMinutes(),
       });
     } catch (e) {

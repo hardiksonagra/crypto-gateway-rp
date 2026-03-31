@@ -253,6 +253,8 @@ function envFallbackString(key) {
       return String(env.walletPoolHoldReleaseCronMinutes);
     case "LATE_DEPOSIT_RECHECK_HOURS":
       return String(env.lateDepositRecheckHours);
+    case "DEPOSIT_FULL_SCAN_INTERVAL_HOURS":
+      return String(env.depositFullScanIntervalHours);
     case "WORKER_LOG_RAIL_COUNTS":
       return env.workerLogRailCounts;
     case "DEPOSIT_SCANNER_TRON_ONLY":

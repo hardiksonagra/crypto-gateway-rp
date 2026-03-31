@@ -2,7 +2,7 @@ import { prisma } from "./prisma.js";
 import { re } from "../config/runtime-env.js";
 
 /**
- * Minutes for new wallet deposit monitoring. `0` = no TTL (`scan_expires_at` stays null; always scanned).
+ * Minutes for assign-time deposit window (`scan_expires_at`). `0` = null TTL (hot path only via rescan flag or full-scan cron).
  * @returns {number}
  */
 export function walletScanTtlMinutes() {
@@ -19,16 +19,17 @@ export function nextScanExpiresAt() {
 }
 
 /**
- * Prisma `where` fragment: live worker should include this wallet row.
- * Wallets with any transaction stay scanned (confirmations / callbacks).
+ * Prisma `where` fragment: live worker hot path (each poll). Does **not** look at `transactions`.
+ * - `scan_expires_at` still in the future (assign / session window).
+ * - `deposit_scan_single_tick_requested` (merchant/admin rescan, one tick per chain).
+ * After TTL: only `DEPOSIT_FULL_SCAN_INTERVAL_HOURS` maintenance pass + optional rescan.
  */
 export function liveWorkerWalletScanFilter() {
   const now = new Date();
   return {
     OR: [
-      { scanExpiresAt: null },
       { scanExpiresAt: { gt: now } },
-      { transactions: { some: {} } },
+      { depositScanSingleTickRequested: true },
     ],
   };
 }
@@ -53,13 +54,13 @@ export async function reactivateWalletDepositScan(walletId, opts = {}) {
     /** @type {any} */ (e).code = "FORBIDDEN";
     throw e;
   }
-  const at = nextScanExpiresAt();
   return prisma.wallet.update({
     where: { id: walletId },
-    data: { scanExpiresAt: at },
+    data: { depositScanSingleTickRequested: true },
     select: {
       id: true,
       scanExpiresAt: true,
+      depositScanSingleTickRequested: true,
       address: true,
       chain: true,
       currency: true,

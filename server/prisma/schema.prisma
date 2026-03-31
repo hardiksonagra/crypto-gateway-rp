@@ -128,8 +128,10 @@ model Wallet {
   assignedUser   User?   @relation("WalletPoolAssignment", fields: [assignedUserId], references: [id], onDelete: SetNull)
   /// When set and in the future, the address is reserved for `assignedUserId` until success or this time passes.
   holdExpiresAt DateTime? @map("hold_expires_at")
-  /// Live worker scans this row until this time (unless it has any transaction). Null = no TTL (legacy / TTL disabled).
+  /// Live worker scans this row until this time (unless it has any transaction). Null = no active TTL window from assign.
   scanExpiresAt DateTime? @map("scan_expires_at")
+  /// Merchant/admin “restart deposit scan”: include on the next worker tick once, then cleared.
+  depositScanSingleTickRequested Boolean @default(false) @map("deposit_scan_single_tick_requested")
   createdAt DateTime @default(now()) @map("created_at")
   /// Last on-chain balance snapshot from admin “Refresh balances” (display string, e.g. `12.5 USDT`).
   cachedBalanceDisplay  String?   @map("cached_balance_display") @db.VarChar(256)
@@ -147,6 +149,7 @@ model Wallet {
   @@index([chain, address])
   @@index([address])
   @@index([scanExpiresAt])
+  @@index([depositScanSingleTickRequested])
   @@map("wallets")
 }
 

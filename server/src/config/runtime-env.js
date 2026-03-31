@@ -119,6 +119,12 @@ export const re = {
     );
   },
 
+  get depositFullScanIntervalHours() {
+    return getResolvedInt("DEPOSIT_FULL_SCAN_INTERVAL_HOURS", () =>
+      env.depositFullScanIntervalHours,
+    );
+  },
+
   get workerLogRailCounts() {
     return getResolvedString("WORKER_LOG_RAIL_COUNTS", () =>
       env.workerLogRailCounts,

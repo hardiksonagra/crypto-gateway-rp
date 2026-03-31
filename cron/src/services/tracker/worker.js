@@ -1,8 +1,9 @@
-import { Chain } from "@prisma/client";
+import { Chain, MerchantGatewayEnv } from "@prisma/client";
 import { SCANNED_EVM_CHAINS } from "crypto-payment-gateway/src/config/chains.js";
 import { re } from "crypto-payment-gateway/src/config/runtime-env.js";
 import { logger } from "crypto-payment-gateway/src/lib/logger.js";
-import { loadWalletsForChainLateCatchup } from "crypto-payment-gateway/src/services/payment/transaction-upsert.js";
+import { prisma } from "crypto-payment-gateway/src/lib/prisma.js";
+import { loadWalletsForChain } from "crypto-payment-gateway/src/services/payment/transaction-upsert.js";
 import {
   beginDepositScanAddressRound,
   finishDepositScanAddressRound,
@@ -17,8 +18,21 @@ import { maybeSweepTick } from "crypto-payment-gateway/src/services/sweep-servic
 import { retryStuckSuccessCallbacks } from "crypto-payment-gateway/src/services/callback-retry.js";
 
 let timer = null;
-/** @type {number} */
-let lastLateDepositRecheckMs = 0;
+
+/**
+ * After a successful chain tick, drop one-shot scan flags for live wallets on that chain only.
+ * @param {import("@prisma/client").Chain} chain
+ */
+async function clearDepositSingleTickForChain(chain) {
+  await prisma.wallet.updateMany({
+    where: {
+      chain,
+      environment: MerchantGatewayEnv.live,
+      depositScanSingleTickRequested: true,
+    },
+    data: { depositScanSingleTickRequested: false },
+  });
+}
 
 export function startBlockchainWorker() {
   if (timer) return;
@@ -41,6 +55,18 @@ async function runTick() {
       for (const chain of SCANNED_EVM_CHAINS) {
         try {
           await scanEvmChain(chain);
+          await clearDepositSingleTickForChain(chain);
+        } catch (e) {
+          logger.error("evm scan failed", { chain, err: String(e) });
+        }
+      }
+    } else {
+      for (const chain of SCANNED_EVM_CHAINS) {
+        try {
+          const w = await loadWalletsForChain(chain);
+          if (w.length === 0) continue;
+          await scanEvmChain(chain, { wallets: w });
+          await clearDepositSingleTickForChain(chain);
         } catch (e) {
           logger.error("evm scan failed", { chain, err: String(e) });
         }
@@ -48,6 +74,7 @@ async function runTick() {
     }
     try {
       await scanTronChain();
+      await clearDepositSingleTickForChain(Chain.TRON);
     } catch (e) {
       logger.error("tron_scan_failed", {
         event: "tron_scan_failed",
@@ -58,8 +85,34 @@ async function runTick() {
     if (!re.depositScannerTronOnly) {
       try {
         await scanTonChain();
+        await clearDepositSingleTickForChain(Chain.TON);
       } catch (e) {
         logger.error("ton scan failed", { err: String(e) });
+      }
+      try {
+        await scanBtcChain();
+        await clearDepositSingleTickForChain(Chain.BTC);
+      } catch (e) {
+        logger.error("btc scan failed", { err: String(e) });
+      }
+    } else {
+      try {
+        const tonW = await loadWalletsForChain(Chain.TON);
+        if (tonW.length > 0) {
+          await scanTonChain({ wallets: tonW });
+          await clearDepositSingleTickForChain(Chain.TON);
+        }
+      } catch (e) {
+        logger.error("ton scan failed", { err: String(e) });
+      }
+      try {
+        const btcW = await loadWalletsForChain(Chain.BTC);
+        if (btcW.length > 0) {
+          await scanBtcChain({ wallets: btcW });
+          await clearDepositSingleTickForChain(Chain.BTC);
+        }
+      } catch (e) {
+        logger.error("btc scan failed", { err: String(e) });
       }
     }
   } finally {
@@ -75,58 +128,5 @@ async function runTick() {
     await retryStuckSuccessCallbacks();
   } catch (e) {
     logger.error("callback retry tick failed", { err: String(e) });
-  }
-
-  await maybeLateDepositRecheck();
-}
-
-/**
- * Expired, zero-tx wallets: TRON / TON / BTC address APIs can still see late on-chain pays.
- * EVM is omitted (block cursor only moves forward; use reactivate for ETH/BSC missed deposits).
- */
-async function maybeLateDepositRecheck() {
-  const hours = re.lateDepositRecheckHours;
-  if (hours <= 0 || re.walletScanTtlMinutes <= 0) return;
-
-  const intervalMs = hours * 3600 * 1000;
-  const now = Date.now();
-  if (now - lastLateDepositRecheckMs < intervalMs) return;
-  lastLateDepositRecheckMs = now;
-
-  const counts = { tron: 0, ton: 0, btc: 0 };
-  try {
-    const tronW = await loadWalletsForChainLateCatchup(Chain.TRON);
-    counts.tron = tronW.length;
-    if (tronW.length) await scanTronChain({ wallets: tronW });
-  } catch (e) {
-    logger.error("late deposit recheck tron failed", { err: String(e) });
-  }
-  if (!re.depositScannerTronOnly) {
-    try {
-      const tonW = await loadWalletsForChainLateCatchup(Chain.TON);
-      counts.ton = tonW.length;
-      if (tonW.length) await scanTonChain({ wallets: tonW });
-    } catch (e) {
-      logger.error("late deposit recheck ton failed", { err: String(e) });
-    }
-    try {
-      const btcW = await loadWalletsForChainLateCatchup(Chain.BTC);
-      counts.btc = btcW.length;
-      if (btcW.length) await scanBtcChain({ wallets: btcW });
-    } catch (e) {
-      logger.error("late deposit recheck btc failed", { err: String(e) });
-    }
-  }
-
-  const total = counts.tron + counts.ton + counts.btc;
-  if (total > 0) {
-    logger.info("late_deposit_recheck", {
-      hours,
-      wallets_tron: counts.tron,
-      wallets_ton: counts.ton,
-      wallets_btc: counts.btc,
-      deposit_scanner_tron_only: re.depositScannerTronOnly,
-      note: "EVM not included; forward-only scanner",
-    });
   }
 }

@@ -1,7 +1,6 @@
 import { Chain, MerchantGatewayEnv, TxStatus } from "@prisma/client";
 import { Address } from "@ton/core";
 import { prisma } from "../../lib/prisma.js";
-import { re } from "../../config/runtime-env.js";
 import { confirmationsForChain } from "../../config/chains.js";
 import { SCANNER_STATE_ROWS_BY_CHAIN } from "../../config/payment-rails.js";
 import { notifyPaymentSuccess } from "../callback-service.js";
@@ -110,21 +109,12 @@ export async function loadWalletsForChain(chain) {
 }
 
 /**
- * Expired TTL, still no `transactions` row — polled on a slow schedule (TRON/TON/BTC).
+ * All live wallets on a chain (maintenance cron full pass — no hot-path TTL filter).
  * @param {import("@prisma/client").Chain} chain
  */
-export async function loadWalletsForChainLateCatchup(chain) {
-  if (re.walletScanTtlMinutes <= 0 || re.lateDepositRecheckHours <= 0) {
-    return [];
-  }
-  const now = new Date();
+export async function loadAllLiveWalletsForChain(chain) {
   return prisma.wallet.findMany({
-    where: {
-      chain,
-      environment: MerchantGatewayEnv.live,
-      scanExpiresAt: { not: null, lt: now },
-      transactions: { none: {} },
-    },
+    where: { chain, environment: MerchantGatewayEnv.live },
     select: { id: true, address: true, currency: true, network: true },
   });
 }

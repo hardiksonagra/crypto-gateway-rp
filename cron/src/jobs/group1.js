@@ -1,3 +1,4 @@
+import { registerDepositFullScanCron } from "./deposit-full-scan-cron.js";
 import { registerExampleHeartbeat } from "./example-heartbeat.js";
 import { registerWalletPoolExpiredHolds } from "./wallet-pool-holds-cron.js";
 
@@ -9,4 +10,5 @@ import { registerWalletPoolExpiredHolds } from "./wallet-pool-holds-cron.js";
 export function registerCronGroup1(ctx) {
   registerExampleHeartbeat(ctx);
   registerWalletPoolExpiredHolds(ctx);
+  registerDepositFullScanCron(ctx);
 }

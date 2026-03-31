@@ -81,7 +81,7 @@ export const env = {
   confirmationsSolana: intEnv("CONFIRMATIONS_SOLANA", 1),
 
   workerPollMs: intEnv("WORKER_POLL_INTERVAL_MS", 8000),
-  /** `0` = no TTL; new wallets get `scan_expires_at` null (always scanned). */
+  /** `0` = no assign TTL (`scan_expires_at` null); hot-path scan uses tx rows, one-shot, or full-scan cron. */
   walletScanTtlMinutes: intEnv("WALLET_SCAN_TTL_MINUTES", 10),
   /**
    * How long a deposit address stays reserved for one end-user (minutes). Then it re-enters the merchant pool if unpaid.
@@ -96,11 +96,13 @@ export const env = {
     "WALLET_POOL_HOLD_RELEASE_CRON_MINUTES",
     30,
   ),
-  /**
-   * Re-scan expired, zero-tx live wallets on TRON/TON/BTC (address APIs). `0` = off.
-   * EVM chains are skipped (forward block cursor cannot recover old missed transfers).
-   */
+  /** Legacy env; worker no longer runs late-deposit recheck (use full-scan interval + TTL + rescan). */
   lateDepositRecheckHours: intEnv("LATE_DEPOSIT_RECHECK_HOURS", 6),
+  /**
+   * Maintenance cron: run one full deposit scan pass across all live wallets every N hours (`0` = off).
+   * Admin / `app_settings` can override (`DEPOSIT_FULL_SCAN_INTERVAL_HOURS`).
+   */
+  depositFullScanIntervalHours: intEnv("DEPOSIT_FULL_SCAN_INTERVAL_HOURS", 6),
   /**
    * Per worker tick: log counts of **new** `transactions` rows inserted, by deposit rail (CURRENCY|NETWORK),
    * plus **which on-chain addresses** were polled for incoming tx (see `polled_addresses_by_chain` / `message`).
