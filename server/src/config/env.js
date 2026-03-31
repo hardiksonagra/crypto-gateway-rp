@@ -67,6 +67,14 @@ export const env = {
     const v = optional("CORS_ALLOW_ALL", "").toLowerCase();
     return v === "true" || v === "1" || v === "yes";
   })(),
+  /**
+   * If set (e.g. `example.com`), allow any browser Origin whose hostname is that host or a subdomain of it.
+   * Use when portal + pay + other SPAs share one domain (portal.example.com, pay.example.com). Not from Admin DB.
+   */
+  corsAllowedOriginSuffix: optional("CORS_ALLOWED_ORIGIN_SUFFIX", "")
+    .trim()
+    .toLowerCase()
+    .replace(/^\./, ""),
   encryptionKey: optional("ENCRYPTION_KEY"),
 
   /** Base URL of the browser app (for password-reset links), e.g. https://portal.example.com */

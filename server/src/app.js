@@ -5,6 +5,7 @@ import cors from "cors";
 import helmet from "helmet";
 import { env, normalizeBrowserOrigin } from "./config/env.js";
 import { re } from "./config/runtime-env.js";
+import { getResolvedString } from "./lib/app-settings-runtime.js";
 import { logger } from "./lib/logger.js";
 
 /** When `CLIENT_ORIGINS` (env or DB) omits Vite/React dev URLs, local CORS still works. */
@@ -36,12 +37,35 @@ function browserOriginFromAbsoluteUrl(absoluteUrl) {
 }
 
 /**
- * CORS allow-list: `CLIENT_ORIGINS` entries plus origins from `APP_PUBLIC_URL` and
- * `PAYMENT_PAGE_PUBLIC_URL` (so production SPA works even if the list was saved with only local URLs),
- * and localhost dev ports when `NODE_ENV=development`.
- * Rebuilt each request so Admin / DB overrides apply without restart.
- * @returns {Set<string>}
+ * `CLIENT_ORIGINS` is exactly `*` or contains a `*` entry → reflect any request Origin (like CORS_ALLOW_ALL).
  */
+function clientOriginsWildcardEnabled() {
+  const raw = getResolvedString("CLIENT_ORIGINS", () =>
+    env.clientOrigins.join(","),
+  );
+  const t = raw.trim();
+  if (t === "*") return true;
+  return raw.split(",").some((s) => s.trim() === "*");
+}
+
+/**
+ * @param {string} originNorm normalized origin URL
+ * @param {string} suffixRoot e.g. `example.com`
+ */
+function originMatchesDomainSuffix(originNorm, suffixRoot) {
+  const suffix = String(suffixRoot ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/^\./, "");
+  if (!suffix) return false;
+  try {
+    const h = new URL(originNorm).hostname.toLowerCase();
+    return h === suffix || h.endsWith(`.${suffix}`);
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Also allow the same host with/without leading `www.` (common live mismatch vs `APP_PUBLIC_URL`).
  * Skips IPv4 hostnames.
@@ -105,7 +129,7 @@ export function createApp() {
   app.use(
     cors({
       origin(origin, cb) {
-        if (env.corsAllowAll) {
+        if (env.corsAllowAll || clientOriginsWildcardEnabled()) {
           return cb(null, true);
         }
         const allowed = effectiveCorsOriginSet();
@@ -119,9 +143,15 @@ export function createApp() {
         if (allowed.has(norm)) {
           return cb(null, true);
         }
+        if (
+          env.corsAllowedOriginSuffix &&
+          originMatchesDomainSuffix(norm, env.corsAllowedOriginSuffix)
+        ) {
+          return cb(null, true);
+        }
         logger.warn("cors_origin_rejected", {
           origin,
-          hint: "Add scheme+host (no path) to CLIENT_ORIGINS, or set APP_PUBLIC_URL / PAYMENT_PAGE_PUBLIC_URL to your live app base URL (its origin is allowed automatically). In development, localhost / 127.0.0.1 on ports 5173, 3000, 4173 are merged in.",
+          hint: "Fix Admin → System settings CLIENT_ORIGINS / APP_PUBLIC_URL (DB overrides .env). Or .env: CLIENT_ORIGINS=https://portal.yourdomain.com matching the page URL exactly (https not http). Or CORS_ALLOWED_ORIGIN_SUFFIX=yourdomain.com for all subdomains. Or CLIENT_ORIGINS=* or CORS_ALLOW_ALL=true (temporary).",
         });
         cb(null, false);
       },
