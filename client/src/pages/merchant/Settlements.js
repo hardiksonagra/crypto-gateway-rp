@@ -5,6 +5,8 @@ import { useMerchantPortalEnvironment } from "../../hooks/useMerchantPortalEnvir
 import ListPaginationBar, { DEFAULT_LIST_PAGE_SIZE } from "../../components/ListPaginationBar";
 import { PendingSettlementBucketCard } from "../../components/PendingSettlementBucketCard.js";
 import { formatTokenAmount } from "../../lib/formatTokenAmount.js";
+import { formatLocalDateTime } from "../../lib/formatLocalDateTime.js";
+import { BrandLoader } from "../../components/BrandLoader.js";
 
 const DEFAULT_PAGE_SIZE = DEFAULT_LIST_PAGE_SIZE;
 
@@ -68,7 +70,14 @@ export default function MerchantSettlements() {
   }
 
   if (flagsLoading) {
-    return <p className="text-white/50">Loading…</p>;
+    return (
+      <BrandLoader
+        variant="page"
+        title=""
+        subtitle="Loading settlements…"
+        aria-label="Loading settlements"
+      />
+    );
   }
 
   if (!liveGatewayEnabled && !sandboxGatewayEnabled) {
@@ -83,7 +92,14 @@ export default function MerchantSettlements() {
   }
 
   if (!envQueryEnabled) {
-    return <p className="text-white/50">Loading…</p>;
+    return (
+      <BrandLoader
+        variant="page"
+        title=""
+        subtitle="Preparing settlements…"
+        aria-label="Preparing settlements"
+      />
+    );
   }
 
   return (
@@ -101,7 +117,14 @@ export default function MerchantSettlements() {
         estimated net. Your minimum is in token units; settlement is recorded by an admin when eligible.
       </p>
       {pendingQ.isLoading ? (
-        <p className="mt-2 text-sm text-white/45">Loading…</p>
+        <div className="mt-2">
+          <BrandLoader
+            variant="section"
+            title=""
+            subtitle="Loading next settlement estimate…"
+            aria-label="Loading settlement preview"
+          />
+        </div>
       ) : pendingQ.isError ? (
         <p className="mt-2 text-sm text-rose-400">{String(pendingQ.error)}</p>
       ) : buckets.length === 0 ? (
@@ -139,8 +162,8 @@ export default function MerchantSettlements() {
           <tbody>
             {q.isLoading ? (
               <tr>
-                <td colSpan={5} className="!py-12 text-center text-sm text-white/45">
-                  Loading…
+                <td colSpan={5} className="!py-8">
+                  <BrandLoader variant="inline" title="" subtitle="Loading…" />
                 </td>
               </tr>
             ) : rows.length === 0 ? (
@@ -153,7 +176,7 @@ export default function MerchantSettlements() {
               rows.map((s) => (
                 <tr key={s.id}>
                   <td className="whitespace-nowrap text-xs text-white/45">
-                    {s.created_at ? String(s.created_at).slice(0, 19) : "—"}
+                    {formatLocalDateTime(s.created_at)}
                   </td>
                   <td className="text-xs text-white/70">
                     {s.chain} {s.token_symbol}

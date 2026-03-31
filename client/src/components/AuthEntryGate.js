@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import { api, getToken } from "../api";
+import { BrandLoader } from "./BrandLoader.js";
 
 /**
  * When a valid session exists, keep users off sign-in / forgot-password flows.
@@ -52,7 +53,12 @@ export function AuthEntryGate({ children }) {
   if (phase === "checking") {
     return (
       <div className="mesh-bg flex min-h-screen items-center justify-center px-4">
-        <p className="text-sm text-white/55">Loading…</p>
+        <BrandLoader
+          variant="page"
+          title=""
+          subtitle="Checking your session…"
+          aria-label="Checking authentication"
+        />
       </div>
     );
   }

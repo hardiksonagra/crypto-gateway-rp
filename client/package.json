@@ -12,6 +12,8 @@
   "dependencies": {
     "@tanstack/react-query": "^5.69.0",
     "formik": "^2.4.6",
+    "highcharts": "^12.5.0",
+    "highcharts-react-official": "^3.2.3",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-qr-code": "^2.0.18",

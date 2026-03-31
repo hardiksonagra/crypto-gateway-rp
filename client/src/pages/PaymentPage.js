@@ -3,6 +3,7 @@ import { useParams } from "react-router-dom";
 import QRCode from "react-qr-code";
 import { apiUrl } from "../api";
 import { BrandMark } from "../components/BrandMark.js";
+import { BrandLoader } from "../components/BrandLoader.js";
 
 /**
  * @param {number} totalSec
@@ -148,7 +149,12 @@ export default function PaymentPage() {
   if (loading) {
     return (
       <div className="mesh-bg flex min-h-screen items-center justify-center px-4">
-        <p className="text-sm text-white/55">Loading payment details…</p>
+        <BrandLoader
+          variant="page"
+          title=""
+          subtitle="Loading payment details…"
+          aria-label="Loading payment details"
+        />
       </div>
     );
   }

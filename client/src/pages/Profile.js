@@ -4,6 +4,7 @@ import { api } from "../api";
 import { changePasswordSchema } from "../authSchemas";
 import MerchantPortalEnvBar from "../components/MerchantPortalEnvBar.js";
 import { useMerchantPortalEnvironment } from "../hooks/useMerchantPortalEnvironment.js";
+import { BrandLoader } from "../components/BrandLoader.js";
 
 const passwordInitial = { current_password: "", new_password: "", new_password_confirm: "" };
 
@@ -134,8 +135,14 @@ function MerchantProfileHeroPortal() {
 
   if (flagsLoading) {
     return (
-      <div className="flex h-full min-h-[7rem] flex-col rounded-lg border border-white/10 bg-black/25 p-3.5 sm:p-4">
-        <p className="text-xs text-white/50">Loading portal…</p>
+      <div className="flex h-full min-h-[7rem] flex-col items-center justify-center rounded-lg border border-white/10 bg-black/25 p-3.5 sm:p-4">
+        <BrandLoader
+          variant="inline"
+          title=""
+          subtitle="Loading portal…"
+          className="min-h-0 flex-1 justify-center py-2"
+          aria-label="Loading portal environment"
+        />
       </div>
     );
   }
@@ -193,9 +200,13 @@ function AdminProfilePortalSection() {
   if (flagsLoading) {
     return (
       <SectionCard title="Admin data scope">
-        <p className="text-sm" style={{ color: "var(--text-3)" }}>
-          Loading…
-        </p>
+        <BrandLoader
+          variant="inline"
+          title=""
+          subtitle="Loading…"
+          className="min-h-0 py-4"
+          aria-label="Loading admin data scope"
+        />
       </SectionCard>
     );
   }
@@ -456,12 +467,12 @@ export default function Profile() {
 
   if (!me) {
     return (
-      <div className="flex items-center gap-2 py-4">
-        <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-[#5a6fff]" />
-        <p className="text-sm" style={{ color: "var(--text-2)" }}>
-          Loading…
-        </p>
-      </div>
+      <BrandLoader
+        variant="section"
+        title=""
+        subtitle="Loading profile…"
+        aria-label="Loading profile"
+      />
     );
   }
 

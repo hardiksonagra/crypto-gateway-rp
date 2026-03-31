@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../../api";
 import ConfirmModal from "../../components/ConfirmModal.js";
+import { BrandLoader } from "../../components/BrandLoader.js";
 
 /** Hidden state — password-style mask. */
 const API_KEY_MASK = "***** ***** ***** *****";
@@ -87,7 +88,14 @@ export default function GatewayApiKey() {
   }, []);
 
   if (loading) {
-    return <p className="text-white/50">Loading…</p>;
+    return (
+      <BrandLoader
+        variant="section"
+        title=""
+        subtitle="Loading API key…"
+        aria-label="Loading API key"
+      />
+    );
   }
 
   const keyRow = apiKeyInfo ?? { secret: null, hint: null, cipherPresent: false };

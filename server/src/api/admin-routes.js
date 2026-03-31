@@ -49,6 +49,10 @@ import {
   loadWalletDepositActivity,
 } from "../lib/wallet-deposit-stats.js";
 import {
+  lastNDatesInZone,
+  sanitizeIanaTimeZone,
+} from "../lib/ianaTimeZone.js";
+import {
   batchUserAssignmentStats,
   batchUserPayerTxStats,
   loadUserAssignmentHistory,
@@ -159,7 +163,22 @@ router.get("/api/v1/admin/dashboard", async (req, res) => {
   };
 
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
-  const [merchants, users, txs, successTxs, txs24h] = await Promise.all([
+  const viewerTz = sanitizeIanaTimeZone(req.query.tz) ?? "UTC";
+  const tzSql = `'${viewerTz.replace(/'/g, "''")}'`;
+  const dayKeys = lastNDatesInZone(14, viewerTz);
+  const wideFrom = new Date(Date.now() - 20 * 24 * 60 * 60 * 1000);
+
+  const [
+    merchants,
+    users,
+    txs,
+    successTxs,
+    txs24h,
+    walletsInEnv,
+    byStatus,
+    byChain,
+    dailyStatusRows,
+  ] = await Promise.all([
     prisma.merchant.count({
       where: { deletedAt: null },
     }),
@@ -174,7 +193,56 @@ router.get("/api/v1/admin/dashboard", async (req, res) => {
         createdAt: { gte: since },
       },
     }),
+    prisma.wallet.count({ where: { environment: listEnv } }),
+    prisma.transaction.groupBy({
+      by: ["status"],
+      where: txEnvWhere,
+      _count: { _all: true },
+    }),
+    prisma.transaction.groupBy({
+      by: ["chain"],
+      where: txEnvWhere,
+      _count: { _all: true },
+    }),
+    prisma.$queryRaw(
+      Prisma.sql`
+        SELECT ((t.created_at AT TIME ZONE ${Prisma.raw(tzSql)}))::date AS day,
+               t.status::text AS status,
+               COUNT(*)::int AS cnt
+        FROM transactions t
+        INNER JOIN wallets w ON w.id = t.wallet_id
+        WHERE w.environment = ${listEnv}::"MerchantGatewayEnv"
+          AND t.created_at >= ${wideFrom}
+        GROUP BY 1, 2
+        ORDER BY 1, 2
+      `,
+    ),
   ]);
+
+  /** @type {Map<string, { pending: number, success: number, failed: number }>} */
+  const dailyMap = new Map();
+  for (const row of dailyStatusRows) {
+    const dayVal = row.day;
+    const key =
+      dayVal instanceof Date
+        ? dayVal.toISOString().slice(0, 10)
+        : String(dayVal).slice(0, 10);
+    if (!dailyMap.has(key)) {
+      dailyMap.set(key, { pending: 0, success: 0, failed: 0 });
+    }
+    const bucket = dailyMap.get(key);
+    const st = String(row.status);
+    const c = Number(row.cnt);
+    if (st === "pending") bucket.pending = c;
+    else if (st === "success") bucket.success = c;
+    else if (st === "failed") bucket.failed = c;
+  }
+
+  const transactions_daily_by_status = dayKeys.map((date) => {
+    const b = dailyMap.get(date) ?? { pending: 0, success: 0, failed: 0 };
+    return { date, pending: b.pending, success: b.success, failed: b.failed };
+  });
+
   res.json({
     viewer_environment: listEnv,
     merchants,
@@ -182,6 +250,18 @@ router.get("/api/v1/admin/dashboard", async (req, res) => {
     transactions_total: txs,
     transactions_success: successTxs,
     transactions_last_24h: txs24h,
+    wallets_in_env: walletsInEnv,
+    transactions_by_status: byStatus.map((r) => ({
+      status: r.status,
+      count: r._count._all,
+    })),
+    transactions_by_chain: byChain
+      .map((r) => ({
+        chain: r.chain,
+        count: r._count._all,
+      }))
+      .sort((a, b) => b.count - a.count),
+    transactions_daily_by_status,
   });
 });
 

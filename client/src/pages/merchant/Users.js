@@ -4,6 +4,7 @@ import { useState } from "react";
 import { api } from "../../api";
 import { useMerchantPortalEnvironment } from "../../hooks/useMerchantPortalEnvironment.js";
 import ListPaginationBar, { DEFAULT_LIST_PAGE_SIZE } from "../../components/ListPaginationBar";
+import { BrandLoader } from "../../components/BrandLoader.js";
 import {
   ListActiveFiltersChips,
   ListFilterDrawer,
@@ -20,6 +21,7 @@ import {
   UserHistoryCountButton,
   UserPayerDepositHistoryModal,
 } from "../../components/UserHistoryModals.js";
+import { formatLocalDate } from "../../lib/formatLocalDateTime.js";
 
 const DEFAULT_PAGE_SIZE = DEFAULT_LIST_PAGE_SIZE;
 
@@ -80,7 +82,14 @@ export default function MerchantUsers() {
   }
 
   if (flagsLoading) {
-    return <p className="text-white/50">Loading…</p>;
+    return (
+      <BrandLoader
+        variant="page"
+        title=""
+        subtitle="Loading users…"
+        aria-label="Loading users"
+      />
+    );
   }
 
   if (!liveGatewayEnabled && !sandboxGatewayEnabled) {
@@ -95,7 +104,14 @@ export default function MerchantUsers() {
   }
 
   if (!envQueryEnabled) {
-    return <p className="text-white/50">Loading…</p>;
+    return (
+      <BrandLoader
+        variant="page"
+        title=""
+        subtitle="Preparing users…"
+        aria-label="Preparing users list"
+      />
+    );
   }
 
   return (
@@ -220,8 +236,8 @@ export default function MerchantUsers() {
             <tbody>
               {res.isLoading ? (
                 <tr>
-                  <td colSpan={5} className="!py-12 text-center text-sm text-white/40">
-                    Loading…
+                  <td colSpan={5} className="!py-8">
+                    <BrandLoader variant="inline" title="" subtitle="Loading…" />
                   </td>
                 </tr>
               ) : null}
@@ -253,7 +269,7 @@ export default function MerchantUsers() {
                         onClick={() => setDepositUserId(u.id)}
                       />
                     </td>
-                    <td className="text-xs text-white/45">{u.created_at.slice(0, 10)}</td>
+                    <td className="text-xs text-white/45">{formatLocalDate(u.created_at)}</td>
                   </tr>
                 ))}
             </tbody>

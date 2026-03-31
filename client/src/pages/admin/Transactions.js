@@ -17,7 +17,9 @@ import {
 } from "../../components/ListFilterChrome";
 import { adminTransactionsFilterSchema, CHAIN_VALUES } from "../../admin/merchantSchemas";
 import { formatTokenAmount } from "../../lib/formatTokenAmount.js";
+import { formatLocalDateTime } from "../../lib/formatLocalDateTime.js";
 import { StatusBadge } from "../../components/StatusBadge.js";
+import { BrandLoader } from "../../components/BrandLoader.js";
 
 const DEFAULT_PAGE_SIZE = DEFAULT_LIST_PAGE_SIZE;
 const ST = ["pending", "success", "failed"];
@@ -423,8 +425,8 @@ export default function AdminTransactions() {
             <tbody>
               {res.isLoading ? (
                 <tr>
-                  <td colSpan={8} className="!py-12 text-center text-sm text-white/40">
-                    Loading…
+                  <td colSpan={8} className="!py-8">
+                    <BrandLoader variant="inline" title="" subtitle="Loading…" />
                   </td>
                 </tr>
               ) : null}
@@ -451,7 +453,7 @@ export default function AdminTransactions() {
                         {t.id.length > 18 ? `${t.id.slice(0, 10)}…${t.id.slice(-6)}` : t.id}
                       </button>
                     </td>
-                    <td className="text-xs text-white/45">{t.created_at.slice(0, 19)}</td>
+                    <td className="text-xs text-white/45">{formatLocalDateTime(t.created_at)}</td>
                     <td className="max-w-[130px] truncate text-xs" title={t.merchant?.email ?? ""}>
                       {t.merchant?.email ?? "—"}
                     </td>

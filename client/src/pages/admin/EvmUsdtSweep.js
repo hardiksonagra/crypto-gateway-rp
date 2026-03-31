@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { api } from "../../api";
 import ConfirmModal from "../../components/ConfirmModal";
+import { BrandLoader } from "../../components/BrandLoader.js";
 
 /**
  * @param {{ chain: "ETH" | "BNB", title: string, masterEnv: string, networkLabel: string, sectionClassName?: string }} props
@@ -136,8 +137,8 @@ function UsdtChainSweepPanel({ chain, title, masterEnv, networkLabel, sectionCla
           <tbody>
             {targets.isLoading ? (
               <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-white/45">
-                  Loading…
+                <td colSpan={7} className="!py-6">
+                  <BrandLoader variant="inline" title="" subtitle="Loading…" />
                 </td>
               </tr>
             ) : wallets.length === 0 ? (

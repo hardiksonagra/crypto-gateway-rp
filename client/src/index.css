@@ -532,3 +532,40 @@ html.light .badge-deleted {
 
 /* ── Empty / loading states ───────────────────────────────────── */
 .empty-state { color: var(--text-3); }
+
+/* Branded app loader (see `BrandLoader.js`) */
+@keyframes brand-loader-orbit {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes brand-loader-glow {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(0.92);
+  }
+  50% {
+    opacity: 0.75;
+    transform: scale(1);
+  }
+}
+.brand-loader-orbit {
+  animation: brand-loader-orbit 1.2s linear infinite;
+}
+.brand-loader-glow {
+  animation: brand-loader-glow 2.4s ease-in-out infinite;
+}
+
+/* Table rows: center branded loader horizontally + vertically in the cell */
+table tbody td:has(.brand-loader-root) {
+  vertical-align: middle;
+  text-align: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .brand-loader-orbit,
+  .brand-loader-glow {
+    animation: none;
+  }
+}

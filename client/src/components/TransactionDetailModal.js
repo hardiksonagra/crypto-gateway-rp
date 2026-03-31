@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { formatTokenAmount } from "../lib/formatTokenAmount.js";
+import { formatLocalDateTime } from "../lib/formatLocalDateTime.js";
 
 /** @param {string} label @param {string | number | null | undefined} value */
 function DetailRow(label, value) {
@@ -124,10 +125,10 @@ export default function TransactionDetailModal({
             {DetailRow("Log index", t.log_index)}
             {DetailRow(
               "Callback delivered at",
-              t.callback_delivered_at?.slice(0, 19) ?? null,
+              t.callback_delivered_at ? formatLocalDateTime(t.callback_delivered_at) : null,
             )}
-            {DetailRow("Created at", t.created_at?.slice(0, 19))}
-            {DetailRow("Updated at", t.updated_at?.slice(0, 19))}
+            {DetailRow("Created at", formatLocalDateTime(t.created_at))}
+            {DetailRow("Updated at", formatLocalDateTime(t.updated_at))}
           </dl>
         </div>
         <div className="space-y-3 border-t px-6 py-4" style={{ borderColor: "var(--border)" }}>

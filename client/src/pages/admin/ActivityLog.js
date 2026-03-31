@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { api } from "../../api";
 import ListPaginationBar, { DEFAULT_LIST_PAGE_SIZE } from "../../components/ListPaginationBar";
+import { BrandLoader } from "../../components/BrandLoader.js";
 import {
   ListActiveFiltersChips,
   ListFilterDrawer,
@@ -17,6 +18,7 @@ import {
   adminAuditLogsFilterSchema,
   adminPanelAuditLogsFilterSchema,
 } from "../../admin/merchantSchemas";
+import { formatLocalDateTime } from "../../lib/formatLocalDateTime.js";
 
 const DEFAULT_PAGE_SIZE = DEFAULT_LIST_PAGE_SIZE;
 
@@ -662,7 +664,7 @@ export default function AdminActivityLog() {
             <table className="data-table min-w-[960px] w-full">
               <thead>
                 <tr>
-                  <th>Time (UTC)</th>
+                  <th>Time</th>
                   <th>Source</th>
                   <th>Action</th>
                   <th>Merchant</th>
@@ -674,8 +676,8 @@ export default function AdminActivityLog() {
               <tbody>
                 {gwRes.isLoading ? (
                   <tr>
-                    <td colSpan={7} className="!py-12 text-center text-sm text-white/40">
-                      Loading…
+                    <td colSpan={7} className="!py-8">
+                      <BrandLoader variant="inline" title="" subtitle="Loading…" />
                     </td>
                   </tr>
                 ) : null}
@@ -689,10 +691,8 @@ export default function AdminActivityLog() {
                 {!gwRes.isLoading &&
                   gwLogs.map((log) => (
                     <tr key={log.id}>
-                      <td className="whitespace-nowrap font-mono text-[11px] text-white/55">
-                        {typeof log.created_at === "string"
-                          ? log.created_at.replace("T", " ").slice(0, 19)
-                          : ""}
+                      <td className="whitespace-nowrap text-[11px] text-white/55">
+                        {formatLocalDateTime(log.created_at, { fallback: "" })}
                       </td>
                       <td className="font-mono text-xs text-violet-200/90">{log.source}</td>
                       <td className="max-w-[200px] truncate font-mono text-xs text-white/70" title={log.action}>
@@ -754,7 +754,7 @@ export default function AdminActivityLog() {
             <table className="data-table min-w-[960px] w-full">
               <thead>
                 <tr>
-                  <th>Time (UTC)</th>
+                  <th>Time</th>
                   <th>Panel</th>
                   <th>Method</th>
                   <th>Path</th>
@@ -767,8 +767,8 @@ export default function AdminActivityLog() {
               <tbody>
                 {plRes.isLoading ? (
                   <tr>
-                    <td colSpan={8} className="!py-12 text-center text-sm text-white/40">
-                      Loading…
+                    <td colSpan={8} className="!py-8">
+                      <BrandLoader variant="inline" title="" subtitle="Loading…" />
                     </td>
                   </tr>
                 ) : null}
@@ -782,10 +782,8 @@ export default function AdminActivityLog() {
                 {!plRes.isLoading &&
                   plLogs.map((log) => (
                     <tr key={log.id}>
-                      <td className="whitespace-nowrap font-mono text-[11px] text-white/55">
-                        {typeof log.created_at === "string"
-                          ? log.created_at.replace("T", " ").slice(0, 19)
-                          : ""}
+                      <td className="whitespace-nowrap text-[11px] text-white/55">
+                        {formatLocalDateTime(log.created_at, { fallback: "" })}
                       </td>
                       <td className="font-mono text-xs text-amber-200/90">{log.panel}</td>
                       <td className="font-mono text-xs text-white/70">{log.method}</td>

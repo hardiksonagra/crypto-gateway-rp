@@ -5,6 +5,8 @@ import { useSidebarLayout } from "../hooks/useSidebarLayout.js";
 import { useMerchantPortalEnvironment } from "../hooks/useMerchantPortalEnvironment.js";
 import { useTheme } from "../hooks/useTheme.js";
 import { BrandMark } from "../components/BrandMark.js";
+import ShellBreadcrumbs from "../components/ShellBreadcrumbs.js";
+import { BreadcrumbExtrasProvider } from "../contexts/BreadcrumbExtrasContext.js";
 import { ShellNavLink } from "./ShellNavLink.js";
 import {
   IconActivity,
@@ -220,89 +222,100 @@ export default function AdminShell() {
 
       {/* ── Main ───────────────────────────────────────────────── */}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        {/* Top bar */}
-        <header className="topbar-shell sticky top-0 z-20 flex items-center gap-3 border-b px-4 py-3 sm:px-6">
-          {/* Mobile hamburger */}
-          <button
-            type="button"
-            onClick={() => setMobileOpen(true)}
-            className="shrink-0 rounded-xl border p-2 transition-colors md:hidden"
-            style={{ borderColor: "var(--border)", color: "var(--text-2)" }}
-            aria-label="Open menu"
-          >
-            <IconMenu />
-          </button>
+        <BreadcrumbExtrasProvider>
+          {/* Top bar — breadcrumbs left, controls right */}
+          <header className="topbar-shell sticky top-0 z-20 flex items-center gap-2 border-b px-4 py-2.5 sm:gap-3 sm:px-6">
+            <button
+              type="button"
+              onClick={() => setMobileOpen(true)}
+              className="shrink-0 rounded-xl border p-2 transition-colors md:hidden"
+              style={{ borderColor: "var(--border)", color: "var(--text-2)" }}
+              aria-label="Open menu"
+            >
+              <IconMenu />
+            </button>
 
-          {/* Title + env badge */}
-          <div className="flex flex-1 items-center gap-2.5">
-            <span className="font-display text-sm font-bold" style={{ color: "var(--text-1)" }}>
-              Admin Panel
-            </span>
-            {!portalEnvFlagsLoading && (
-              <span
-                className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
-                  portalEnvironment === "sandbox"
-                    ? "border-amber-400/25 bg-amber-500/10 text-amber-400"
-                    : "border-emerald-400/25 bg-emerald-500/10 text-emerald-400"
-                }`}
-              >
+            <div className="min-w-0 flex-1 overflow-hidden">
+              <ShellBreadcrumbs
+                variant="admin"
+                className="text-[11px] leading-snug sm:text-sm [&_ol]:flex-nowrap [&_ol]:overflow-hidden"
+              />
+            </div>
+
+            <div className="flex shrink-0 items-center gap-2 sm:gap-2.5">
+              {!portalEnvFlagsLoading && (
                 <span
-                  className={`h-1.5 w-1.5 animate-pulse rounded-full ${
-                    portalEnvironment === "sandbox" ? "bg-amber-400" : "bg-emerald-400"
+                  className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider sm:px-2.5 sm:py-0.5 ${
+                    portalEnvironment === "sandbox"
+                      ? "border-amber-400/25 bg-amber-500/10 text-amber-400"
+                      : "border-emerald-400/25 bg-emerald-500/10 text-emerald-400"
                   }`}
-                />
-                {portalEnvironment === "sandbox" ? "Sandbox" : "Live"}
-              </span>
-            )}
-          </div>
-
-          {/* Theme toggle */}
-          <button
-            type="button"
-            onClick={(e) => toggleTheme(e)}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition-all duration-150"
-            style={{ borderColor: "var(--border)", color: "var(--text-2)" }}
-            title={isDark ? "Switch to light" : "Switch to dark"}
-          >
-            {isDark ? <IconSun /> : <IconMoon />}
-          </button>
-
-          {/* Avatar + email */}
-          {email && (
-            <div className="flex items-center gap-2.5">
-              <div className="hidden flex-col items-end sm:flex">
-                <span className="max-w-[160px] truncate text-xs font-semibold"
-                      style={{ color: "var(--text-1)" }}>{email}</span>
-                <span className="text-[10px] uppercase tracking-wider"
-                      style={{ color: "var(--text-3)" }}>Admin</span>
-              </div>
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-[#5a6fff] to-[#9b59ff] text-sm font-bold text-white"
-                   style={{ boxShadow: "0 2px 10px rgba(90,111,255,0.35)" }}>
-                {avatarInitial}
-              </div>
-            </div>
-          )}
-        </header>
-
-        {/* Sandbox banner */}
-        <main className="min-h-0 flex-1 overflow-auto p-5 sm:p-7 lg:p-8">
-          {!portalEnvFlagsLoading && portalEnvironment === "sandbox" ? (
-            <div className="mb-6 flex items-start gap-3 rounded-2xl border border-amber-400/20 bg-amber-500/8 px-4 py-3.5 text-sm">
-              <span className="mt-0.5 h-2 w-2 shrink-0 rounded-full bg-amber-400" />
-              <p style={{ color: "var(--text-1)" }}>
-                Viewing <span className="font-semibold text-amber-400">sandbox</span> data only.{" "}
-                <Link
-                  to="/control/profile"
-                  className="font-semibold text-amber-400 underline decoration-amber-400/40 underline-offset-2 hover:decoration-amber-300"
                 >
-                  Open Profile
-                </Link>{" "}
-                to switch to <span className="font-semibold">Live</span>.
-              </p>
+                  <span
+                    className={`h-1.5 w-1.5 animate-pulse rounded-full ${
+                      portalEnvironment === "sandbox" ? "bg-amber-400" : "bg-emerald-400"
+                    }`}
+                  />
+                  {portalEnvironment === "sandbox" ? "Sandbox" : "Live"}
+                </span>
+              )}
+
+              <button
+                type="button"
+                onClick={(e) => toggleTheme(e)}
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition-all duration-150"
+                style={{ borderColor: "var(--border)", color: "var(--text-2)" }}
+                title={isDark ? "Switch to light" : "Switch to dark"}
+              >
+                {isDark ? <IconSun /> : <IconMoon />}
+              </button>
+
+              {email ? (
+                <div className="flex items-center gap-2 sm:gap-2.5">
+                  <div className="hidden flex-col items-end lg:flex">
+                    <span
+                      className="max-w-[140px] truncate text-xs font-semibold xl:max-w-[200px]"
+                      style={{ color: "var(--text-1)" }}
+                    >
+                      {email}
+                    </span>
+                    <span
+                      className="text-[10px] uppercase tracking-wider"
+                      style={{ color: "var(--text-3)" }}
+                    >
+                      Admin
+                    </span>
+                  </div>
+                  <div
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[#5a6fff] to-[#9b59ff] text-sm font-bold text-white"
+                    style={{ boxShadow: "0 2px 10px rgba(90,111,255,0.35)" }}
+                  >
+                    {avatarInitial}
+                  </div>
+                </div>
+              ) : null}
             </div>
-          ) : null}
-          <Outlet />
-        </main>
+          </header>
+
+          <main className="flex min-h-0 flex-1 flex-col overflow-auto p-5 sm:p-7 lg:p-8">
+            {!portalEnvFlagsLoading && portalEnvironment === "sandbox" ? (
+              <div className="mb-6 flex items-start gap-3 rounded-2xl border border-amber-400/20 bg-amber-500/8 px-4 py-3.5 text-sm">
+                <span className="mt-0.5 h-2 w-2 shrink-0 rounded-full bg-amber-400" />
+                <p style={{ color: "var(--text-1)" }}>
+                  Viewing <span className="font-semibold text-amber-400">sandbox</span> data only.{" "}
+                  <Link
+                    to="/control/profile"
+                    className="font-semibold text-amber-400 underline decoration-amber-400/40 underline-offset-2 hover:decoration-amber-300"
+                  >
+                    Open Profile
+                  </Link>{" "}
+                  to switch to <span className="font-semibold">Live</span>.
+                </p>
+              </div>
+            ) : null}
+            <Outlet />
+          </main>
+        </BreadcrumbExtrasProvider>
       </div>
     </div>
   );

@@ -2,6 +2,7 @@ import { Formik, Form, Field, ErrorMessage } from "formik";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "../../api";
 import { buildSystemSettingsSchema } from "../../admin/systemSettingsSchemas";
+import { BrandLoader } from "../../components/BrandLoader.js";
 
 const input =
   "w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none ring-white/20 focus:ring-1";
@@ -202,7 +203,13 @@ export default function SystemSettings() {
     return (
       <div className="w-full max-w-none">
         <h1 className="font-display text-2xl font-bold" style={{ color: "var(--text-1)" }}>System settings</h1>
-        <p className="mt-4 text-sm" style={{ color: "var(--text-2)" }}>Loading…</p>
+        <BrandLoader
+          variant="section"
+          title=""
+          subtitle="Loading settings…"
+          className="mt-4"
+          aria-label="Loading system settings"
+        />
       </div>
     );
   }

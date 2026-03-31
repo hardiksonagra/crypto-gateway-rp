@@ -16,6 +16,8 @@ import {
 } from "../../components/ListFilterChrome";
 import { merchantWalletsFilterSchema } from "../../admin/merchantSchemas";
 import WalletDepositActivityModal from "../../components/WalletDepositActivityModal";
+import { BrandLoader } from "../../components/BrandLoader.js";
+import { formatLocalDate, formatLocalDateTime } from "../../lib/formatLocalDateTime.js";
 
 const DEFAULT_PAGE_SIZE = DEFAULT_LIST_PAGE_SIZE;
 
@@ -88,7 +90,14 @@ export default function MerchantWallets() {
   }
 
   if (flagsLoading) {
-    return <p className="text-white/50">Loading…</p>;
+    return (
+      <BrandLoader
+        variant="page"
+        title=""
+        subtitle="Loading wallets…"
+        aria-label="Loading wallets"
+      />
+    );
   }
 
   if (!liveGatewayEnabled && !sandboxGatewayEnabled) {
@@ -103,7 +112,14 @@ export default function MerchantWallets() {
   }
 
   if (!envQueryEnabled) {
-    return <p className="text-white/50">Loading…</p>;
+    return (
+      <BrandLoader
+        variant="page"
+        title=""
+        subtitle="Preparing wallets…"
+        aria-label="Preparing wallets list"
+      />
+    );
   }
 
   return (
@@ -241,8 +257,8 @@ export default function MerchantWallets() {
             <tbody>
               {res.isLoading ? (
                 <tr>
-                  <td colSpan={10} className="!py-12 text-center text-sm text-white/40">
-                    Loading…
+                  <td colSpan={10} className="!py-8">
+                    <BrandLoader variant="inline" title="" subtitle="Loading…" />
                   </td>
                 </tr>
               ) : null}
@@ -266,7 +282,7 @@ export default function MerchantWallets() {
                           : !w.scan_expires_at
                             ? "Always on"
                             : w.deposit_scan_active
-                              ? `Until ${w.scan_expires_at.slice(0, 16).replace("T", " ")} UTC`
+                              ? `Until ${formatLocalDateTime(w.scan_expires_at)}`
                               : "Window ended";
                   const canRestart =
                     environment === "live" &&
@@ -292,7 +308,7 @@ export default function MerchantWallets() {
                     <td className="font-mono text-xs text-emerald-200/85">{w.success_deposit_count ?? 0}</td>
                     <td className="font-mono text-xs text-white/65">{txc}</td>
                     <td className="max-w-[200px] text-xs text-white/55">{scanLine}</td>
-                    <td className="text-xs text-white/45">{w.created_at.slice(0, 10)}</td>
+                    <td className="text-xs text-white/45">{formatLocalDate(w.created_at)}</td>
                     <td className="whitespace-nowrap">
                       <div className="flex flex-col items-start gap-1.5">
                         <button

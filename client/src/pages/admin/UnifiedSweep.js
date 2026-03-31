@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { api } from "../../api";
 import { GATEWAY_TRON_USDT_ONLY } from "../../admin/depositRailOptions.js";
 import ConfirmModal from "../../components/ConfirmModal";
+import { BrandLoader } from "../../components/BrandLoader.js";
 
 const FILTER_ALL = "all";
 
@@ -181,8 +182,8 @@ export default function AdminUnifiedSweep() {
           <tbody>
             {targets.isLoading ? (
               <tr>
-                <td colSpan={9} className="px-4 py-8 text-center text-white/45">
-                  Loading…
+                <td colSpan={9} className="!py-6">
+                  <BrandLoader variant="inline" title="" subtitle="Loading…" />
                 </td>
               </tr>
             ) : wallets.length === 0 ? (

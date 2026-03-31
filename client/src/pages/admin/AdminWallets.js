@@ -15,6 +15,7 @@ import {
 } from "../../components/ListFilterChrome";
 import { adminWalletsFilterSchema } from "../../admin/merchantSchemas";
 import WalletDepositActivityModal from "../../components/WalletDepositActivityModal";
+import { BrandLoader } from "../../components/BrandLoader.js";
 
 export default function AdminWallets() {
   const queryClient = useQueryClient();
@@ -247,8 +248,8 @@ export default function AdminWallets() {
           <tbody>
             {listQ.isLoading ? (
               <tr>
-                <td colSpan={10} className={`${td} text-white/45`}>
-                  Loading…
+                <td colSpan={10} className={`${td} !py-6`}>
+                  <BrandLoader variant="inline" title="" subtitle="Loading…" />
                 </td>
               </tr>
             ) : wallets.length === 0 ? (

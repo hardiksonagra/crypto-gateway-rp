@@ -4,6 +4,8 @@ import { api } from "../../api";
 import { PendingSettlementBucketCard } from "../../components/PendingSettlementBucketCard.js";
 import { useMerchantPortalEnvironment } from "../../hooks/useMerchantPortalEnvironment.js";
 import { formatTokenAmount } from "../../lib/formatTokenAmount.js";
+import { formatLocalDateTime } from "../../lib/formatLocalDateTime.js";
+import { BrandLoader } from "../../components/BrandLoader.js";
 
 const cardShell =
   "group relative overflow-hidden rounded-2xl border border-white/[0.09] bg-gradient-to-br from-[#141a2e]/92 via-[#0e1222]/96 to-[#090c18] p-5 shadow-[0_20px_40px_-14px_rgba(0,0,0,0.5)] ring-1 ring-inset ring-white/[0.04]";
@@ -59,7 +61,14 @@ export default function MerchantDashboard() {
   });
 
   if (flagsLoading) {
-    return <p className="text-white/50">Loading…</p>;
+    return (
+      <BrandLoader
+        variant="page"
+        title=""
+        subtitle="Loading dashboard…"
+        aria-label="Loading dashboard"
+      />
+    );
   }
 
   if (!liveGatewayEnabled && !sandboxGatewayEnabled) {
@@ -74,11 +83,25 @@ export default function MerchantDashboard() {
   }
 
   if (!envQueryEnabled) {
-    return <p className="text-white/50">Loading…</p>;
+    return (
+      <BrandLoader
+        variant="page"
+        title=""
+        subtitle="Preparing dashboard…"
+        aria-label="Preparing dashboard"
+      />
+    );
   }
 
   if (isPending) {
-    return <p className="text-white/50">Loading…</p>;
+    return (
+      <BrandLoader
+        variant="page"
+        title=""
+        subtitle="Loading dashboard…"
+        aria-label="Loading dashboard data"
+      />
+    );
   }
 
   if (isError) {
@@ -243,7 +266,7 @@ export default function MerchantDashboard() {
                   data.recent_transactions.map((t) => (
                     <tr key={t.id}>
                       <td className="whitespace-nowrap text-xs text-white/45">
-                        {t.created_at.slice(0, 19)}
+                        {formatLocalDateTime(t.created_at)}
                       </td>
                       <td className="text-xs text-white/75">{t.chain}</td>
                       <td className="text-xs text-white/75">{t.token_symbol}</td>

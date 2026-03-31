@@ -1,9 +1,10 @@
 import { Formik, Form, Field, ErrorMessage } from "formik";
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../../api";
 import ListPaginationBar, { DEFAULT_LIST_PAGE_SIZE } from "../../components/ListPaginationBar";
+import { BrandLoader } from "../../components/BrandLoader.js";
 import {
   ListActiveFiltersChips,
   ListFilterDrawer,
@@ -21,11 +22,13 @@ import {
   merchantDetailWalletsFilterSchema,
 } from "../../admin/merchantSchemas";
 import { formatTokenAmount } from "../../lib/formatTokenAmount.js";
+import { formatLocalDate, formatLocalDateTime } from "../../lib/formatLocalDateTime.js";
 import {
   UserAssignmentHistoryModal,
   UserHistoryCountButton,
   UserPayerDepositHistoryModal,
 } from "../../components/UserHistoryModals.js";
+import { useBreadcrumbExtras } from "../../contexts/BreadcrumbExtrasContext.js";
 
 const DEFAULT_PAGE_SIZE = DEFAULT_LIST_PAGE_SIZE;
 const TX_STATUS_OPTIONS = ["pending", "success", "failed"];
@@ -40,12 +43,26 @@ const MERCHANT_DETAIL_TABS = [
 export default function MerchantDetail() {
   const { id: merchantId } = useParams();
   const [tab, setTab] = useState("details");
+  const { setMerchantCrumb } = useBreadcrumbExtras();
 
   const merchantQ = useQuery({
     queryKey: ["admin-merchant", merchantId],
     enabled: Boolean(merchantId),
     queryFn: () => api(`/api/v1/admin/merchants/${merchantId}`),
   });
+
+  useEffect(() => {
+    if (!merchantId) return;
+    const m = merchantQ.data;
+    setMerchantCrumb({
+      id: merchantId,
+      label:
+        m?.display_name || m?.email
+          ? String(m.display_name || m.email)
+          : "Merchant",
+    });
+    return () => setMerchantCrumb(null);
+  }, [merchantId, merchantQ.data, setMerchantCrumb]);
 
   const [txPage, setTxPage] = useState(1);
   const [txDrawer, setTxDrawer] = useState(false);
@@ -173,7 +190,14 @@ export default function MerchantDetail() {
   }
 
   if (merchantQ.isLoading) {
-    return <p className="text-white/50">Loading…</p>;
+    return (
+      <BrandLoader
+        variant="page"
+        title=""
+        subtitle="Loading merchant…"
+        aria-label="Loading merchant detail"
+      />
+    );
   }
 
   if (merchantQ.isError || !merchantQ.data) {
@@ -301,14 +325,14 @@ export default function MerchantDetail() {
                     deleted_at
                   </p>
                   <p className="mt-1 font-mono text-sm text-white/70">
-                    {String(m.deleted_at).slice(0, 19)}
+                    {formatLocalDateTime(m.deleted_at)}
                   </p>
                 </div>
               ) : null}
               <div>
                 <p className="text-[10px] font-semibold tracking-wide text-white/40 uppercase">Created</p>
                 <p className="mt-1 font-mono text-sm text-white/70">
-                  {m.created_at ? String(m.created_at).slice(0, 19) : "—"}
+                  {formatLocalDateTime(m.created_at)}
                 </p>
               </div>
               <div>
@@ -667,8 +691,8 @@ export default function MerchantDetail() {
               <tbody>
                 {txsQ.isLoading ? (
                   <tr>
-                    <td colSpan={7} className="!py-12 text-center text-sm text-white/40">
-                      Loading…
+                    <td colSpan={7} className="!py-8">
+                      <BrandLoader variant="inline" title="" subtitle="Loading…" />
                     </td>
                   </tr>
                 ) : null}
@@ -682,7 +706,7 @@ export default function MerchantDetail() {
                 {!txsQ.isLoading &&
                   txs.map((t) => (
                     <tr key={t.id}>
-                      <td className="text-xs text-white/45">{t.created_at.slice(0, 19)}</td>
+                      <td className="text-xs text-white/45">{formatLocalDateTime(t.created_at)}</td>
                       <td>{t.chain}</td>
                       <td>{t.token_symbol}</td>
                       <td className="font-mono text-xs">
@@ -1084,8 +1108,8 @@ export default function MerchantDetail() {
               <tbody>
                 {walletsQ.isLoading ? (
                   <tr>
-                    <td colSpan={6} className="!py-12 text-center text-sm text-white/40">
-                      Loading…
+                    <td colSpan={6} className="!py-8">
+                      <BrandLoader variant="inline" title="" subtitle="Loading…" />
                     </td>
                   </tr>
                 ) : null}
@@ -1106,7 +1130,7 @@ export default function MerchantDetail() {
                       <td className="font-mono text-xs">{w.currency}</td>
                       <td className="font-mono text-xs">{w.network}</td>
                       <td className="max-w-[140px] truncate font-mono text-xs">{w.external_user_id}</td>
-                      <td className="text-xs text-white/45">{w.created_at.slice(0, 10)}</td>
+                      <td className="text-xs text-white/45">{formatLocalDate(w.created_at)}</td>
                     </tr>
                   ))}
               </tbody>
@@ -1329,8 +1353,8 @@ export default function MerchantDetail() {
               <tbody>
                 {usersQ.isLoading ? (
                   <tr>
-                    <td colSpan={5} className="!py-12 text-center text-sm text-white/40">
-                      Loading…
+                    <td colSpan={5} className="!py-8">
+                      <BrandLoader variant="inline" title="" subtitle="Loading…" />
                     </td>
                   </tr>
                 ) : null}
@@ -1362,7 +1386,7 @@ export default function MerchantDetail() {
                           onClick={() => setUserDepositModalId(u.id)}
                         />
                       </td>
-                      <td className="text-xs text-white/45">{u.created_at.slice(0, 10)}</td>
+                      <td className="text-xs text-white/45">{formatLocalDate(u.created_at)}</td>
                     </tr>
                   ))}
               </tbody>

@@ -4,6 +4,7 @@ import { api } from "../../api";
 import { merchantSettingsSchema } from "../../admin/merchantSchemas";
 import ChainMultiSelectField from "../../components/ChainMultiSelectField";
 import DepositRailsMultiSelectField from "../../components/DepositRailsMultiSelectField";
+import { BrandLoader } from "../../components/BrandLoader.js";
 import {
   depositRailsForChains,
   railKeyFromParts,
@@ -39,7 +40,14 @@ export default function MerchantSettings() {
   }, []);
 
   if (!boot) {
-    return <p className="text-white/50">Loading…</p>;
+    return (
+      <BrandLoader
+        variant="section"
+        title=""
+        subtitle="Loading settings…"
+        aria-label="Loading gateway settings"
+      />
+    );
   }
 
   return (

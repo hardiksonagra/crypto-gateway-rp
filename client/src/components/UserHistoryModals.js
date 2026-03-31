@@ -1,6 +1,8 @@
 import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../api";
+import { BrandLoader } from "./BrandLoader.js";
+import { formatLocalDateTime } from "../lib/formatLocalDateTime.js";
 
 /**
  * @param {"admin" | "merchant"} panel
@@ -125,7 +127,13 @@ export function UserAssignmentHistoryModal({
       onClose={onClose}
     >
       {q.isLoading ? (
-        <p className="px-2 py-6 text-sm" style={{ color: "var(--text-3)" }}>Loading…</p>
+        <BrandLoader
+          variant="inline"
+          title=""
+          subtitle="Loading…"
+          className="px-2 py-4"
+          aria-label="Loading assignment history"
+        />
       ) : q.isError ? (
         <p className="px-2 py-6 text-sm" style={{ color: "#f87171" }}>{String(q.error)}</p>
       ) : events.length === 0 ? (
@@ -134,7 +142,7 @@ export function UserAssignmentHistoryModal({
         <table className="w-full min-w-[640px] border-collapse text-left">
           <thead>
             <tr>
-              {["Time (UTC)", "How", "Address", "Rail"].map((h) => (
+              {["Time", "How", "Address", "Rail"].map((h) => (
                 <th key={h} className="border-b px-2 py-2 text-left text-[10px] font-semibold tracking-wide uppercase"
                     style={{ borderColor: "var(--border)", color: "var(--text-3)" }}>
                   {h}
@@ -147,7 +155,7 @@ export function UserAssignmentHistoryModal({
               <tr key={ev.id}>
                 <td className="border-b px-2 py-2 align-top text-xs whitespace-nowrap"
                     style={{ borderColor: "var(--border)", color: "var(--text-2)" }}>
-                  {ev.at?.replace("T", " ").slice(0, 19) ?? "—"}
+                  {formatLocalDateTime(ev.at)}
                 </td>
                 <td className="border-b px-2 py-2 align-top text-xs max-w-[220px]"
                     style={{ borderColor: "var(--border)", color: "var(--text-2)" }}
@@ -242,7 +250,13 @@ export function UserPayerDepositHistoryModal({
       onClose={onClose}
     >
       {q.isLoading ? (
-        <p className="px-2 py-6 text-sm" style={{ color: "var(--text-3)" }}>Loading…</p>
+        <BrandLoader
+          variant="inline"
+          title=""
+          subtitle="Loading…"
+          className="px-2 py-4"
+          aria-label="Loading deposit history"
+        />
       ) : q.isError ? (
         <p className="px-2 py-6 text-sm" style={{ color: "#f87171" }}>{String(q.error)}</p>
       ) : events.length === 0 ? (
@@ -251,7 +265,7 @@ export function UserPayerDepositHistoryModal({
         <table className="w-full min-w-[720px] border-collapse text-left">
           <thead>
             <tr>
-              {["Time (UTC)", "Amount", "Status", "Wallet", "Tx"].map((h) => (
+              {["Time", "Amount", "Status", "Wallet", "Tx"].map((h) => (
                 <th key={h} className="border-b px-2 py-2 text-left text-[10px] font-semibold tracking-wide uppercase"
                     style={{ borderColor: "var(--border)", color: "var(--text-3)" }}>
                   {h}
@@ -264,7 +278,7 @@ export function UserPayerDepositHistoryModal({
               <tr key={ev.id}>
                 <td className="border-b px-2 py-2 align-top text-xs whitespace-nowrap"
                     style={{ borderColor: "var(--border)", color: "var(--text-2)" }}>
-                  {ev.at?.replace("T", " ").slice(0, 19) ?? "—"}
+                  {formatLocalDateTime(ev.at)}
                 </td>
                 <td className="border-b px-2 py-2 align-top text-xs"
                     style={{ borderColor: "var(--border)" }}>

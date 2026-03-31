@@ -8,6 +8,8 @@ import ListPaginationBar, {
 } from "../../components/ListPaginationBar";
 import { PendingSettlementBucketCard } from "../../components/PendingSettlementBucketCard.js";
 import { formatTokenAmount } from "../../lib/formatTokenAmount.js";
+import { formatLocalDateTime } from "../../lib/formatLocalDateTime.js";
+import { BrandLoader } from "../../components/BrandLoader.js";
 
 const DEFAULT_PAGE_SIZE = DEFAULT_LIST_PAGE_SIZE;
 
@@ -167,7 +169,15 @@ export default function AdminSettlements() {
             and Load again anytime.
           </p>
           {pendingQ.isLoading ? (
-            <p className="mt-3 text-sm text-white/45">Loading preview…</p>
+            <div className="mt-3">
+              <BrandLoader
+                variant="section"
+                title=""
+                subtitle="Loading settlement preview…"
+                className="min-h-0 py-6"
+                aria-label="Loading settlement preview"
+              />
+            </div>
           ) : pendingQ.isError ? (
             <p className="mt-3 text-sm text-rose-400">
               {String(pendingQ.error)}
@@ -228,11 +238,8 @@ export default function AdminSettlements() {
               </tr>
             ) : listQ.isLoading ? (
               <tr>
-                <td
-                  colSpan={9}
-                  className="!py-12 text-center text-sm text-white/45"
-                >
-                  Loading…
+                <td colSpan={9} className="!py-8">
+                  <BrandLoader variant="inline" title="" subtitle="Loading…" />
                 </td>
               </tr>
             ) : rows.length === 0 ? (
@@ -248,7 +255,7 @@ export default function AdminSettlements() {
               rows.map((s) => (
                 <tr key={s.id}>
                   <td className="whitespace-nowrap text-xs text-white/45">
-                    {s.created_at ? String(s.created_at).slice(0, 19) : "—"}
+                    {formatLocalDateTime(s.created_at)}
                   </td>
                   <td
                     className="max-w-[200px] truncate text-sm text-white/80"

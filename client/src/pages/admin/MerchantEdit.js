@@ -1,12 +1,14 @@
 import { Formik, Form, Field, ErrorMessage } from "formik";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api } from "../../api";
 import { merchantEditSchema } from "../../admin/merchantSchemas";
 import ChainMultiSelectField from "../../components/ChainMultiSelectField";
 import DepositRailsMultiSelectField from "../../components/DepositRailsMultiSelectField";
 import { depositRailsForChains, railKeyFromParts } from "../../admin/depositRailOptions.js";
+import { BrandLoader } from "../../components/BrandLoader.js";
+import { useBreadcrumbExtras } from "../../contexts/BreadcrumbExtrasContext.js";
 
 const input =
   "w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none ring-white/20 focus:ring-1";
@@ -17,6 +19,7 @@ export default function MerchantEdit() {
   const nav = useNavigate();
   const qc = useQueryClient();
   const [newKeysModal, setNewKeysModal] = useState(null);
+  const { setMerchantCrumb } = useBreadcrumbExtras();
 
   const q = useQuery({
     queryKey: ["admin-merchant", id],
@@ -24,12 +27,30 @@ export default function MerchantEdit() {
     queryFn: () => api(`/api/v1/admin/merchants/${id}`),
   });
 
+  useEffect(() => {
+    if (!id) return;
+    const m = q.data;
+    setMerchantCrumb({
+      id,
+      label:
+        m?.display_name || m?.email ? String(m.display_name || m.email) : "Merchant",
+    });
+    return () => setMerchantCrumb(null);
+  }, [id, q.data, setMerchantCrumb]);
+
   if (!id) {
     return <p className="text-white/50">Missing id</p>;
   }
 
   if (q.isLoading) {
-    return <p className="text-white/50">Loading…</p>;
+    return (
+      <BrandLoader
+        variant="page"
+        title=""
+        subtitle="Loading merchant…"
+        aria-label="Loading merchant for edit"
+      />
+    );
   }
 
   if (q.isError || !q.data) {

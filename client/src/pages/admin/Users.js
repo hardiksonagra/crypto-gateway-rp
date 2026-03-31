@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { api } from "../../api";
 import ListPaginationBar, { DEFAULT_LIST_PAGE_SIZE } from "../../components/ListPaginationBar";
+import { BrandLoader } from "../../components/BrandLoader.js";
 import {
   ListActiveFiltersChips,
   ListFilterDrawer,
@@ -19,6 +20,7 @@ import {
   UserHistoryCountButton,
   UserPayerDepositHistoryModal,
 } from "../../components/UserHistoryModals.js";
+import { formatLocalDate } from "../../lib/formatLocalDateTime.js";
 
 const DEFAULT_PAGE_SIZE = DEFAULT_LIST_PAGE_SIZE;
 
@@ -280,8 +282,8 @@ export default function AdminUsers() {
             <tbody>
               {res.isLoading ? (
                 <tr>
-                  <td colSpan={6} className="!py-12 text-center text-sm text-white/40">
-                    Loading…
+                  <td colSpan={6} className="!py-8">
+                    <BrandLoader variant="inline" title="" subtitle="Loading…" />
                   </td>
                 </tr>
               ) : null}
@@ -314,7 +316,7 @@ export default function AdminUsers() {
                         onClick={() => setDepositUserId(u.id)}
                       />
                     </td>
-                    <td className="text-xs text-white/45">{u.created_at.slice(0, 10)}</td>
+                    <td className="text-xs text-white/45">{formatLocalDate(u.created_at)}</td>
                   </tr>
                 ))}
             </tbody>

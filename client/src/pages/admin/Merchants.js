@@ -21,6 +21,7 @@ import {
 import { merchantFilterSchema } from "../../admin/merchantSchemas";
 import ConfirmModal from "../../components/ConfirmModal";
 import { StatusBadge } from "../../components/StatusBadge.js";
+import { BrandLoader } from "../../components/BrandLoader.js";
 
 const DEFAULT_PAGE_SIZE = DEFAULT_LIST_PAGE_SIZE;
 
@@ -590,8 +591,8 @@ export default function AdminMerchants() {
             <tbody>
               {q.isLoading ? (
                 <tr>
-                  <td colSpan={8} className="!py-12 text-center text-sm text-white/40">
-                    Loading…
+                  <td colSpan={8} className="!py-8">
+                    <BrandLoader variant="inline" title="" subtitle="Loading…" />
                   </td>
                 </tr>
               ) : null}

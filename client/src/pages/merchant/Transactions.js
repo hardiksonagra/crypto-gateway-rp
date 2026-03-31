@@ -17,6 +17,8 @@ import {
 } from "../../components/ListFilterChrome";
 import { CHAIN_VALUES, merchantTransactionsFilterSchema } from "../../admin/merchantSchemas";
 import { formatTokenAmount } from "../../lib/formatTokenAmount.js";
+import { formatLocalDateTime } from "../../lib/formatLocalDateTime.js";
+import { BrandLoader } from "../../components/BrandLoader.js";
 
 const DEFAULT_PAGE_SIZE = DEFAULT_LIST_PAGE_SIZE;
 const ST = ["pending", "success", "failed"];
@@ -123,7 +125,14 @@ export default function MerchantTransactions() {
   }
 
   if (flagsLoading) {
-    return <p className="text-white/50">Loading…</p>;
+    return (
+      <BrandLoader
+        variant="page"
+        title=""
+        subtitle="Loading transactions…"
+        aria-label="Loading transactions"
+      />
+    );
   }
 
   if (!liveGatewayEnabled && !sandboxGatewayEnabled) {
@@ -138,7 +147,14 @@ export default function MerchantTransactions() {
   }
 
   if (!envQueryEnabled) {
-    return <p className="text-white/50">Loading…</p>;
+    return (
+      <BrandLoader
+        variant="page"
+        title=""
+        subtitle="Preparing transactions…"
+        aria-label="Preparing transactions list"
+      />
+    );
   }
 
   const redeliverErr =
@@ -371,8 +387,8 @@ export default function MerchantTransactions() {
             <tbody>
               {res.isLoading ? (
                 <tr>
-                  <td colSpan={7} className="!py-12 text-center text-sm text-white/40">
-                    Loading…
+                  <td colSpan={7} className="!py-8">
+                    <BrandLoader variant="inline" title="" subtitle="Loading…" />
                   </td>
                 </tr>
               ) : null}
@@ -399,7 +415,7 @@ export default function MerchantTransactions() {
                         {t.id.length > 18 ? `${t.id.slice(0, 10)}…${t.id.slice(-6)}` : t.id}
                       </button>
                     </td>
-                    <td className="text-xs text-white/45">{t.created_at.slice(0, 19)}</td>
+                    <td className="text-xs text-white/45">{formatLocalDateTime(t.created_at)}</td>
                     <td className="max-w-[120px] truncate font-mono text-xs">{t.external_user_id}</td>
                     <td>{t.chain}</td>
                     <td>{t.token_symbol}</td>
