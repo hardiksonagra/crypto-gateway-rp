@@ -45,6 +45,12 @@ fi
 if [[ "${DEPLOY_SKIP_INSTALL:-0}" != "1" ]]; then
   log "Installing dependencies (npm ci — NODE_ENV=development so Prisma CLI devDep is installed)"
   NODE_ENV=development npm ci --no-audit --no-fund
+  # PM2 cwd is ./server; multer may be hoisted to repo root node_modules. `npm ci` should
+  # populate both; this line repairs partial deploys / old trees where multer was missing.
+  if [[ ! -d "$ROOT/node_modules/multer" ]] && [[ ! -d "$ROOT/server/node_modules/multer" ]]; then
+    log "multer not found after npm ci — installing server workspace deps"
+    npm install -w server --no-audit --no-fund
+  fi
 else
   log "Skipping npm ci (DEPLOY_SKIP_INSTALL=1)"
 fi

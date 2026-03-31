@@ -59,6 +59,14 @@ export const env = {
     "CLIENT_ORIGINS",
     "https://portal.cryptovapay.com",
   ).map(normalizeBrowserOrigin),
+  /**
+   * Emergency only: reflect any `Origin` (disables the CORS allow-list). Not read from Admin DB.
+   * Prefer fixing `CLIENT_ORIGINS` + `APP_PUBLIC_URL` (and `www` vs apex) instead.
+   */
+  corsAllowAll: (() => {
+    const v = optional("CORS_ALLOW_ALL", "").toLowerCase();
+    return v === "true" || v === "1" || v === "yes";
+  })(),
   encryptionKey: optional("ENCRYPTION_KEY"),
 
   /** Base URL of the browser app (for password-reset links), e.g. https://portal.example.com */

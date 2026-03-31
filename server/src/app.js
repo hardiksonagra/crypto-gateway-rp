@@ -42,6 +42,39 @@ function browserOriginFromAbsoluteUrl(absoluteUrl) {
  * Rebuilt each request so Admin / DB overrides apply without restart.
  * @returns {Set<string>}
  */
+/**
+ * Also allow the same host with/without leading `www.` (common live mismatch vs `APP_PUBLIC_URL`).
+ * Skips IPv4 hostnames.
+ * @param {Set<string>} set
+ */
+function addWwwOriginVariants(set) {
+  const extras = [];
+  for (const o of set) {
+    if (!o || typeof o !== "string") continue;
+    const t = o.trim();
+    if (!t.includes("://")) continue;
+    try {
+      const u = new URL(t);
+      const h = u.hostname;
+      if (!h || /^\d{1,3}(\.\d{1,3}){3}$/.test(h)) continue;
+      if (h.startsWith("www.")) {
+        const u2 = new URL(u.href);
+        u2.hostname = h.slice(4);
+        if (u2.hostname) extras.push(normalizeBrowserOrigin(u2.origin));
+      } else {
+        const u2 = new URL(u.href);
+        u2.hostname = `www.${h}`;
+        extras.push(normalizeBrowserOrigin(u2.origin));
+      }
+    } catch {
+      /* skip */
+    }
+  }
+  for (const e of extras) {
+    if (e) set.add(e);
+  }
+}
+
 function effectiveCorsOriginSet() {
   const set = new Set(re.clientOrigins);
   const appO = browserOriginFromAbsoluteUrl(re.appPublicUrl);
@@ -53,6 +86,7 @@ function effectiveCorsOriginSet() {
       set.add(o);
     }
   }
+  addWwwOriginVariants(set);
   return set;
 }
 
@@ -71,6 +105,9 @@ export function createApp() {
   app.use(
     cors({
       origin(origin, cb) {
+        if (env.corsAllowAll) {
+          return cb(null, true);
+        }
         const allowed = effectiveCorsOriginSet();
         if (allowed.size === 0) {
           return cb(null, true);
