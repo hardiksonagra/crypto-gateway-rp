@@ -11,19 +11,16 @@ export function ShellNavLink({ to, end, label, Icon, collapsed, onPick }) {
       title={collapsed ? label : undefined}
       onClick={onPick}
       className={({ isActive }) =>
-        `flex items-center gap-3 rounded-lg border-l-2 py-2.5 text-sm font-medium transition ${
+        `sidebar-nav-link flex items-center gap-3 rounded-xl border-l-2 py-2.5 text-sm font-medium ${
           collapsed
             ? "justify-start pl-3 pr-3 md:justify-center md:gap-0 md:px-0"
-            : "justify-start pl-3 pr-3"
-        } ${
-          isActive
-            ? "border-zinc-400 bg-white/8 text-white"
-            : "border-transparent text-white/45 hover:bg-white/5 hover:text-white/90"
-        }`
+            : "pl-3 pr-3"
+        } ${isActive ? "active" : "border-transparent"}`
       }
     >
       <Icon />
-      <span className={collapsed ? "md:sr-only" : ""}>{label}</span>
+      {!collapsed && <span>{label}</span>}
+      {collapsed && <span className="sr-only">{label}</span>}
     </NavLink>
   );
 }

@@ -1,43 +1,55 @@
 /**
- * Shared “Advanced filters” UI: toolbar, active-filter chips panel, right drawer shell.
+ * Shared "Advanced filters" UI — fully theme-aware via CSS variables.
  */
 
-export const listFilterInputClass =
-  "w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none ring-white/20 focus:ring-1";
-export const listFilterLabelClass = "mb-1.5 block text-xs font-medium text-white/55";
+export const listFilterInputClass = "form-input";
+export const listFilterLabelClass = "form-label";
 export const listFilterChipCloseClass =
-  "ml-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-white/60 transition hover:bg-white/15 hover:text-white";
+  "ml-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full transition"
+  + " hover:bg-[var(--chip-border)] hover:text-[var(--text-1)]"
+  + " text-[var(--chip-label)]";
 export const listFilterApplyButtonClass = "btn-primary flex-1 rounded-xl py-2.5 text-sm";
 export const listFilterSecondaryButtonClass =
-  "rounded-xl border border-white/15 px-4 py-2.5 text-sm text-white/75 hover:bg-white/5";
+  "rounded-xl border px-4 py-2.5 text-sm transition"
+  + " border-[var(--border-mid)] text-[var(--text-2)] hover:bg-[var(--bg-surface3)]";
 
 /**
- * @param {object} props
- * @param {() => void} props.onOpenDrawer
- * @param {() => void} props.onReset
- * @param {boolean} props.canReset
+ * @param {{ onOpenDrawer: () => void; onReset: () => void; canReset: boolean }} props
  */
 export function ListFilterToolbar({ onOpenDrawer, onReset, canReset }) {
   return (
     <div
-      className="flex overflow-hidden rounded-xl border border-white/12 bg-white/4 shadow-inner"
+      className="flex overflow-hidden rounded-xl"
+      style={{
+        border: "1px solid var(--border-mid)",
+        background: "var(--bg-surface3)",
+      }}
       role="group"
       aria-label="Filters"
     >
       <button
         type="button"
         onClick={onOpenDrawer}
-        className="px-3 py-2.5 text-sm font-medium text-white/75 transition hover:bg-white/8 sm:px-4"
+        className="flex items-center gap-2 px-3 py-2.5 text-sm font-medium transition sm:px-4"
+        style={{ color: "var(--text-2)" }}
+        onMouseEnter={(e) => { e.currentTarget.style.background = "var(--link-hover-bg)"; e.currentTarget.style.color = "var(--text-1)"; }}
+        onMouseLeave={(e) => { e.currentTarget.style.background = ""; e.currentTarget.style.color = "var(--text-2)"; }}
       >
-        Advanced filters
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>
+        </svg>
+        Filters
       </button>
-      <span className="w-px shrink-0 bg-white/20" aria-hidden />
+      <span className="w-px shrink-0" style={{ background: "var(--border-mid)" }} aria-hidden />
       <button
         type="button"
         onClick={onReset}
         disabled={!canReset}
-        title="Clear filters and page"
-        className="px-3 py-2.5 text-sm text-white/75 transition hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-35 sm:px-4"
+        title="Clear all filters"
+        className="px-3 py-2.5 text-sm transition disabled:cursor-not-allowed disabled:opacity-35 sm:px-4"
+        style={{ color: "var(--text-3)" }}
+        onMouseEnter={(e) => { if (canReset) { e.currentTarget.style.background = "var(--link-hover-bg)"; e.currentTarget.style.color = "var(--text-1)"; }}}
+        onMouseLeave={(e) => { e.currentTarget.style.background = ""; e.currentTarget.style.color = "var(--text-3)"; }}
       >
         Reset
       </button>
@@ -48,22 +60,21 @@ export function ListFilterToolbar({ onOpenDrawer, onReset, canReset }) {
 /** @param {{ children: import("react").ReactNode }} props */
 export function ListActiveFiltersChips({ children }) {
   return (
-    <div className="mt-5 rounded-xl border border-white/10 bg-white/3 p-4">
-      <div className="mb-2 flex items-center gap-2">
-        <span className="h-1 w-8 rounded-full bg-white/15" aria-hidden />
-        <span className="text-[11px] font-semibold tracking-widest text-white/40 uppercase">Active filters</span>
-      </div>
+    <div
+      className="mt-5 rounded-xl p-3.5"
+      style={{ background: "var(--bg-surface3)", border: "1px solid var(--border)" }}
+    >
+      <p className="mb-2.5 text-[9px] font-bold uppercase tracking-[0.14em]"
+         style={{ color: "var(--text-3)" }}>
+        Active filters
+      </p>
       <div className="flex flex-wrap gap-2">{children}</div>
     </div>
   );
 }
 
 /**
- * @param {object} props
- * @param {boolean} props.open
- * @param {() => void} props.onClose
- * @param {string} [props.title]
- * @param {import("react").ReactNode} props.children
+ * @param {{ open: boolean; onClose: () => void; title?: string; children: import("react").ReactNode }} props
  */
 export function ListFilterDrawer({ open, onClose, title = "Filters", children }) {
   return (
@@ -71,28 +82,50 @@ export function ListFilterDrawer({ open, onClose, title = "Filters", children })
       className={`fixed inset-0 z-50 transition-[visibility] ${open ? "visible" : "invisible delay-200"}`}
       aria-hidden={!open}
     >
+      {/* Backdrop */}
       <button
         type="button"
-        className={`absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity ${open ? "opacity-100" : "opacity-0"}`}
+        className={`absolute inset-0 backdrop-blur-sm transition-opacity ${open ? "opacity-100" : "opacity-0"}`}
+        style={{ background: "rgba(0,0,0,0.5)" }}
         onClick={onClose}
         aria-label="Close filters"
       />
+
+      {/* Panel */}
       <aside
-        className={`absolute right-0 top-0 flex h-full min-h-0 w-full max-w-md flex-col border-l border-white/10 bg-surface2 shadow-2xl transition-transform duration-200 ease-out ${
+        className={`drawer-shell absolute right-0 top-0 flex h-full min-h-0 w-full max-w-sm flex-col border-l shadow-2xl transition-transform duration-200 ease-out ${
           open ? "translate-x-0" : "translate-x-full"
         }`}
       >
-        <div className="flex shrink-0 items-center justify-between border-b border-white/10 px-5 py-4">
-          <h2 className="text-lg font-semibold text-white">{title}</h2>
+        {/* Header */}
+        <div
+          className="flex shrink-0 items-center justify-between px-5 py-4"
+          style={{ borderBottom: "1px solid var(--drawer-border)" }}
+        >
+          <div className="flex items-center gap-2.5">
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg"
+                 style={{ background: "var(--link-active-bg)" }}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ color: "var(--link-active-color)" }} aria-hidden>
+                <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>
+              </svg>
+            </div>
+            <h2 className="text-sm font-bold" style={{ color: "var(--text-1)" }}>{title}</h2>
+          </div>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-lg p-2 text-white/50 hover:bg-white/5 hover:text-white"
+            className="flex h-8 w-8 items-center justify-center rounded-lg transition"
+            style={{ color: "var(--text-3)" }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = "var(--bg-surface3)"; e.currentTarget.style.color = "var(--text-1)"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = ""; e.currentTarget.style.color = "var(--text-3)"; }}
             aria-label="Close"
           >
-            ✕
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
           </button>
         </div>
+
         {children}
       </aside>
     </div>

@@ -3,11 +3,11 @@ import { useEffect, useState } from "react";
 import { api, getToken, setToken } from "../api";
 import { useSidebarLayout } from "../hooks/useSidebarLayout.js";
 import { useMerchantPortalEnvironment } from "../hooks/useMerchantPortalEnvironment.js";
+import { useTheme } from "../hooks/useTheme.js";
 import { ShellNavLink } from "./ShellNavLink.js";
 import {
   IconActivity,
   IconDashboard,
-  IconDoc,
   IconLogout,
   IconMenu,
   IconMerchants,
@@ -21,18 +21,58 @@ import {
   IconWithdrawals,
 } from "./shellNavIcons.js";
 
-const nav = [
-  { to: "/admin", label: "Dashboard", end: true, Icon: IconDashboard },
-  { to: "/admin/merchants", label: "Merchants", Icon: IconMerchants },
-  { to: "/admin/users", label: "Users", Icon: IconUsers },
-  { to: "/admin/wallets", label: "Wallets", Icon: IconWallet },
-  { to: "/admin/transactions", label: "Transactions", Icon: IconTransactions },
-  { to: "/admin/withdrawals", label: "Withdrawals", Icon: IconWithdrawals },
-  { to: "/admin/sweep", label: "Sweep", Icon: IconWallet },
-  { to: "/admin/activity", label: "Activity log", Icon: IconActivity },
-  { to: "/admin/settings", label: "System settings", Icon: IconSettings },
-  { to: "/admin/profile", label: "Profile", Icon: IconProfile },
+const navGroups = [
+  {
+    label: "MAIN",
+    items: [
+      { to: "/admin", label: "Dashboard", end: true, Icon: IconDashboard },
+      { to: "/admin/merchants", label: "Merchants", Icon: IconMerchants },
+      { to: "/admin/users", label: "Users", Icon: IconUsers },
+      { to: "/admin/wallets", label: "Wallets", Icon: IconWallet },
+      { to: "/admin/transactions", label: "Transactions", Icon: IconTransactions },
+    ],
+  },
+  {
+    label: "OPERATIONS",
+    items: [
+      { to: "/admin/withdrawals", label: "Withdrawals", Icon: IconWithdrawals },
+      { to: "/admin/sweep", label: "Sweep", Icon: IconWallet },
+      { to: "/admin/activity", label: "Activity log", Icon: IconActivity },
+    ],
+  },
+  {
+    label: "SETTINGS",
+    items: [
+      { to: "/admin/settings", label: "System settings", Icon: IconSettings },
+      { to: "/admin/profile", label: "Profile", Icon: IconProfile },
+    ],
+  },
 ];
+
+function IconSun() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <circle cx="12" cy="12" r="4" />
+      <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" />
+    </svg>
+  );
+}
+
+function IconMoon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+    </svg>
+  );
+}
+
+function IconBolt() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+      <path d="M13 2L4.09 12.97A1 1 0 005 14.5h6.5l-1 7.5L19.91 11A1 1 0 0019 9.5h-6.5L13 2z" />
+    </svg>
+  );
+}
 
 export default function AdminShell() {
   const navigate = useNavigate();
@@ -43,6 +83,8 @@ export default function AdminShell() {
     environment: portalEnvironment,
     flagsLoading: portalEnvFlagsLoading,
   } = useMerchantPortalEnvironment();
+  const { theme, toggleTheme } = useTheme();
+  const isDark = theme === "dark";
 
   useEffect(() => {
     if (!getToken()) {
@@ -66,46 +108,52 @@ export default function AdminShell() {
     navigate("/login");
   }
 
+  const avatarInitial = email ? email[0].toUpperCase() : "A";
+
   return (
     <div className="mesh-bg flex min-h-screen">
+      {/* Mobile overlay */}
       {mobileOpen ? (
         <button
           type="button"
-          className="fixed inset-0 z-30 bg-black/50 md:hidden"
+          className="fixed inset-0 z-30 bg-black/60 backdrop-blur-sm md:hidden"
           aria-label="Close menu"
           onClick={closeMobile}
         />
       ) : null}
 
+      {/* ── Sidebar ────────────────────────────────────────────── */}
       <aside
-        className={`fixed inset-y-0 left-0 z-40 flex h-screen w-60 max-w-[min(100vw-3rem,16rem)] shrink-0 flex-col border-r border-white/10 bg-surface2/95 p-3 backdrop-blur-md transition-[transform,width] duration-200 ease-out md:sticky md:top-0 md:z-0 md:max-w-none ${
+        className={`sidebar-shell fixed inset-y-0 left-0 z-40 flex h-screen shrink-0 flex-col border-r p-4 md:sticky md:top-0 md:z-0 ${
           mobileOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
-        } ${collapsed ? "md:w-17 md:max-w-none" : "md:w-60"}`}
+        } ${
+          collapsed
+            ? "md:w-[4.5rem]"
+            : "w-64 max-w-[min(100vw-3rem,16rem)] md:max-w-none md:w-64"
+        } transition-[transform,width] duration-200 ease-out`}
         aria-label="Main navigation"
       >
-        <div
-          className={`mb-6 flex items-start gap-2 ${collapsed ? "md:flex-col md:items-center" : ""}`}
-        >
-          <div className="flex min-w-0 flex-1 items-center gap-2.5 md:min-w-0">
-            <div
-              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/15 bg-white/5 font-display text-xs font-bold text-white"
-              aria-hidden
-            >
-              P
+        {/* Logo row */}
+        <div className={`mb-6 flex items-center ${collapsed ? "justify-center" : "justify-between"}`}>
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[#5a6fff] to-[#9b59ff] text-white shadow-lg"
+                 style={{ boxShadow: "0 4px 16px rgba(90,111,255,0.4)" }}>
+              <IconBolt />
             </div>
-            <div
-              className={`min-w-0 ${collapsed ? "md:sr-only" : ""}`}
-            >
-              <p className="font-display text-[10px] font-semibold tracking-[0.18em] text-white/55 uppercase">
-                Paython
-              </p>
-              <p className="truncate text-sm font-semibold text-white">Admin</p>
-            </div>
+            {!collapsed && (
+              <div className="min-w-0">
+                <p className="font-display text-[10px] font-bold tracking-[0.2em] uppercase"
+                   style={{ color: "var(--text-3)" }}>Crypto</p>
+                <p className="font-display text-sm font-bold truncate"
+                   style={{ color: "var(--text-1)" }}>Gateway</p>
+              </div>
+            )}
           </div>
           <button
             type="button"
             onClick={toggleCollapsed}
-            className="hidden shrink-0 rounded-lg border border-white/12 p-2 text-white/55 transition hover:border-white/20 hover:bg-white/5 hover:text-white md:flex"
+            className="hidden shrink-0 rounded-lg p-1.5 transition-colors hover:opacity-80 md:flex"
+            style={{ color: "var(--text-3)" }}
             aria-expanded={!collapsed}
             title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           >
@@ -113,68 +161,157 @@ export default function AdminShell() {
           </button>
         </div>
 
-        {email ? (
-          <p
-            className={`mb-4 truncate px-1 text-xs text-white/35 ${collapsed ? "md:sr-only" : ""}`}
-          >
-            {email}
-          </p>
+        {/* User card */}
+        {email && !collapsed ? (
+          <div className="mb-5 flex items-center gap-2.5 rounded-xl px-3 py-2.5"
+               style={{ background: "var(--bg-surface3)", border: "1px solid var(--border)" }}>
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-[#5a6fff] to-[#9b59ff] text-[11px] font-bold text-white">
+              {avatarInitial}
+            </div>
+            <div className="min-w-0">
+              <p className="text-[10px] font-bold uppercase tracking-widest"
+                 style={{ color: "var(--text-3)" }}>Administrator</p>
+              <p className="truncate text-xs font-medium"
+                 style={{ color: "var(--text-2)" }}>{email}</p>
+            </div>
+          </div>
         ) : null}
 
-        <nav className="flex flex-1 flex-col gap-0.5 overflow-y-auto" aria-label="Main">
-          {nav.map((l) => (
-            <ShellNavLink
-              key={l.to}
-              to={l.to}
-              end={l.end}
-              label={l.label}
-              Icon={l.Icon}
-              collapsed={collapsed}
-              onPick={closeMobile}
-            />
+        {/* Nav groups */}
+        <nav className="flex flex-1 flex-col overflow-y-auto" aria-label="Main">
+          {navGroups.map((group, gi) => (
+            <div key={group.label} className={gi > 0 ? "mt-4" : ""}>
+              {!collapsed && (
+                <p className="mb-1.5 px-3 text-[9px] font-bold tracking-[0.16em] uppercase"
+                   style={{ color: "var(--text-3)" }}>
+                  {group.label}
+                </p>
+              )}
+              {collapsed && gi > 0 && (
+                <div className="my-3 mx-2 h-px" style={{ background: "var(--border)" }} />
+              )}
+              <div className="flex flex-col gap-0.5">
+                {group.items.map((l) => (
+                  <ShellNavLink
+                    key={l.to}
+                    to={l.to}
+                    end={l.end}
+                    label={l.label}
+                    Icon={l.Icon}
+                    collapsed={collapsed}
+                    onPick={closeMobile}
+                  />
+                ))}
+              </div>
+            </div>
           ))}
         </nav>
 
+        {/* Logout */}
         <button
           type="button"
           onClick={logout}
           title="Log out"
-          className={`mt-4 flex items-center gap-3 rounded-lg border border-white/12 py-2.5 text-sm text-white/50 transition hover:border-white/20 hover:bg-white/5 hover:text-white/85 ${
-            collapsed
-              ? "justify-start px-3 md:justify-center md:px-0"
-              : "px-3"
+          className={`mt-4 flex items-center gap-3 rounded-xl border py-2.5 text-sm font-medium transition-all duration-150 ${
+            collapsed ? "justify-center px-0" : "px-3"
           }`}
+          style={{ borderColor: "var(--border)", color: "var(--text-2)" }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = "rgba(239,68,68,0.08)";
+            e.currentTarget.style.borderColor = "rgba(239,68,68,0.3)";
+            e.currentTarget.style.color = "#f87171";
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = "";
+            e.currentTarget.style.borderColor = "var(--border)";
+            e.currentTarget.style.color = "var(--text-2)";
+          }}
         >
           <IconLogout />
-          <span className={collapsed ? "md:sr-only" : ""}>Log out</span>
+          {!collapsed && <span>Log out</span>}
         </button>
       </aside>
 
+      {/* ── Main ───────────────────────────────────────────────── */}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-white/10 bg-surface2/85 px-4 py-3 backdrop-blur-md md:hidden">
+        {/* Top bar */}
+        <header className="topbar-shell sticky top-0 z-20 flex items-center gap-3 border-b px-4 py-3 sm:px-6">
+          {/* Mobile hamburger */}
           <button
             type="button"
             onClick={() => setMobileOpen(true)}
-            className="rounded-lg border border-white/12 p-2 text-white/70 hover:bg-white/5"
+            className="shrink-0 rounded-xl border p-2 transition-colors md:hidden"
+            style={{ borderColor: "var(--border)", color: "var(--text-2)" }}
             aria-label="Open menu"
           >
             <IconMenu />
           </button>
-          <span className="font-display text-sm font-semibold text-white">Admin</span>
+
+          {/* Title + env badge */}
+          <div className="flex flex-1 items-center gap-2.5">
+            <span className="font-display text-sm font-bold" style={{ color: "var(--text-1)" }}>
+              Admin Panel
+            </span>
+            {!portalEnvFlagsLoading && (
+              <span
+                className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
+                  portalEnvironment === "sandbox"
+                    ? "border-amber-400/25 bg-amber-500/10 text-amber-400"
+                    : "border-emerald-400/25 bg-emerald-500/10 text-emerald-400"
+                }`}
+              >
+                <span
+                  className={`h-1.5 w-1.5 animate-pulse rounded-full ${
+                    portalEnvironment === "sandbox" ? "bg-amber-400" : "bg-emerald-400"
+                  }`}
+                />
+                {portalEnvironment === "sandbox" ? "Sandbox" : "Live"}
+              </span>
+            )}
+          </div>
+
+          {/* Theme toggle */}
+          <button
+            type="button"
+            onClick={(e) => toggleTheme(e)}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition-all duration-150"
+            style={{ borderColor: "var(--border)", color: "var(--text-2)" }}
+            title={isDark ? "Switch to light" : "Switch to dark"}
+          >
+            {isDark ? <IconSun /> : <IconMoon />}
+          </button>
+
+          {/* Avatar + email */}
+          {email && (
+            <div className="flex items-center gap-2.5">
+              <div className="hidden flex-col items-end sm:flex">
+                <span className="max-w-[160px] truncate text-xs font-semibold"
+                      style={{ color: "var(--text-1)" }}>{email}</span>
+                <span className="text-[10px] uppercase tracking-wider"
+                      style={{ color: "var(--text-3)" }}>Admin</span>
+              </div>
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-[#5a6fff] to-[#9b59ff] text-sm font-bold text-white"
+                   style={{ boxShadow: "0 2px 10px rgba(90,111,255,0.35)" }}>
+                {avatarInitial}
+              </div>
+            </div>
+          )}
         </header>
-        <main className="min-h-0 flex-1 overflow-auto p-5 sm:p-8 lg:p-10">
+
+        {/* Sandbox banner */}
+        <main className="min-h-0 flex-1 overflow-auto p-5 sm:p-7 lg:p-8">
           {!portalEnvFlagsLoading && portalEnvironment === "sandbox" ? (
-            <div className="mb-6 rounded-xl border border-sky-400/25 bg-sky-500/10 px-4 py-3 text-sm text-sky-100/95">
-              <p className="text-pretty">
-                You are viewing <span className="font-medium text-white">sandbox</span> data only
-                (Users and Transactions lists). To see live production data, open{" "}
+            <div className="mb-6 flex items-start gap-3 rounded-2xl border border-amber-400/20 bg-amber-500/8 px-4 py-3.5 text-sm">
+              <span className="mt-0.5 h-2 w-2 shrink-0 rounded-full bg-amber-400" />
+              <p style={{ color: "var(--text-1)" }}>
+                Viewing <span className="font-semibold text-amber-400">sandbox</span> data only.{" "}
                 <Link
                   to="/admin/profile"
-                  className="font-medium text-white underline decoration-sky-400/50 underline-offset-2 hover:decoration-sky-300/80"
+                  className="font-semibold text-amber-400 underline decoration-amber-400/40 underline-offset-2 hover:decoration-amber-300"
                 >
-                  Profile
+                  Open Profile
                 </Link>{" "}
-                and switch to <span className="font-medium text-white">Live</span>.
+                to switch to <span className="font-semibold">Live</span>.
               </p>
             </div>
           ) : null}

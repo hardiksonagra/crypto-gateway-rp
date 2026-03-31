@@ -17,6 +17,7 @@ import {
 } from "../../components/ListFilterChrome";
 import { adminTransactionsFilterSchema, CHAIN_VALUES } from "../../admin/merchantSchemas";
 import { formatTokenAmount } from "../../lib/formatTokenAmount.js";
+import { StatusBadge } from "../../components/StatusBadge.js";
 
 const DEFAULT_PAGE_SIZE = DEFAULT_LIST_PAGE_SIZE;
 const ST = ["pending", "success", "failed"];
@@ -140,7 +141,8 @@ export default function AdminTransactions() {
       />
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
-          <h1 className="font-display text-2xl font-semibold text-white">Transactions</h1>
+          <h1 className="font-display text-2xl font-bold" style={{ color: "var(--text-1)" }}>Transactions</h1>
+          <p className="mt-1 text-sm" style={{ color: "var(--text-2)" }}>All payment transactions across merchants and chains.</p>
         </div>
         <ListFilterToolbar
           onOpenDrawer={() => setDrawerOpen(true)}
@@ -464,7 +466,7 @@ export default function AdminTransactions() {
                         raw {t.amount}
                       </span>
                     </td>
-                    <td className="text-xs">{t.status}</td>
+                    <td><StatusBadge status={t.status} /></td>
                   </tr>
                 ))}
             </tbody>

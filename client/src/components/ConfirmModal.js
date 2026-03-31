@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 
 /**
- * In-app confirmation dialog (do not use window.alert / window.confirm for destructive flows).
+ * In-app confirmation dialog — fully theme-aware.
  *
  * @param {object} props
  * @param {boolean} props.open
@@ -38,27 +38,61 @@ export default function ConfirmModal({
 
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-[60] flex items-center justify-center p-4 backdrop-blur-sm"
+      style={{ background: "rgba(0,0,0,0.6)" }}
       role="presentation"
       onClick={() => !isLoading && onCancel()}
     >
       <div
-        className="glass w-full max-w-md rounded-2xl border border-white/10 p-6 shadow-2xl"
+        className="modal-shell w-full max-w-md rounded-2xl border p-6 shadow-2xl"
         role="dialog"
         aria-modal="true"
         aria-labelledby="confirm-modal-title"
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 id="confirm-modal-title" className="text-lg font-semibold text-white">
-          {title}
-        </h2>
-        {children ? <div className="mt-3 text-sm leading-relaxed text-white/65">{children}</div> : null}
-        <div className="mt-6 flex flex-wrap justify-end gap-3">
+        {/* Icon */}
+        <div className="mb-4 flex items-center gap-3">
+          <div
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
+            style={{
+              background: danger ? "rgba(239,68,68,0.12)" : "var(--link-active-bg)",
+            }}
+          >
+            {danger ? (
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: "#f87171" }} aria-hidden>
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                <line x1="12" y1="9" x2="12" y2="13"/>
+                <line x1="12" y1="17" x2="12.01" y2="17"/>
+              </svg>
+            ) : (
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: "var(--link-active-color)" }} aria-hidden>
+                <circle cx="12" cy="12" r="10"/>
+                <line x1="12" y1="8" x2="12" y2="12"/>
+                <line x1="12" y1="16" x2="12.01" y2="16"/>
+              </svg>
+            )}
+          </div>
+          <h2 id="confirm-modal-title" className="text-base font-bold" style={{ color: "var(--text-1)" }}>
+            {title}
+          </h2>
+        </div>
+
+        {children ? (
+          <div className="mb-5 rounded-xl px-4 py-3 text-sm leading-relaxed"
+               style={{ background: "var(--bg-surface3)", color: "var(--text-2)", border: "1px solid var(--border)" }}>
+            {children}
+          </div>
+        ) : null}
+
+        <div className="flex flex-wrap justify-end gap-2.5">
           <button
             type="button"
             disabled={isLoading}
             onClick={onCancel}
-            className="rounded-xl border border-white/15 px-4 py-2.5 text-sm text-white/80 transition hover:bg-white/5 disabled:opacity-40"
+            className="rounded-xl border px-4 py-2.5 text-sm font-medium transition disabled:opacity-40"
+            style={{ borderColor: "var(--border-mid)", color: "var(--text-2)" }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = "var(--bg-surface3)"; }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = ""; }}
           >
             {cancelLabel}
           </button>
@@ -66,11 +100,16 @@ export default function ConfirmModal({
             type="button"
             disabled={isLoading}
             onClick={onConfirm}
-            className={`rounded-xl px-4 py-2.5 text-sm font-semibold transition disabled:opacity-50 ${
+            className="rounded-xl px-4 py-2.5 text-sm font-semibold transition disabled:opacity-50"
+            style={
               danger
-                ? "bg-rose-600/90 text-white hover:bg-rose-600"
-                : "btn-primary"
-            }`}
+                ? { background: "rgba(239,68,68,0.9)", color: "#ffffff" }
+                : { background: "var(--btn-primary-bg)", color: "var(--btn-primary-color)" }
+            }
+            onMouseEnter={(e) => {
+              if (!isLoading) e.currentTarget.style.opacity = "0.88";
+            }}
+            onMouseLeave={(e) => { e.currentTarget.style.opacity = "1"; }}
           >
             {isLoading ? "Please wait…" : confirmLabel}
           </button>

@@ -82,7 +82,8 @@ export default function AdminUsers() {
     <div>
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
-          <h1 className="font-display text-2xl font-semibold text-white">Users</h1>
+          <h1 className="font-display text-2xl font-bold" style={{ color: "var(--text-1)" }}>Users</h1>
+          <p className="mt-1 text-sm" style={{ color: "var(--text-2)" }}>End-users across all merchants and environments.</p>
           <p className="mt-2 max-w-3xl text-xs leading-relaxed text-white/40">
             <span className="text-white/55">Active</span> = wallets currently reserved for this user.{" "}
             <span className="text-white/55">Assign #</span> = each time the gateway handed them an address (click for

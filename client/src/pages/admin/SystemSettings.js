@@ -181,7 +181,7 @@ export default function SystemSettings() {
   if (loadError) {
     return (
       <div className="w-full max-w-none">
-        <h1 className="font-display text-2xl font-semibold text-white">System settings</h1>
+        <h1 className="font-display text-2xl font-bold" style={{ color: "var(--text-1)" }}>System settings</h1>
         <p className="mt-4 text-sm text-rose-400">{loadError}</p>
       </div>
     );
@@ -190,15 +190,16 @@ export default function SystemSettings() {
   if (!items) {
     return (
       <div className="w-full max-w-none">
-        <h1 className="font-display text-2xl font-semibold text-white">System settings</h1>
-        <p className="mt-4 text-sm text-white/50">Loading…</p>
+        <h1 className="font-display text-2xl font-bold" style={{ color: "var(--text-1)" }}>System settings</h1>
+        <p className="mt-4 text-sm" style={{ color: "var(--text-2)" }}>Loading…</p>
       </div>
     );
   }
 
   return (
     <div className="w-full max-w-none">
-      <h1 className="font-display text-2xl font-semibold text-white">System settings</h1>
+      <h1 className="font-display text-2xl font-bold" style={{ color: "var(--text-1)" }}>System settings</h1>
+      <p className="mt-1 text-sm" style={{ color: "var(--text-2)" }}>Configure gateway behavior. Database overrides take effect immediately without restart.</p>
       <p className="mt-2 max-w-3xl text-sm text-white/55 text-pretty">
         Saving writes every field below to the database (even when a value matches{" "}
         <span className="font-mono text-white/80">.env</span>). Bootstrap

@@ -8,9 +8,10 @@ function DetailRow(label, value) {
       ? "—"
       : String(value);
   return (
-    <div className="grid grid-cols-[minmax(0,140px)_1fr] gap-x-3 gap-y-1 border-b border-white/[0.06] py-2.5 last:border-0">
-      <dt className="text-xs font-medium text-white/45">{label}</dt>
-      <dd className="break-all font-mono text-xs text-white/80">{v}</dd>
+    <div className="grid grid-cols-[minmax(0,140px)_1fr] gap-x-3 gap-y-1 border-b py-2.5 last:border-0"
+         style={{ borderColor: "var(--border)" }}>
+      <dt className="text-xs font-medium" style={{ color: "var(--text-3)" }}>{label}</dt>
+      <dd className="break-all font-mono text-xs" style={{ color: "var(--text-1)" }}>{v}</dd>
     </div>
   );
 }
@@ -76,22 +77,25 @@ export default function TransactionDetailModal({
 
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-[60] flex items-center justify-center p-4 backdrop-blur-sm"
+      style={{ background: "rgba(0,0,0,0.6)" }}
       role="presentation"
       onClick={() => !redeliverLoading && onClose()}
     >
       <div
-        className="glass max-h-[min(90vh,720px)] w-full max-w-lg overflow-hidden rounded-2xl border border-white/10 shadow-2xl"
+        className="modal-shell max-h-[min(90vh,720px)] w-full max-w-lg overflow-hidden rounded-2xl shadow-2xl"
         role="dialog"
         aria-modal="true"
         aria-labelledby="tx-detail-title"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="border-b border-white/10 px-6 py-4">
-          <h2 id="tx-detail-title" className="text-lg font-semibold text-white">
+        <div className="border-b px-6 py-4" style={{ borderColor: "var(--border)" }}>
+          <h2 id="tx-detail-title" className="text-lg font-semibold" style={{ color: "var(--text-1)" }}>
             Transaction details
           </h2>
-          <p className="mt-1 break-all font-mono text-xs text-sky-200/80">{t.id}</p>
+          <p className="mt-1 break-all font-mono text-xs" style={{ color: "var(--link-active-color, #818cf8)" }}>
+            {t.id}
+          </p>
         </div>
         <div className="max-h-[min(52vh,420px)] overflow-y-auto px-6 py-2">
           <dl>
@@ -126,16 +130,17 @@ export default function TransactionDetailModal({
             {DetailRow("Updated at", t.updated_at?.slice(0, 19))}
           </dl>
         </div>
-        <div className="space-y-3 border-t border-white/10 px-6 py-4">
-          <p className="text-xs leading-relaxed text-white/45">
-            <span className="text-white/55">Resend webhook</span> posts the same{" "}
-            <span className="font-mono text-white/60">payment.success</span> JSON again. It does{" "}
-            <strong className="text-white/65">not</strong> create another transaction in this
+        <div className="space-y-3 border-t px-6 py-4" style={{ borderColor: "var(--border)" }}>
+          <p className="text-xs leading-relaxed" style={{ color: "var(--text-3)" }}>
+            <span style={{ color: "var(--text-2)" }}>Resend webhook</span> posts the same{" "}
+            <span className="font-mono" style={{ color: "var(--text-2)" }}>payment.success</span> JSON again. It does{" "}
+            <strong style={{ color: "var(--text-1)" }}>not</strong> create another transaction in this
             system. Your server should treat the same{" "}
-            <span className="font-mono text-white/60">transaction_id</span> idempotently.
+            <span className="font-mono" style={{ color: "var(--text-2)" }}>transaction_id</span> idempotently.
           </p>
           {redeliverError ? (
-            <p className="rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-100/90">
+            <p className="rounded-lg border px-3 py-2 text-xs"
+               style={{ borderColor: "rgba(239,68,68,0.3)", background: "rgba(239,68,68,0.1)", color: "#f87171" }}>
               {redeliverError}
             </p>
           ) : null}
@@ -144,7 +149,10 @@ export default function TransactionDetailModal({
               type="button"
               disabled={redeliverLoading}
               onClick={onClose}
-              className="rounded-xl border border-white/15 px-4 py-2.5 text-sm text-white/80 transition hover:bg-white/5 disabled:opacity-40"
+              className="rounded-xl border px-4 py-2.5 text-sm transition disabled:opacity-40"
+              style={{ borderColor: "var(--border-mid)", color: "var(--text-2)" }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = "var(--bg-surface3)"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = ""; }}
             >
               Close
             </button>

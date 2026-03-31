@@ -14,6 +14,7 @@ import {
   listFilterSecondaryButtonClass,
 } from "../../components/ListFilterChrome";
 import { adminWithdrawalsFilterSchema, CHAIN_VALUES } from "../../admin/merchantSchemas";
+import { StatusBadge } from "../../components/StatusBadge.js";
 
 const DEFAULT_PAGE_SIZE = DEFAULT_LIST_PAGE_SIZE;
 const ST = ["pending", "processing", "completed", "failed"];
@@ -89,7 +90,8 @@ export default function AdminWithdrawals() {
     <div>
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
-          <h1 className="font-display text-2xl font-semibold text-white">Withdrawals</h1>
+          <h1 className="font-display text-2xl font-bold" style={{ color: "var(--text-1)" }}>Withdrawals</h1>
+          <p className="mt-1 text-sm" style={{ color: "var(--text-2)" }}>Outgoing withdrawal transactions across all merchants.</p>
         </div>
         <ListFilterToolbar
           onOpenDrawer={() => setDrawerOpen(true)}
@@ -353,7 +355,7 @@ export default function AdminWithdrawals() {
                     <td>{w.token_symbol}</td>
                     <td className="font-mono text-xs">{w.amount}</td>
                     <td className="max-w-[120px] truncate font-mono text-[10px] text-white/50">{w.to_address}</td>
-                    <td className="text-xs">{w.status}</td>
+                    <td><StatusBadge status={w.status} /></td>
                     <td className="max-w-[120px] truncate font-mono text-[10px] text-white/50">
                       {w.tx_hash ?? "—"}
                     </td>

@@ -29,9 +29,7 @@ function formatMeta(meta) {
 }
 
 const tabBtn =
-  "rounded-t-lg border border-b-0 px-4 py-2.5 text-sm font-medium transition";
-const tabBtnActive = `${tabBtn} border-white/20 bg-white/[0.08] text-white`;
-const tabBtnIdle = `${tabBtn} border-transparent text-white/45 hover:border-white/10 hover:bg-white/[0.04] hover:text-white/70`;
+  "rounded-t-lg border border-b-0 px-4 py-2.5 text-sm font-medium transition hover:border-white/10 hover:bg-white/[0.04]";
 
 const initialGatewayApplied = {
   merchant_id: "",
@@ -170,7 +168,8 @@ export default function AdminActivityLog() {
     <div className="w-full">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
-          <h1 className="font-display text-2xl font-semibold text-white">Activity log</h1>
+          <h1 className="font-display text-2xl font-bold" style={{ color: "var(--text-1)" }}>Activity log</h1>
+          <p className="mt-1 text-sm" style={{ color: "var(--text-2)" }}>Gateway events, webhooks, and portal admin/merchant actions.</p>
         </div>
         <ListFilterToolbar
           onOpenDrawer={() => (tab === "gateway" ? setGwDrawerOpen(true) : setPlDrawerOpen(true))}
@@ -184,7 +183,10 @@ export default function AdminActivityLog() {
           type="button"
           role="tab"
           aria-selected={tab === "gateway"}
-          className={tab === "gateway" ? tabBtnActive : tabBtnIdle}
+          className={tabBtn}
+          style={tab === "gateway"
+            ? { color: "var(--tab-active-color)", borderBottomColor: "var(--link-active-border)" }
+            : { color: "var(--tab-inactive-color)", borderBottomColor: "transparent" }}
           onClick={() => setTab("gateway")}
         >
           Gateway &amp; webhooks
@@ -193,7 +195,10 @@ export default function AdminActivityLog() {
           type="button"
           role="tab"
           aria-selected={tab === "portal"}
-          className={tab === "portal" ? tabBtnActive : tabBtnIdle}
+          className={tabBtn}
+          style={tab === "portal"
+            ? { color: "var(--tab-active-color)", borderBottomColor: "var(--link-active-border)" }
+            : { color: "var(--tab-inactive-color)", borderBottomColor: "transparent" }}
           onClick={() => setTab("portal")}
         >
           Portals (admin / merchant)

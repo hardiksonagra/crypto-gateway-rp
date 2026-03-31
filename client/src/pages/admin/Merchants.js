@@ -20,6 +20,7 @@ import {
 } from "../../components/ListFilterChrome";
 import { merchantFilterSchema } from "../../admin/merchantSchemas";
 import ConfirmModal from "../../components/ConfirmModal";
+import { StatusBadge } from "../../components/StatusBadge.js";
 
 const DEFAULT_PAGE_SIZE = DEFAULT_LIST_PAGE_SIZE;
 
@@ -127,7 +128,7 @@ function MenuTrashIcon({ className }) {
 const menuIconClass = "h-4 w-4 shrink-0 text-white/50";
 
 const merchantActionsMenuItemClass =
-  "flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs font-medium text-white/80 transition-colors hover:bg-white/10 focus:bg-white/10 focus:outline-none";
+  "menu-item flex w-full items-center gap-2.5 px-3 py-2 text-left text-xs font-medium transition-colors focus:outline-none";
 
 export default function AdminMerchants() {
   const qc = useQueryClient();
@@ -307,7 +308,8 @@ export default function AdminMerchants() {
     <div>
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
-          <h1 className="font-display text-2xl font-semibold text-white">Merchants</h1>
+          <h1 className="font-display text-2xl font-bold" style={{ color: "var(--text-1)" }}>Merchants</h1>
+          <p className="mt-1 text-sm" style={{ color: "var(--text-2)" }}>Manage merchants, API keys, and gateway configuration.</p>
           {impersonateError ? (
             <p className="mt-3 text-sm text-rose-400">{impersonateError}</p>
           ) : null}
@@ -658,13 +660,7 @@ export default function AdminMerchants() {
                           }`}
                         />
                       </button>
-                      <span className="ml-2 text-xs text-white/45">
-                        {isDeleted
-                          ? "Removed"
-                          : m.is_active
-                            ? "Active"
-                            : "Inactive"}
-                      </span>
+                      <StatusBadge status={isDeleted ? "deleted" : m.is_active ? "active" : "inactive"} />
                     </td>
                     <td className="whitespace-nowrap text-right">
                       <div className="relative inline-block text-left" data-merchant-row-actions>
@@ -701,8 +697,8 @@ export default function AdminMerchants() {
         ? createPortal(
             <div
               data-merchant-actions-menu
-              className="fixed z-[70] min-w-[13.5rem] rounded-xl border border-white/12 bg-surface2 py-1 shadow-xl shadow-black/50"
-              style={{ top: menuPlacement.top, right: menuPlacement.right }}
+              className="menu-shell fixed z-[70] min-w-[13.5rem] rounded-xl py-1 shadow-xl shadow-black/50"
+              style={{ top: menuPlacement.top, right: menuPlacement.right, background: "var(--menu-bg)", border: "1px solid var(--menu-border)" }}
               role="menu"
               aria-label="Merchant actions"
             >
