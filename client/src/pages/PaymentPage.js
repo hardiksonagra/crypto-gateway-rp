@@ -45,12 +45,16 @@ export default function PaymentPage() {
     (async () => {
       try {
         const res = await fetch(
-          apiUrl(`/api/v1/gateway/payment-session/${encodeURIComponent(token)}`),
+          apiUrl(
+            `/api/v1/gateway/payment-session/${encodeURIComponent(token)}`,
+          ),
         );
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
           throw new Error(
-            typeof data?.error === "string" ? data.error : "Could not load payment details.",
+            typeof data?.error === "string"
+              ? data.error
+              : "Could not load payment details.",
           );
         }
         if (!cancelled) setSession(data);
@@ -92,7 +96,9 @@ export default function PaymentPage() {
     async function check() {
       try {
         const res = await fetch(
-          apiUrl(`/api/v1/gateway/payment-session/${encodeURIComponent(token)}/poll`),
+          apiUrl(
+            `/api/v1/gateway/payment-session/${encodeURIComponent(token)}/poll`,
+          ),
         );
         if (!res.ok) return;
         const data = await res.json().catch(() => ({}));
@@ -151,7 +157,9 @@ export default function PaymentPage() {
     return (
       <div className="mesh-bg flex min-h-screen items-center justify-center px-4">
         <div className="glass max-w-md rounded-2xl p-8 text-center">
-          <h1 className="font-display text-lg font-semibold text-white">Link unavailable</h1>
+          <h1 className="font-display text-lg font-semibold text-white">
+            Link unavailable
+          </h1>
           <p className="mt-2 text-sm text-white/55">
             {loadError ?? "This payment link is invalid or has expired."}
           </p>
@@ -167,7 +175,9 @@ export default function PaymentPage() {
       <div className="glass w-full max-w-lg rounded-2xl p-6 sm:p-8">
         {paidNoReturnUrl && (
           <div className="mb-4 rounded-xl border border-emerald-400/30 bg-emerald-500/10 px-4 py-3 text-center">
-            <p className="text-sm font-medium text-emerald-100/95">Payment received</p>
+            <p className="text-sm font-medium text-emerald-100/95">
+              Payment received
+            </p>
             <p className="mt-1 text-xs text-white/55">
               This checkout had no return URL. You can close this page.
             </p>
@@ -175,13 +185,16 @@ export default function PaymentPage() {
         )}
         {!redirectUrl && !paidNoReturnUrl && (
           <p className="mb-4 rounded-xl border border-amber-400/25 bg-amber-500/8 px-3 py-2 text-center text-xs text-amber-100/85">
-            No return URL was provided for this link, so you will not be redirected automatically after
-            payment.
+            No return URL was provided for this link, so you will not be
+            redirected automatically after payment.
           </p>
         )}
         <div className="text-center">
           <div className="mb-5 flex justify-center">
-            <BrandMark variant="full" className="mx-auto max-h-[4.5rem] max-w-[400px]" />
+            <BrandMark
+              variant="full"
+              className="mx-auto max-h-[4.5rem] max-w-[400px]"
+            />
           </div>
           <p className="font-display text-[10px] font-bold tracking-[0.2em] text-white/45 uppercase">
             Send {currency}
@@ -225,7 +238,11 @@ export default function PaymentPage() {
             onClick={onCopy}
             className="rounded-xl border border-white/15 bg-white/10 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-white/15 focus:outline-none focus-visible:ring-2 focus-visible:ring-white/25"
           >
-            {copyState === "ok" ? "Copied" : copyState === "fail" ? "Copy failed" : "Copy address"}
+            {copyState === "ok"
+              ? "Copied"
+              : copyState === "fail"
+                ? "Copy failed"
+                : "Copy address"}
           </button>
           <div className="rounded-2xl border border-white/10 bg-white p-3">
             <QRCode value={address} size={200} level="M" />
@@ -233,7 +250,8 @@ export default function PaymentPage() {
         </div>
 
         <p className="mt-8 text-center text-xs text-white/35">
-          Send only {currency} on {network}. Wrong asset or network may result in loss of funds.
+          Send only {currency} on {network}. Wrong asset or network may result
+          in loss of funds.
         </p>
       </div>
     </div>

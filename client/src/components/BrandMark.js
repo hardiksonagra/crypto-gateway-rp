@@ -5,7 +5,11 @@ export const SITE_NAME = "CryptoVapay";
  * Brand images from `client/public`: `favicon.png` (mark), `logo.png` (full wordmark).
  * @param {{ variant?: "icon" | "full"; className?: string; alt?: string }} props
  */
-export function BrandMark({ variant = "full", className = "", alt = SITE_NAME }) {
+export function BrandMark({
+  variant = "full",
+  className = "",
+  alt = SITE_NAME,
+}) {
   const src = variant === "icon" ? "/favicon.png" : "/logo.png";
   const base =
     variant === "icon"
