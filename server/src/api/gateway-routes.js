@@ -25,6 +25,10 @@ import {
 import { createPaymentLinkToken, verifyPaymentLinkToken } from "../lib/payment-link-token.js";
 import { normalizeGatewayRedirectUrl } from "../lib/payment-redirect-url.js";
 import { walletScanTtlMinutes } from "../lib/wallet-scan.js";
+import {
+  resolveUserScopedInternalId,
+  resolveWalletInternalId,
+} from "../lib/entity-internal-id.js";
 
 const router = Router();
 
@@ -60,8 +64,13 @@ router.get("/api/v1/gateway/payment-session/:token", async (req, res) => {
       v.redirectUrl != null && String(v.redirectUrl).trim()
         ? normalizeGatewayRedirectUrl(v.redirectUrl)
         : null;
+    const wid = await resolveWalletInternalId(String(v.walletId ?? ""));
+    if (wid == null) {
+      res.status(410).json({ error: "payment_link_invalid_or_expired" });
+      return;
+    }
     const w = await prisma.wallet.findUnique({
-      where: { id: v.walletId },
+      where: { id: wid },
       select: {
         address: true,
         chain: true,
@@ -285,7 +294,7 @@ router.post("/api/v1/gateway/deposit-address", async (req, res) => {
         occurred_at_iso: new Date().toISOString(),
       },
     });
-    const payToken = createPaymentLinkToken(wallet.id, redirectUrl);
+    const payToken = createPaymentLinkToken(wallet.publicId, redirectUrl);
     const payBase = paymentPageBaseUrl();
     res.status(200).json({
       address: wallet.address,
@@ -506,9 +515,16 @@ router.post("/api/v1/gateway/create-wallet", async (req, res) => {
     }
 
     const wallet = await prisma.$transaction(async (tx) => {
-      const u = await tx.user.findFirst({
-        where: { id: userId, merchantId: merchant.id, environment: gwEnv },
-      });
+      const uid = await resolveUserScopedInternalId(
+        userId,
+        merchant.id,
+        gwEnv,
+      );
+      const u = uid
+        ? await tx.user.findUnique({
+            where: { id: uid },
+          })
+        : null;
       if (!u) return null;
       return assignPooledWalletForDeposit(tx, {
         merchantId: merchant.id,

@@ -1,5 +1,8 @@
 import winston from "winston";
-import { env } from "../config/env.js";
+
+/** Avoid importing `../config/env.js` here — that creates a cycle (env → runtime-contracts → app-settings-runtime → logger). */
+const logLevel = process.env.LOG_LEVEL?.trim() || "info";
+const nodeEnv = process.env.NODE_ENV?.trim() || "development";
 
 const jsonFormat = winston.format.combine(
   winston.format.timestamp(),
@@ -71,8 +74,8 @@ const devConsoleFormat = winston.format.combine(
 );
 
 export const logger = winston.createLogger({
-  level: env.logLevel,
-  format: env.nodeEnv === "production" ? jsonFormat : devConsoleFormat,
+  level: logLevel,
+  format: nodeEnv === "production" ? jsonFormat : devConsoleFormat,
   defaultMeta: { service: "crypto-payment-gateway" },
   transports: [new winston.transports.Console()],
 });

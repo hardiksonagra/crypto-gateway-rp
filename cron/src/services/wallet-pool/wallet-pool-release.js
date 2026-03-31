@@ -1,14 +1,20 @@
 import { prisma } from "crypto-payment-gateway/src/lib/prisma.js";
+import { resolveWalletInternalId } from "crypto-payment-gateway/src/lib/entity-internal-id.js";
 
 /**
  * Return a wallet to the merchant pool after a successful on-chain deposit (`payer_user_id` stays on `transactions`).
  * Called from `transaction-upsert` (cron scanner or API sandbox), not on a timer.
  *
- * @param {string} walletId
+ * @param {string | number} walletId
  */
 export async function releaseWalletAfterDepositSuccess(walletId) {
+  const wid =
+    typeof walletId === "number" && Number.isInteger(walletId)
+      ? walletId
+      : await resolveWalletInternalId(String(walletId ?? ""));
+  if (wid == null) return;
   await prisma.wallet.updateMany({
-    where: { id: walletId },
+    where: { id: wid },
     data: {
       assignedUserId: null,
       holdExpiresAt: null,

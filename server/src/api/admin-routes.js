@@ -29,6 +29,13 @@ import {
   applyAppSettingsPatch,
   buildAppSettingsAdminList,
 } from "../lib/app-settings-runtime.js";
+import {
+  merchantWhereFromRouteParam,
+  merchantSettlementWhereFromRouteParam,
+  resolveMerchantInternalId,
+  userWhereFromRouteParam,
+  walletWhereFromRouteParam,
+} from "../lib/entity-internal-id.js";
 import { parseDefaultChainsArray } from "../lib/default-chains.js";
 import { depositRailKey } from "../config/payment-rails.js";
 import {
@@ -95,6 +102,33 @@ const adminOnly = requireAuth(PORTAL_ROLE_ADMIN);
 
 const CHAINS = new Set(Object.values(Chain));
 
+/**
+ * @param {string} routeId
+ */
+async function findMerchantByAdminRouteId(routeId) {
+  const w = merchantWhereFromRouteParam(routeId);
+  if (!w) return null;
+  return prisma.merchant.findFirst({ where: w });
+}
+
+/**
+ * @param {string} routeId
+ */
+async function findUserByAdminRouteId(routeId) {
+  const w = userWhereFromRouteParam(routeId);
+  if (!w) return null;
+  return prisma.user.findFirst({ where: w });
+}
+
+/**
+ * @param {string} routeId
+ */
+async function findWalletByAdminRouteId(routeId) {
+  const w = walletWhereFromRouteParam(routeId);
+  if (!w) return null;
+  return prisma.wallet.findFirst({ where: w });
+}
+
 router.use("/api/v1/admin", adminOnly, logPanelMutations("admin"));
 
 /**
@@ -106,8 +140,8 @@ router.use("/api/v1/admin", adminOnly, logPanelMutations("admin"));
 async function adminListViewerEnvironment(req) {
   const id = req.auth?.sub;
   if (!id) return MerchantGatewayEnv.live;
-  const row = await prisma.admin.findUnique({
-    where: { id },
+  const row = await prisma.admin.findFirst({
+    where: merchantWhereFromRouteParam(id) ?? undefined,
     select: { portalEnvironment: true },
   });
   if (!row) return MerchantGatewayEnv.live;
@@ -173,7 +207,7 @@ router.get("/api/v1/admin/audit-logs", async (req, res) => {
   if (to && !Number.isNaN(to.getTime())) createdAt.lte = to;
 
   const where = {
-    ...(merchantId ? { merchantId } : {}),
+    ...(merchantId ? { merchant: merchantWhereFromRouteParam(merchantId) } : {}),
     ...(source ? { source } : {}),
     ...(action
       ? { action: { contains: action, mode: Prisma.QueryMode.insensitive } }
@@ -280,21 +314,34 @@ router.get("/api/v1/admin/panel-audit-logs", async (req, res) => {
     ...new Set(rows.map((r) => r.targetMerchantId).filter(Boolean)),
   ];
   const allUserIds = [...new Set([...actorIds, ...targetIds])];
+  const numericIds = allUserIds
+    .filter((x) => /^\d+$/.test(x))
+    .map((x) => parseInt(x, 10));
+  const stringIds = allUserIds.filter((x) => !/^\d+$/.test(x));
+  const idOr = [
+    ...(stringIds.length ? [{ publicId: { in: stringIds } }] : []),
+    ...(numericIds.length ? [{ id: { in: numericIds } }] : []),
+  ];
   let users = [];
-  if (allUserIds.length > 0) {
+  if (idOr.length > 0) {
     const [adminRows, merchantRows] = await Promise.all([
       prisma.admin.findMany({
-        where: { id: { in: allUserIds } },
-        select: { id: true, email: true },
+        where: { OR: idOr },
+        select: { id: true, publicId: true, email: true },
       }),
       prisma.merchant.findMany({
-        where: { id: { in: allUserIds } },
-        select: { id: true, email: true },
+        where: { OR: idOr },
+        select: { id: true, publicId: true, email: true },
       }),
     ]);
     users = [...adminRows, ...merchantRows];
   }
-  const emailById = Object.fromEntries(users.map((u) => [u.id, u.email]));
+  /** @type {Record<string, string>} */
+  const emailById = {};
+  for (const u of users) {
+    emailById[u.publicId] = u.email;
+    emailById[String(u.id)] = u.email;
+  }
 
   res.json({
     total,
@@ -596,9 +643,7 @@ router.post("/api/v1/admin/merchants", async (req, res) => {
 router.patch("/api/v1/admin/merchants/:id", async (req, res) => {
   const id = String(req.params.id ?? "");
   const body = req.body ?? {};
-  const existing = await prisma.merchant.findUnique({
-    where: { id },
-  });
+  const existing = await findMerchantByAdminRouteId(id);
   if (!existing) {
     res.status(404).json({ error: "not_found" });
     return;
@@ -766,7 +811,7 @@ router.patch("/api/v1/admin/merchants/:id", async (req, res) => {
   }
 
   const row = await prisma.merchant.update({
-    where: { id },
+    where: { id: existing.id },
     data,
     select: {
       id: true,
@@ -819,8 +864,13 @@ router.patch("/api/v1/admin/merchants/:id", async (req, res) => {
 
 router.get("/api/v1/admin/merchants/:id", async (req, res) => {
   const id = String(req.params.id ?? "");
-  const row = await prisma.merchant.findUnique({
-    where: { id },
+  const mw = merchantWhereFromRouteParam(id);
+  if (!mw) {
+    res.status(404).json({ error: "not_found" });
+    return;
+  }
+  const row = await prisma.merchant.findFirst({
+    where: mw,
     select: {
       id: true,
       email: true,
@@ -850,10 +900,10 @@ router.get("/api/v1/admin/merchants/:id", async (req, res) => {
   }
   const [endUsersLive, endUsersSandbox] = await Promise.all([
     prisma.user.count({
-      where: { merchantId: id, environment: MerchantGatewayEnv.live },
+      where: { merchantId: row.id, environment: MerchantGatewayEnv.live },
     }),
     prisma.user.count({
-      where: { merchantId: id, environment: MerchantGatewayEnv.sandbox },
+      where: { merchantId: row.id, environment: MerchantGatewayEnv.sandbox },
     }),
   ]);
   res.json({
@@ -885,10 +935,18 @@ router.get("/api/v1/admin/merchants/:id", async (req, res) => {
 /** Admin-only: issue a portal JWT for the merchant (same shape as POST /auth/login). */
 router.post("/api/v1/admin/merchants/:id/impersonate", async (req, res) => {
   const id = String(req.params.id ?? "");
+  const mw = merchantWhereFromRouteParam(id);
+  if (!mw) {
+    res.status(404).json({ error: "not_found" });
+    return;
+  }
   const row = await prisma.merchant.findFirst({
-    where: { id, deletedAt: null },
+    where: {
+      AND: [mw, { deletedAt: null }],
+    },
     select: {
       id: true,
+      publicId: true,
       email: true,
       displayName: true,
       isActive: true,
@@ -902,7 +960,7 @@ router.post("/api/v1/admin/merchants/:id/impersonate", async (req, res) => {
     res.status(403).json({ error: "merchant_inactive" });
     return;
   }
-  const token = signAuthToken({ sub: row.id, role: PORTAL_ROLE_MERCHANT });
+  const token = signAuthToken({ sub: row.publicId, role: PORTAL_ROLE_MERCHANT });
   res.json({
     token,
     role: PORTAL_ROLE_MERCHANT,
@@ -913,9 +971,7 @@ router.post("/api/v1/admin/merchants/:id/impersonate", async (req, res) => {
 
 router.delete("/api/v1/admin/merchants/:id", async (req, res) => {
   const id = String(req.params.id ?? "");
-  const hit = await prisma.merchant.findUnique({
-    where: { id },
-  });
+  const hit = await findMerchantByAdminRouteId(id);
   if (!hit) {
     res.status(404).json({ error: "not_found" });
     return;
@@ -925,7 +981,7 @@ router.delete("/api/v1/admin/merchants/:id", async (req, res) => {
     return;
   }
   await prisma.merchant.update({
-    where: { id },
+    where: { id: hit.id },
     data: { deletedAt: new Date(), isActive: false },
   });
   res.json({ ok: true });
@@ -950,12 +1006,12 @@ router.get("/api/v1/admin/users", async (req, res) => {
 
   const where = {
     environment: listEnv,
-    ...(merchantId ? { merchantId } : {}),
+    ...(merchantId ? { merchant: merchantWhereFromRouteParam(merchantId) } : {}),
     ...(q
       ? {
           OR: [
             { externalUserId: { contains: q, mode: "insensitive" } },
-            { id: { contains: q, mode: "insensitive" } },
+            { publicId: { contains: q, mode: "insensitive" } },
           ],
         }
       : {}),
@@ -1022,15 +1078,23 @@ router.get(
       typeof req.query.merchant_id === "string"
         ? req.query.merchant_id.trim()
         : "";
+    const uw = userWhereFromRouteParam(userId);
+    if (!uw) {
+      res.status(400).json({ error: "user_id_required" });
+      return;
+    }
     const u = await prisma.user.findFirst({
-      where: { id: userId, environment: listEnv },
+      where: { AND: [uw, { environment: listEnv }] },
       select: { id: true, merchantId: true },
     });
     if (!u) {
       res.status(404).json({ error: "not_found" });
       return;
     }
-    if (merchantFilter && u.merchantId !== merchantFilter) {
+    const mfInt = merchantFilter
+      ? await resolveMerchantInternalId(merchantFilter)
+      : null;
+    if (merchantFilter && mfInt != null && u.merchantId !== mfInt) {
       res.status(404).json({ error: "not_found" });
       return;
     }
@@ -1040,11 +1104,11 @@ router.get(
         ? parseInt(limRaw, 10)
         : 200;
     const events = await loadUserAssignmentHistory(
-      userId,
+      u.id,
       Number.isFinite(limit) ? limit : 200,
     );
     res.json({
-      user_id: userId,
+      user_id: u.id,
       events,
       source_labels: {
         existing_session: "Same rail wallet refreshed (deposit-address / create-wallet)",
@@ -1069,15 +1133,23 @@ router.get(
       typeof req.query.merchant_id === "string"
         ? req.query.merchant_id.trim()
         : "";
+    const uw = userWhereFromRouteParam(userId);
+    if (!uw) {
+      res.status(400).json({ error: "user_id_required" });
+      return;
+    }
     const u = await prisma.user.findFirst({
-      where: { id: userId, environment: listEnv },
+      where: { AND: [uw, { environment: listEnv }] },
       select: { id: true, merchantId: true },
     });
     if (!u) {
       res.status(404).json({ error: "not_found" });
       return;
     }
-    if (merchantFilter && u.merchantId !== merchantFilter) {
+    const mfInt = merchantFilter
+      ? await resolveMerchantInternalId(merchantFilter)
+      : null;
+    if (merchantFilter && mfInt != null && u.merchantId !== mfInt) {
       res.status(404).json({ error: "not_found" });
       return;
     }
@@ -1087,10 +1159,10 @@ router.get(
         ? parseInt(limRaw, 10)
         : 200;
     const data = await loadUserPayerDepositHistory(
-      userId,
+      u.id,
       Number.isFinite(limit) ? limit : 200,
     );
-    res.json({ user_id: userId, ...data });
+    res.json({ user_id: u.id, ...data });
   },
 );
 
@@ -1118,7 +1190,7 @@ router.get("/api/v1/admin/transactions", async (req, res) => {
 
   const walletIs = {
     environment: listEnv,
-    ...(merchantId ? { merchantId } : {}),
+    ...(merchantId ? { merchant: merchantWhereFromRouteParam(merchantId) } : {}),
     ...(qAddr
       ? qAddr.startsWith("0x")
         ? { address: { equals: qAddr, mode: "insensitive" } }
@@ -1135,7 +1207,9 @@ router.get("/api/v1/admin/transactions", async (req, res) => {
               payerUser: {
                 is: {
                   externalUserId: { contains: qExtUser, mode: "insensitive" },
-                  ...(merchantId ? { merchantId } : {}),
+                  ...(merchantId
+                    ? { merchant: merchantWhereFromRouteParam(merchantId) }
+                    : {}),
                 },
               },
             },
@@ -1304,11 +1378,11 @@ router.get("/api/v1/admin/wallets", async (req, res) => {
     Object.prototype.hasOwnProperty.call(createdAtCond, "lte");
 
   const where = {
-    ...(merchantId ? { merchantId } : {}),
+    ...(merchantId ? { merchant: merchantWhereFromRouteParam(merchantId) } : {}),
     ...(q
       ? {
           OR: [
-            { id: { contains: q, mode: "insensitive" } },
+            { publicId: { contains: q, mode: "insensitive" } },
             { address: { contains: q, mode: "insensitive" } },
             {
               assignedUser: {
@@ -1317,7 +1391,7 @@ router.get("/api/v1/admin/wallets", async (req, res) => {
                     {
                       externalUserId: { contains: q, mode: "insensitive" },
                     },
-                    { id: { contains: q, mode: "insensitive" } },
+                    { publicId: { contains: q, mode: "insensitive" } },
                   ],
                 },
               },
@@ -1410,17 +1484,17 @@ router.get("/api/v1/admin/wallets/:walletId/deposit-activity", async (req, res) 
     typeof limRaw === "string" && limRaw.trim()
       ? parseInt(limRaw, 10)
       : 100;
-  const w = await prisma.wallet.findUnique({
-    where: { id: walletId },
-    select: { id: true },
-  });
+  const w = await findWalletByAdminRouteId(walletId);
   if (!w) {
     res.status(404).json({ error: "wallet_not_found" });
     return;
   }
-  const data = await loadWalletDepositActivity(walletId, Number.isFinite(limit) ? limit : 100);
+  const data = await loadWalletDepositActivity(
+    w.id,
+    Number.isFinite(limit) ? limit : 100,
+  );
   res.json({
-    wallet_id: walletId,
+    wallet_id: w.id,
     note: "Rows are on-chain deposits we recorded. API address assignments without a deposit are not listed.",
     ...data,
   });
@@ -1495,7 +1569,7 @@ router.get("/api/v1/admin/withdrawals", async (req, res) => {
     typeof req.query.to_address === "string" ? req.query.to_address.trim() : "";
 
   const where = {
-    ...(merchantId ? { merchantId } : {}),
+    ...(merchantId ? { merchant: merchantWhereFromRouteParam(merchantId) } : {}),
     ...(chain && CHAINS.has(chain) ? { chain } : {}),
     ...(status && Object.values(WithdrawalStatus).includes(status)
       ? { status }
@@ -2014,9 +2088,14 @@ router.post(
       }
     };
 
+    const rawMerchantId = req.body?.merchant_id;
     const merchantId =
-      typeof req.body.merchant_id === "string" ? req.body.merchant_id.trim() : "";
-    if (!merchantId) {
+      typeof rawMerchantId === "number" && Number.isInteger(rawMerchantId)
+        ? rawMerchantId
+        : typeof rawMerchantId === "string"
+          ? rawMerchantId.trim()
+          : "";
+    if (merchantId === "" || merchantId == null) {
       await unlinkUploaded();
       res.status(400).json({ error: "merchant_id required" });
       return;
@@ -2135,8 +2214,13 @@ router.post(
 
 router.get("/api/v1/admin/settlements/:id/proof", async (req, res) => {
   const id = String(req.params.id ?? "");
-  const row = await prisma.merchantSettlement.findUnique({
-    where: { id },
+  const sw = merchantSettlementWhereFromRouteParam(id);
+  if (!sw) {
+    res.status(404).json({ error: "not_found" });
+    return;
+  }
+  const row = await prisma.merchantSettlement.findFirst({
+    where: sw,
     select: { proofFileName: true },
   });
   if (!row?.proofFileName) {

@@ -10,6 +10,7 @@ import {
   workerRailMetricsEnabled,
 } from "../tracker/deposit-rail-metrics.js";
 import { releaseWalletAfterDepositSuccess } from "../wallet/wallet-service.js";
+import { resolveWalletInternalId } from "../../lib/entity-internal-id.js";
 
 /**
  * @param {object} input
@@ -22,10 +23,17 @@ export async function upsertIncomingTransaction(input) {
   const nextStatus =
     input.confirmations >= threshold ? TxStatus.success : TxStatus.pending;
 
+  const walletInternalId = await resolveWalletInternalId(
+    String(input.walletId ?? ""),
+  );
+  if (walletInternalId == null) {
+    throw new Error("wallet_not_found_for_upsert");
+  }
+
   const dedupe = {
     txHash: input.txHash,
     chain: input.chain,
-    walletId: input.walletId,
+    walletId: walletInternalId,
     tokenSymbol: input.tokenSymbol,
     logIndex: input.logIndex,
   };
@@ -39,7 +47,7 @@ export async function upsertIncomingTransaction(input) {
   let payerUserIdForCreate = input.payerUserId ?? null;
   if (!hadRowBefore && payerUserIdForCreate == null) {
     const w = await prisma.wallet.findUnique({
-      where: { id: input.walletId },
+      where: { id: walletInternalId },
       select: { assignedUserId: true },
     });
     payerUserIdForCreate = w?.assignedUserId ?? null;
@@ -50,7 +58,7 @@ export async function upsertIncomingTransaction(input) {
       tx_dedupe: dedupe,
     },
     create: {
-      walletId: input.walletId,
+      walletId: walletInternalId,
       payerUserId: payerUserIdForCreate,
       txHash: input.txHash,
       fromAddress: input.fromAddress,
@@ -85,7 +93,7 @@ export async function upsertIncomingTransaction(input) {
     nextStatus === TxStatus.success &&
     (!prior || prior.status !== TxStatus.success);
   if (becameSuccess) {
-    await releaseWalletAfterDepositSuccess(input.walletId);
+    await releaseWalletAfterDepositSuccess(walletInternalId);
   }
 
   if (nextStatus === TxStatus.success && !row.callbackDeliveredAt) {

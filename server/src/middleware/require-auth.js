@@ -35,12 +35,12 @@ export function requireAuth(...allowed) {
     try {
       if (role === PORTAL_ROLE_ADMIN) {
         account = await prisma.admin.findUnique({
-          where: { id: payload.sub },
+          where: { publicId: payload.sub },
           select: { isActive: true, deletedAt: true },
         });
       } else {
         account = await prisma.merchant.findUnique({
-          where: { id: payload.sub },
+          where: { publicId: payload.sub },
           select: { isActive: true, deletedAt: true },
         });
       }

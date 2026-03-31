@@ -40,7 +40,8 @@ enum MerchantGatewayEnv {
 
 /// Platform operator portal login (full ops). Email partial-unique where `deleted_at` IS NULL (migration).
 model Admin {
-  id           String    @id @default(cuid())
+  id           Int       @id @default(autoincrement())
+  publicId     String    @unique @default(cuid()) @map("public_id")
   email        String
   passwordHash String    @map("password_hash")
   displayName  String?   @map("display_name")
@@ -53,13 +54,16 @@ model Admin {
   createdAt    DateTime  @default(now()) @map("created_at")
   updatedAt    DateTime  @updatedAt @map("updated_at")
 
+  settlementsCreated MerchantSettlement[] @relation("SettlementCreatedBy")
+
   @@index([deletedAt])
   @@map("admins")
 }
 
 /// Merchant portal + gateway API identity. Email partial-unique where `deleted_at` IS NULL (migration).
 model Merchant {
-  id           String    @id @default(cuid())
+  id           Int       @id @default(autoincrement())
+  publicId     String    @unique @default(cuid()) @map("public_id")
   email        String
   passwordHash String    @map("password_hash")
   displayName  String?   @map("display_name")
@@ -97,6 +101,7 @@ model Merchant {
   pooledWallets Wallet[]
   walletAssignmentEvents WalletAssignmentEvent[]
   settlements   MerchantSettlement[]
+  auditLogs     AuditLog[]
 
   @@index([deletedAt])
   @@map("merchants")
@@ -104,8 +109,9 @@ model Merchant {
 
 /// Admin-recorded settlement payout; `net_amount` reduces portal balance like a withdrawal.
 model MerchantSettlement {
-  id                    String             @id @default(cuid())
-  merchantId            String             @map("merchant_id")
+  id                    Int                @id @default(autoincrement())
+  publicId              String             @unique @default(cuid()) @map("public_id")
+  merchantId            Int                @map("merchant_id")
   merchant              Merchant           @relation(fields: [merchantId], references: [id], onDelete: Cascade)
   environment           MerchantGatewayEnv @map("environment")
   chain                 Chain
@@ -118,7 +124,8 @@ model MerchantSettlement {
   settlementFeeAmount   String             @map("settlement_fee_amount") @db.VarChar(128)
   netAmount             String             @map("net_amount") @db.VarChar(128)
   proofFileName         String?            @map("proof_file_name") @db.VarChar(512)
-  createdByAdminId      String?            @map("created_by_admin_id")
+  createdByAdminId      Int?               @map("created_by_admin_id")
+  createdByAdmin        Admin?             @relation("SettlementCreatedBy", fields: [createdByAdminId], references: [id], onDelete: SetNull)
   transactionCount      Int                @default(0) @map("transaction_count")
   createdAt             DateTime           @default(now()) @map("created_at")
 
@@ -129,8 +136,9 @@ model MerchantSettlement {
 }
 
 model User {
-  id             String    @id @default(cuid())
-  merchantId     String    @map("merchant_id")
+  id             Int       @id @default(autoincrement())
+  publicId       String    @unique @default(cuid()) @map("public_id")
+  merchantId     Int       @map("merchant_id")
   merchant       Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
   externalUserId String    @map("external_user_id")
   environment    MerchantGatewayEnv @default(live) @map("environment")
@@ -147,8 +155,9 @@ model User {
 }
 
 model Wallet {
-  id        String @id @default(cuid())
-  merchantId String @map("merchant_id")
+  id        Int @id @default(autoincrement())
+  publicId  String @unique @default(cuid()) @map("public_id")
+  merchantId Int @map("merchant_id")
   merchant   Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
   environment MerchantGatewayEnv @map("environment")
   address   String
@@ -159,7 +168,7 @@ model Wallet {
   network   String
   derivationIndex Int @map("derivation_index")
   /// Current payment-session assignee; null = in merchant pool (free or awaiting pickup).
-  assignedUserId String? @map("assigned_user_id")
+  assignedUserId Int? @map("assigned_user_id")
   assignedUser   User?   @relation("WalletPoolAssignment", fields: [assignedUserId], references: [id], onDelete: SetNull)
   /// When set and in the future, the address is reserved for `assignedUserId` until success or this time passes.
   holdExpiresAt DateTime? @map("hold_expires_at")
@@ -190,10 +199,11 @@ model Wallet {
 
 /// Logged on each gateway wallet resolution (deposit-address / create-wallet). Not retroactive for data before migration.
 model WalletAssignmentEvent {
-  id          String   @id @default(cuid())
-  walletId    String   @map("wallet_id")
-  userId      String   @map("user_id")
-  merchantId  String   @map("merchant_id")
+  id          Int   @id @default(autoincrement())
+  publicId    String @unique @default(cuid()) @map("public_id")
+  walletId    Int   @map("wallet_id")
+  userId      Int   @map("user_id")
+  merchantId  Int   @map("merchant_id")
   environment MerchantGatewayEnv @map("environment")
   /// existing_session | pool_pick | new_wallet
   source      String   @map("source") @db.VarChar(24)
@@ -209,10 +219,11 @@ model WalletAssignmentEvent {
 }
 
 model Transaction {
-  id                  String    @id @default(cuid())
-  walletId            String    @map("wallet_id")
+  id                  Int       @id @default(autoincrement())
+  publicId            String    @unique @default(cuid()) @map("public_id")
+  walletId            Int       @map("wallet_id")
   /// End-user (merchant’s external user) this deposit belongs to — kept when the wallet returns to the pool.
-  payerUserId         String?   @map("payer_user_id")
+  payerUserId         Int?      @map("payer_user_id")
   payerUser           User?     @relation(fields: [payerUserId], references: [id], onDelete: SetNull)
   txHash              String    @map("tx_hash")
   fromAddress         String    @map("from_address")
@@ -229,7 +240,7 @@ model Transaction {
   createdAt           DateTime  @default(now()) @map("created_at")
   updatedAt           DateTime  @updatedAt @map("updated_at")
   /// When set, this deposit was included in a batch settlement payout.
-  merchantSettlementId String?  @map("merchant_settlement_id")
+  merchantSettlementId Int?  @map("merchant_settlement_id")
   merchantSettlement   MerchantSettlement? @relation(fields: [merchantSettlementId], references: [id], onDelete: SetNull)
 
   wallet Wallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
@@ -245,8 +256,9 @@ model Transaction {
 }
 
 model Withdrawal {
-  id            String           @id @default(cuid())
-  merchantId    String           @map("merchant_id")
+  id            Int              @id @default(autoincrement())
+  publicId      String           @unique @default(cuid()) @map("public_id")
+  merchantId    Int              @map("merchant_id")
   merchant      Merchant        @relation(fields: [merchantId], references: [id], onDelete: Cascade)
   chain         Chain
   tokenSymbol   String           @map("token_symbol")
@@ -264,11 +276,13 @@ model Withdrawal {
 
 /// Immutable trail for support: gateway calls, callbacks, who/when (no secrets stored).
 model AuditLog {
-  id             String   @id @default(cuid())
+  id             Int      @id @default(autoincrement())
+  publicId       String   @unique @default(cuid()) @map("public_id")
   createdAt      DateTime @default(now()) @map("created_at")
   source         String
   action         String
-  merchantId     String?  @map("merchant_id")
+  merchantId     Int?     @map("merchant_id")
+  merchant       Merchant? @relation(fields: [merchantId], references: [id], onDelete: SetNull)
   actorType      String   @map("actor_type")
   actorId        String?  @map("actor_id")
   actorEmail     String?  @map("actor_email")
@@ -286,7 +300,8 @@ model AuditLog {
 
 /// Admin / merchant portal mutations (successful writes). Separate from gateway API + webhook audit_logs.
 model PanelAuditLog {
-  id                 String   @id @default(cuid())
+  id                 Int      @id @default(autoincrement())
+  publicId           String   @unique @default(cuid()) @map("public_id")
   createdAt          DateTime @default(now()) @map("created_at")
   /// Which UI surface: `admin` or `merchant` (profile/password use the user role the same way).
   panel              String
@@ -309,7 +324,8 @@ model PanelAuditLog {
 }
 
 model ScannerState {
-  id        String   @id @default(cuid())
+  id        Int      @id @default(autoincrement())
+  publicId  String   @unique @default(cuid()) @map("public_id")
   currency  String
   network   String
   /// Underlying chain RPC this cursor advances with (EVM: one cursor set per chain).
@@ -324,7 +340,8 @@ model ScannerState {
 
 /// Key/value overrides for operational config; values win over process env when present.
 model AppSetting {
-  key       String   @id
+  id        Int      @id @default(autoincrement())
+  key       String   @unique
   value     String   @db.Text
   updatedAt DateTime @updatedAt @map("updated_at")
 

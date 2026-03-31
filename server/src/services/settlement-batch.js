@@ -1,6 +1,10 @@
 import { TxStatus } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
 import {
+  resolveAdminInternalId,
+  resolveMerchantInternalId,
+} from "../lib/entity-internal-id.js";
+import {
   netStrictlyAboveMinSettlementHuman,
   parseHumanMinSettlementToAtomic,
   splitFeesSequentialFromGross,
@@ -20,7 +24,7 @@ function sumTxAmounts(rows) {
 }
 
 /**
- * @param {string} merchantId
+ * @param {string | number} merchantId
  * @param {MerchantGatewayEnv} environment
  * @param {import("@prisma/client").Chain} chain
  * @param {string} tokenSymbol
@@ -109,13 +113,18 @@ export function previewBatchFromTxRows(
 
 /**
  * @param {object} merchantRow
- * @param {string} merchantRow.id
+ * @param {number} merchantRow.id
  * @param {unknown} merchantRow.mdrPercent
  * @param {unknown} merchantRow.settlementRatePercent
  * @param {unknown} merchantRow.minSettlementAmount
  * @param {unknown} merchantRow.settlementPeriodDays
  */
 export async function buildAllPendingPreviews(merchantId, environment, merchantRow) {
+  const merchantInt = await resolveMerchantInternalId(merchantId);
+  if (merchantInt == null) {
+    return [];
+  }
+  merchantId = merchantInt;
   const periodDays = Number(merchantRow.settlementPeriodDays ?? 0);
   const mdrP = Number(merchantRow.mdrPercent);
   const stP = Number(merchantRow.settlementRatePercent);
@@ -196,6 +205,17 @@ export async function executeBatchSettlement({
   proofFileName,
   adminId,
 }) {
+  const merchantInt = await resolveMerchantInternalId(merchantId);
+  if (merchantInt == null) {
+    const e = new Error("merchant_not_found");
+    /** @type {Error & { code?: string }} */ (e).code = "merchant_not_found";
+    throw e;
+  }
+  merchantId = merchantInt;
+  const createdByAdminId = adminId
+    ? await resolveAdminInternalId(adminId)
+    : null;
+
   const merchant = await prisma.merchant.findFirst({
     where: { id: merchantId, deletedAt: null },
     select: {
@@ -291,7 +311,7 @@ export async function executeBatchSettlement({
         settlementFeeAmount: fees.settlementFeeAmount.toString(),
         netAmount: fees.netAmount.toString(),
         proofFileName,
-        createdByAdminId: adminId,
+        createdByAdminId,
         transactionCount: txs.length,
       },
     });

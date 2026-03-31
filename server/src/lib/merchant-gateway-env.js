@@ -1,5 +1,6 @@
 import { MerchantGatewayEnv } from "@prisma/client";
 import { prisma } from "./prisma.js";
+import { merchantWhereFromRouteParam } from "./entity-internal-id.js";
 
 /**
  * Optional gateway JSON override when live and sandbox share one API key.
@@ -22,13 +23,19 @@ export function parseGatewayEnvironmentFromBody(body) {
 /**
  * If portal environment disagrees with gateway enable flags, persist a valid value (merchant rows only).
  *
- * @param {string} userId
+ * @param {string | number} userId — numeric PK, or JWT `sub` / `public_id` string.
  * @returns {Promise<{ portalEnvironment: import("@prisma/client").MerchantGatewayEnv; liveGatewayEnabled: boolean; sandboxGatewayEnabled: boolean } | null>}
  */
 export async function ensureMerchantPortalEnvironmentConsistent(userId) {
-  const m = await prisma.merchant.findUnique({
-    where: { id: userId },
+  const where =
+    typeof userId === "number" && Number.isInteger(userId)
+      ? { id: userId }
+      : merchantWhereFromRouteParam(String(userId ?? ""));
+  if (!where) return null;
+  const m = await prisma.merchant.findFirst({
+    where,
     select: {
+      id: true,
       portalEnvironment: true,
       liveGatewayEnabled: true,
       sandboxGatewayEnabled: true,
@@ -49,7 +56,7 @@ export async function ensureMerchantPortalEnvironmentConsistent(userId) {
 
   if (nextEnv !== m.portalEnvironment) {
     await prisma.merchant.update({
-      where: { id: userId },
+      where: { id: m.id },
       data: { portalEnvironment: nextEnv },
     });
     return {
@@ -68,24 +75,33 @@ export async function ensureMerchantPortalEnvironmentConsistent(userId) {
 /**
  * Whether the signed-in user may set portal to `environment` (merchants: gateway flags; admins: always).
  *
- * @param {string} userId
+ * @param {string | number} userId
  * @param {import("@prisma/client").MerchantGatewayEnv} environment
  */
 export async function assertPortalEnvironmentUpdateAllowed(userId, environment) {
-  const adminRow = await prisma.admin.findUnique({
-    where: { id: userId },
-    select: { id: true },
-  });
+  const adminWhere =
+    typeof userId === "number" && Number.isInteger(userId)
+      ? { id: userId }
+      : merchantWhereFromRouteParam(String(userId ?? ""));
+  const adminRow = adminWhere
+    ? await prisma.admin.findFirst({ where: adminWhere, select: { id: true } })
+    : null;
   if (adminRow) {
     return { ok: true };
   }
-  const m = await prisma.merchant.findUnique({
-    where: { id: userId },
-    select: {
-      liveGatewayEnabled: true,
-      sandboxGatewayEnabled: true,
-    },
-  });
+  const merchWhere =
+    typeof userId === "number" && Number.isInteger(userId)
+      ? { id: userId }
+      : merchantWhereFromRouteParam(String(userId ?? ""));
+  const m = merchWhere
+    ? await prisma.merchant.findFirst({
+        where: merchWhere,
+        select: {
+          liveGatewayEnabled: true,
+          sandboxGatewayEnabled: true,
+        },
+      })
+    : null;
   if (!m) {
     return { ok: false, status: 401, error: "unauthorized" };
   }

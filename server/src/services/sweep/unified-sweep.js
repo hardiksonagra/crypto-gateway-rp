@@ -200,8 +200,14 @@ function sweepKindLabel(kind) {
  * @param {string} walletId
  */
 export async function sweepUnifiedOne(walletId) {
+  const wid =
+    typeof walletId === "number" && Number.isInteger(walletId)
+      ? walletId
+      : /^\d+$/.test(String(walletId ?? "").trim())
+        ? parseInt(String(walletId).trim(), 10)
+        : null;
   const wallet = await prisma.wallet.findFirst({
-    where: { id: walletId },
+    where: wid != null ? { id: wid } : { publicId: String(walletId ?? "").trim() },
     select: { id: true, chain: true, currency: true, network: true },
   });
 

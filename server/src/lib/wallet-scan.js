@@ -1,5 +1,6 @@
 import { prisma } from "./prisma.js";
 import { re } from "../config/runtime-env.js";
+import { resolveWalletInternalId } from "./entity-internal-id.js";
 
 /**
  * Minutes for assign-time deposit window (`scan_expires_at`). `0` = null TTL (hot path only via rescan flag or full-scan cron).
@@ -35,11 +36,20 @@ export function liveWorkerWalletScanFilter() {
 }
 
 /**
- * @param {string} walletId
- * @param {{ merchantId?: string | null, asAdmin?: boolean }} opts
+ * @param {string | number} walletIdRaw — numeric id or wallet `public_id`.
+ * @param {{ merchantId?: number | null, asAdmin?: boolean }} opts
  */
-export async function reactivateWalletDepositScan(walletId, opts = {}) {
+export async function reactivateWalletDepositScan(walletIdRaw, opts = {}) {
   const { merchantId = null, asAdmin = false } = opts;
+  const walletId =
+    typeof walletIdRaw === "number" && Number.isInteger(walletIdRaw)
+      ? walletIdRaw
+      : await resolveWalletInternalId(String(walletIdRaw ?? ""));
+  if (walletId == null) {
+    const e = new Error("WALLET_NOT_FOUND");
+    /** @type {any} */ (e).code = "WALLET_NOT_FOUND";
+    throw e;
+  }
   const w = await prisma.wallet.findUnique({
     where: { id: walletId },
     select: { merchantId: true },

@@ -4,6 +4,7 @@ import { prisma } from "../../lib/prisma.js";
 import { confirmationsForChain } from "../../config/chains.js";
 import { nativeDecimalsForChain, nativeSymbolForChain } from "../native-symbols.js";
 import { upsertIncomingTransaction } from "./transaction-upsert.js";
+import { resolveWalletInternalId } from "../../lib/entity-internal-id.js";
 
 /**
  * @param {import("@prisma/client").Chain} chain
@@ -58,13 +59,19 @@ function oneUnitAtomic(decimals) {
 /**
  * Create a synthetic confirmed deposit for merchant integration testing (no on-chain tx).
  *
- * @param {{ merchantId: string, walletId: string, amount?: string }} input
- * @returns {Promise<{ transaction_id: string, tx_hash: string, amount: string, token_symbol: string, wallet_id: string }>}
+ * @param {{ merchantId: number, walletId: string, amount?: string }} input
+ * @returns {Promise<{ transaction_id: number, tx_hash: string, amount: string, token_symbol: string, wallet_id: number }>}
  */
 export async function simulateSandboxDeposit(input) {
+  const wid = await resolveWalletInternalId(String(input.walletId ?? ""));
+  if (wid == null) {
+    const err = new Error("WALLET_NOT_FOUND");
+    /** @type {any} */ (err).code = "WALLET_NOT_FOUND";
+    throw err;
+  }
   const wallet = await prisma.wallet.findFirst({
     where: {
-      id: input.walletId,
+      id: wid,
       merchantId: input.merchantId,
       environment: MerchantGatewayEnv.sandbox,
     },

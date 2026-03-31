@@ -3,6 +3,10 @@ import { formatAtomicAmountString } from "../lib/format-atomic-amount.js";
 import { prisma } from "../lib/prisma.js";
 import { logger } from "../lib/logger.js";
 import { logPaymentSuccessCallback, writeAuditLog } from "./audit-log.js";
+import {
+  resolveTransactionInternalId,
+  transactionWhereFromRouteParam,
+} from "../lib/entity-internal-id.js";
 
 /**
  * @param {import("@prisma/client").Transaction & {
@@ -16,7 +20,9 @@ export function buildPaymentSuccessWebhookBody(tx) {
   const merchant = u?.merchant ?? tx.wallet.merchant;
   return {
     transaction_id: tx.id,
+    transaction_public_id: tx.publicId,
     wallet_id: tx.walletId,
+    wallet_public_id: tx.wallet.publicId,
     tx_hash: tx.txHash,
     amount: tx.amount,
     token_decimals: tx.tokenDecimals,
@@ -30,6 +36,7 @@ export function buildPaymentSuccessWebhookBody(tx) {
     confirmations: tx.confirmations,
     external_user_id: u?.externalUserId ?? "",
     merchant_id: merchant.id,
+    merchant_public_id: merchant.publicId,
     gateway_environment: u?.environment ?? tx.wallet.environment,
   };
 }
@@ -49,8 +56,13 @@ function axiosErrDetail(e) {
 }
 
 export async function notifyPaymentSuccess(txId) {
+  const tid = await resolveTransactionInternalId(txId);
+  if (tid == null) {
+    logger.warn("callback skip: tx not found", { txId });
+    return;
+  }
   const tx = await prisma.transaction.findUnique({
-    where: { id: txId },
+    where: { id: tid },
     include: {
       wallet: { include: { merchant: true } },
       payerUser: { include: { merchant: true } },
@@ -80,7 +92,7 @@ export async function notifyPaymentSuccess(txId) {
     });
     logPaymentSuccessCallback({
       merchantId: merchant.id,
-      transactionId: txId,
+      transactionId: tid,
       url: null,
       requestBody: body,
       ok: false,
@@ -99,13 +111,13 @@ export async function notifyPaymentSuccess(txId) {
       validateStatus: (s) => s >= 200 && s < 300,
     });
     await prisma.transaction.update({
-      where: { id: txId },
+      where: { id: tid },
       data: { callbackDeliveredAt: new Date() },
     });
     logger.info("callback delivered", { txId, url });
     logPaymentSuccessCallback({
       merchantId: merchant.id,
-      transactionId: txId,
+      transactionId: tid,
       url,
       requestBody: body,
       ok: true,
@@ -123,7 +135,7 @@ export async function notifyPaymentSuccess(txId) {
     });
     logPaymentSuccessCallback({
       merchantId: merchant.id,
-      transactionId: txId,
+      transactionId: tid,
       url,
       requestBody: body,
       ok: false,
@@ -265,10 +277,13 @@ async function executeRedeliverPaymentSuccess(tx, audit) {
  * @param {{ actorEmail?: string | null }} [audit]
  */
 export async function redeliverPaymentSuccessWebhook(txId, merchantId, audit = {}) {
+  const txw = transactionWhereFromRouteParam(String(txId ?? ""));
+  if (!txw) {
+    return { ok: false, code: "transaction_not_found" };
+  }
   const tx = await prisma.transaction.findFirst({
     where: {
-      id: txId,
-      wallet: { merchantId },
+      AND: [txw, { wallet: { merchant: { publicId: merchantId } } }],
     },
     include: {
       wallet: { include: { merchant: true } },
@@ -294,8 +309,12 @@ export async function redeliverPaymentSuccessWebhook(txId, merchantId, audit = {
  * @param {{ actorAdminId?: string | null }} [audit]
  */
 export async function redeliverPaymentSuccessWebhookAdmin(txId, audit = {}) {
-  const tx = await prisma.transaction.findUnique({
-    where: { id: txId },
+  const txw = transactionWhereFromRouteParam(String(txId ?? ""));
+  if (!txw) {
+    return { ok: false, code: "transaction_not_found" };
+  }
+  const tx = await prisma.transaction.findFirst({
+    where: txw,
     include: {
       wallet: { include: { merchant: true } },
       payerUser: { include: { merchant: true } },

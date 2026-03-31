@@ -1,5 +1,6 @@
 import { MerchantGatewayEnv } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
+import { resolveMerchantInternalId } from "../lib/entity-internal-id.js";
 
 /**
  * PostgreSQL `numeric` sum rendered as text → bigint (atomic integer strings).
@@ -15,13 +16,17 @@ function bigIntFromPgNumericText(s) {
 }
 
 /**
- * @param {string} merchantId
+ * @param {string | number} merchantOpaqueId — internal id, numeric string, or `public_id` / JWT `sub`.
  * @param {import("@prisma/client").MerchantGatewayEnv} [environment]
  */
 export async function computeMerchantBalances(
-  merchantId,
+  merchantOpaqueId,
   environment = MerchantGatewayEnv.live,
 ) {
+  const merchantId = await resolveMerchantInternalId(merchantOpaqueId);
+  if (merchantId == null) {
+    return [];
+  }
   const inboundRows = await prisma.$queryRaw`
     SELECT
       t.chain::text AS chain,
@@ -119,7 +124,11 @@ export async function computeMerchantBalances(
     );
 }
 
-export async function merchantBalanceForAsset(merchantId, chain, tokenSymbol) {
+export async function merchantBalanceForAsset(merchantOpaqueId, chain, tokenSymbol) {
+  const merchantId = await resolveMerchantInternalId(merchantOpaqueId);
+  if (merchantId == null) {
+    return 0n;
+  }
   const [inRow, outRow, settleRow] = await Promise.all([
     prisma.$queryRaw`
       SELECT COALESCE(SUM(t.amount::numeric), 0)::text AS s
