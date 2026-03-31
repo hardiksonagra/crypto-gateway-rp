@@ -31,16 +31,22 @@ export function requireAuth(...allowed) {
       return;
     }
 
+    const subId = parseInt(String(payload.sub ?? "").trim(), 10);
+    if (!Number.isInteger(subId) || subId < 1) {
+      res.status(401).json({ error: "invalid_token" });
+      return;
+    }
+
     let account;
     try {
       if (role === PORTAL_ROLE_ADMIN) {
         account = await prisma.admin.findUnique({
-          where: { publicId: payload.sub },
+          where: { id: subId },
           select: { isActive: true, deletedAt: true },
         });
       } else {
         account = await prisma.merchant.findUnique({
-          where: { publicId: payload.sub },
+          where: { id: subId },
           select: { isActive: true, deletedAt: true },
         });
       }

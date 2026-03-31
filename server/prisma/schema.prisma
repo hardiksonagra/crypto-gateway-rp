@@ -41,7 +41,6 @@ enum MerchantGatewayEnv {
 /// Platform operator portal login (full ops). Email partial-unique where `deleted_at` IS NULL (migration).
 model Admin {
   id           Int       @id @default(autoincrement())
-  publicId     String    @unique @default(cuid()) @map("public_id")
   email        String
   passwordHash String    @map("password_hash")
   displayName  String?   @map("display_name")
@@ -63,7 +62,6 @@ model Admin {
 /// Merchant portal + gateway API identity. Email partial-unique where `deleted_at` IS NULL (migration).
 model Merchant {
   id           Int       @id @default(autoincrement())
-  publicId     String    @unique @default(cuid()) @map("public_id")
   email        String
   passwordHash String    @map("password_hash")
   displayName  String?   @map("display_name")
@@ -110,7 +108,6 @@ model Merchant {
 /// Admin-recorded settlement payout; `net_amount` reduces portal balance like a withdrawal.
 model MerchantSettlement {
   id                    Int                @id @default(autoincrement())
-  publicId              String             @unique @default(cuid()) @map("public_id")
   merchantId            Int                @map("merchant_id")
   merchant              Merchant           @relation(fields: [merchantId], references: [id], onDelete: Cascade)
   environment           MerchantGatewayEnv @map("environment")
@@ -137,7 +134,6 @@ model MerchantSettlement {
 
 model User {
   id             Int       @id @default(autoincrement())
-  publicId       String    @unique @default(cuid()) @map("public_id")
   merchantId     Int       @map("merchant_id")
   merchant       Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
   externalUserId String    @map("external_user_id")
@@ -156,7 +152,6 @@ model User {
 
 model Wallet {
   id        Int @id @default(autoincrement())
-  publicId  String @unique @default(cuid()) @map("public_id")
   merchantId Int @map("merchant_id")
   merchant   Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
   environment MerchantGatewayEnv @map("environment")
@@ -200,7 +195,6 @@ model Wallet {
 /// Logged on each gateway wallet resolution (deposit-address / create-wallet). Not retroactive for data before migration.
 model WalletAssignmentEvent {
   id          Int   @id @default(autoincrement())
-  publicId    String @unique @default(cuid()) @map("public_id")
   walletId    Int   @map("wallet_id")
   userId      Int   @map("user_id")
   merchantId  Int   @map("merchant_id")
@@ -220,7 +214,6 @@ model WalletAssignmentEvent {
 
 model Transaction {
   id                  Int       @id @default(autoincrement())
-  publicId            String    @unique @default(cuid()) @map("public_id")
   walletId            Int       @map("wallet_id")
   /// End-user (merchant’s external user) this deposit belongs to — kept when the wallet returns to the pool.
   payerUserId         Int?      @map("payer_user_id")
@@ -257,7 +250,6 @@ model Transaction {
 
 model Withdrawal {
   id            Int              @id @default(autoincrement())
-  publicId      String           @unique @default(cuid()) @map("public_id")
   merchantId    Int              @map("merchant_id")
   merchant      Merchant        @relation(fields: [merchantId], references: [id], onDelete: Cascade)
   chain         Chain
@@ -277,7 +269,6 @@ model Withdrawal {
 /// Immutable trail for support: gateway calls, callbacks, who/when (no secrets stored).
 model AuditLog {
   id             Int      @id @default(autoincrement())
-  publicId       String   @unique @default(cuid()) @map("public_id")
   createdAt      DateTime @default(now()) @map("created_at")
   source         String
   action         String
@@ -301,7 +292,6 @@ model AuditLog {
 /// Admin / merchant portal mutations (successful writes). Separate from gateway API + webhook audit_logs.
 model PanelAuditLog {
   id                 Int      @id @default(autoincrement())
-  publicId           String   @unique @default(cuid()) @map("public_id")
   createdAt          DateTime @default(now()) @map("created_at")
   /// Which UI surface: `admin` or `merchant` (profile/password use the user role the same way).
   panel              String
@@ -325,7 +315,6 @@ model PanelAuditLog {
 
 model ScannerState {
   id        Int      @id @default(autoincrement())
-  publicId  String   @unique @default(cuid()) @map("public_id")
   currency  String
   network   String
   /// Underlying chain RPC this cursor advances with (EVM: one cursor set per chain).

@@ -140,8 +140,10 @@ router.use("/api/v1/admin", adminOnly, logPanelMutations("admin"));
 async function adminListViewerEnvironment(req) {
   const id = req.auth?.sub;
   if (!id) return MerchantGatewayEnv.live;
+  const aw = merchantWhereFromRouteParam(id);
+  if (!aw) return MerchantGatewayEnv.live;
   const row = await prisma.admin.findFirst({
-    where: merchantWhereFromRouteParam(id) ?? undefined,
+    where: aw,
     select: { portalEnvironment: true },
   });
   if (!row) return MerchantGatewayEnv.live;
@@ -206,8 +208,15 @@ router.get("/api/v1/admin/audit-logs", async (req, res) => {
   if (from && !Number.isNaN(from.getTime())) createdAt.gte = from;
   if (to && !Number.isNaN(to.getTime())) createdAt.lte = to;
 
+  const auditMerch = merchantId
+    ? merchantWhereFromRouteParam(merchantId)
+    : null;
   const where = {
-    ...(merchantId ? { merchant: merchantWhereFromRouteParam(merchantId) } : {}),
+    ...(merchantId
+      ? auditMerch
+        ? { merchant: auditMerch }
+        : { id: { in: [] } }
+      : {}),
     ...(source ? { source } : {}),
     ...(action
       ? { action: { contains: action, mode: Prisma.QueryMode.insensitive } }
@@ -317,21 +326,16 @@ router.get("/api/v1/admin/panel-audit-logs", async (req, res) => {
   const numericIds = allUserIds
     .filter((x) => /^\d+$/.test(x))
     .map((x) => parseInt(x, 10));
-  const stringIds = allUserIds.filter((x) => !/^\d+$/.test(x));
-  const idOr = [
-    ...(stringIds.length ? [{ publicId: { in: stringIds } }] : []),
-    ...(numericIds.length ? [{ id: { in: numericIds } }] : []),
-  ];
   let users = [];
-  if (idOr.length > 0) {
+  if (numericIds.length > 0) {
     const [adminRows, merchantRows] = await Promise.all([
       prisma.admin.findMany({
-        where: { OR: idOr },
-        select: { id: true, publicId: true, email: true },
+        where: { id: { in: numericIds } },
+        select: { id: true, email: true },
       }),
       prisma.merchant.findMany({
-        where: { OR: idOr },
-        select: { id: true, publicId: true, email: true },
+        where: { id: { in: numericIds } },
+        select: { id: true, email: true },
       }),
     ]);
     users = [...adminRows, ...merchantRows];
@@ -339,7 +343,6 @@ router.get("/api/v1/admin/panel-audit-logs", async (req, res) => {
   /** @type {Record<string, string>} */
   const emailById = {};
   for (const u of users) {
-    emailById[u.publicId] = u.email;
     emailById[String(u.id)] = u.email;
   }
 
@@ -946,7 +949,6 @@ router.post("/api/v1/admin/merchants/:id/impersonate", async (req, res) => {
     },
     select: {
       id: true,
-      publicId: true,
       email: true,
       displayName: true,
       isActive: true,
@@ -960,7 +962,7 @@ router.post("/api/v1/admin/merchants/:id/impersonate", async (req, res) => {
     res.status(403).json({ error: "merchant_inactive" });
     return;
   }
-  const token = signAuthToken({ sub: row.publicId, role: PORTAL_ROLE_MERCHANT });
+  const token = signAuthToken({ sub: String(row.id), role: PORTAL_ROLE_MERCHANT });
   res.json({
     token,
     role: PORTAL_ROLE_MERCHANT,
@@ -1004,14 +1006,23 @@ router.get("/api/v1/admin/users", async (req, res) => {
       ? new Date(req.query.created_to)
       : null;
 
+  const merchantClause = merchantId
+    ? merchantWhereFromRouteParam(merchantId)
+    : null;
   const where = {
     environment: listEnv,
-    ...(merchantId ? { merchant: merchantWhereFromRouteParam(merchantId) } : {}),
+    ...(merchantId
+      ? merchantClause
+        ? { merchant: merchantClause }
+        : { id: { in: [] } }
+      : {}),
     ...(q
       ? {
           OR: [
             { externalUserId: { contains: q, mode: "insensitive" } },
-            { publicId: { contains: q, mode: "insensitive" } },
+            ...(/^\d+$/.test(q)
+              ? [{ id: parseInt(q, 10) }]
+              : []),
           ],
         }
       : {}),
@@ -1188,9 +1199,16 @@ router.get("/api/v1/admin/transactions", async (req, res) => {
       ? req.query.external_user_id.trim()
       : "";
 
+  const txListMerch = merchantId
+    ? merchantWhereFromRouteParam(merchantId)
+    : null;
   const walletIs = {
     environment: listEnv,
-    ...(merchantId ? { merchant: merchantWhereFromRouteParam(merchantId) } : {}),
+    ...(merchantId
+      ? txListMerch
+        ? { merchant: txListMerch }
+        : { id: { in: [] } }
+      : {}),
     ...(qAddr
       ? qAddr.startsWith("0x")
         ? { address: { equals: qAddr, mode: "insensitive" } }
@@ -1208,7 +1226,9 @@ router.get("/api/v1/admin/transactions", async (req, res) => {
                 is: {
                   externalUserId: { contains: qExtUser, mode: "insensitive" },
                   ...(merchantId
-                    ? { merchant: merchantWhereFromRouteParam(merchantId) }
+                    ? txListMerch
+                      ? { merchant: txListMerch }
+                      : { id: { in: [] } }
                     : {}),
                 },
               },
@@ -1377,12 +1397,19 @@ router.get("/api/v1/admin/wallets", async (req, res) => {
     Object.prototype.hasOwnProperty.call(createdAtCond, "gte") ||
     Object.prototype.hasOwnProperty.call(createdAtCond, "lte");
 
+  const walletMerchantClause = merchantId
+    ? merchantWhereFromRouteParam(merchantId)
+    : null;
   const where = {
-    ...(merchantId ? { merchant: merchantWhereFromRouteParam(merchantId) } : {}),
+    ...(merchantId
+      ? walletMerchantClause
+        ? { merchant: walletMerchantClause }
+        : { id: { in: [] } }
+      : {}),
     ...(q
       ? {
           OR: [
-            { publicId: { contains: q, mode: "insensitive" } },
+            ...(/^\d+$/.test(q) ? [{ id: parseInt(q, 10) }] : []),
             { address: { contains: q, mode: "insensitive" } },
             {
               assignedUser: {
@@ -1391,7 +1418,9 @@ router.get("/api/v1/admin/wallets", async (req, res) => {
                     {
                       externalUserId: { contains: q, mode: "insensitive" },
                     },
-                    { publicId: { contains: q, mode: "insensitive" } },
+                    ...(/^\d+$/.test(q)
+                      ? [{ id: parseInt(q, 10) }]
+                      : []),
                   ],
                 },
               },
@@ -1568,8 +1597,15 @@ router.get("/api/v1/admin/withdrawals", async (req, res) => {
   const toAddr =
     typeof req.query.to_address === "string" ? req.query.to_address.trim() : "";
 
+  const wdMerch = merchantId
+    ? merchantWhereFromRouteParam(merchantId)
+    : null;
   const where = {
-    ...(merchantId ? { merchant: merchantWhereFromRouteParam(merchantId) } : {}),
+    ...(merchantId
+      ? wdMerch
+        ? { merchant: wdMerch }
+        : { id: { in: [] } }
+      : {}),
     ...(chain && CHAINS.has(chain) ? { chain } : {}),
     ...(status && Object.values(WithdrawalStatus).includes(status)
       ? { status }

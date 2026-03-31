@@ -294,7 +294,7 @@ router.post("/api/v1/gateway/deposit-address", async (req, res) => {
         occurred_at_iso: new Date().toISOString(),
       },
     });
-    const payToken = createPaymentLinkToken(wallet.publicId, redirectUrl);
+    const payToken = createPaymentLinkToken(String(wallet.id), redirectUrl);
     const payBase = paymentPageBaseUrl();
     res.status(200).json({
       address: wallet.address,

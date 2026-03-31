@@ -21,6 +21,12 @@ import { re } from "../config/runtime-env.js";
 
 const router = Router();
 
+/** @param {unknown} sub */
+function portalAccountPkFromJwtSub(sub) {
+  const n = parseInt(String(sub ?? "").trim(), 10);
+  return Number.isInteger(n) && n >= 1 ? n : null;
+}
+
 /** @param {string} token */
 function hashResetToken(token) {
   return crypto.createHash("sha256").update(token, "utf8").digest("hex");
@@ -63,7 +69,7 @@ async function merchantLoginHandler(req, res) {
     res.status(401).json({ error: "invalid_credentials" });
     return;
   }
-  const token = signAuthToken({ sub: account.publicId, role: PORTAL_ROLE_MERCHANT });
+  const token = signAuthToken({ sub: String(account.id), role: PORTAL_ROLE_MERCHANT });
   res.json({
     token,
     role: PORTAL_ROLE_MERCHANT,
@@ -93,7 +99,7 @@ async function adminLoginHandler(req, res) {
     res.status(401).json({ error: "invalid_credentials" });
     return;
   }
-  const token = signAuthToken({ sub: account.publicId, role: PORTAL_ROLE_ADMIN });
+  const token = signAuthToken({ sub: String(account.id), role: PORTAL_ROLE_ADMIN });
   res.json({
     token,
     role: PORTAL_ROLE_ADMIN,
@@ -114,10 +120,15 @@ router.get("/api/v1/auth/me", requireAuth(), async (req, res) => {
     res.status(401).json({ error: "unauthorized" });
     return;
   }
+  const pk = portalAccountPkFromJwtSub(id);
+  if (pk == null) {
+    res.status(401).json({ error: "unauthorized" });
+    return;
+  }
 
   if (jwtRole === PORTAL_ROLE_ADMIN) {
     const user = await prisma.admin.findUnique({
-      where: { publicId: id },
+      where: { id: pk },
       select: {
         id: true,
         email: true,
@@ -152,7 +163,7 @@ router.get("/api/v1/auth/me", requireAuth(), async (req, res) => {
   }
 
   const user = await prisma.merchant.findUnique({
-    where: { publicId: id },
+    where: { id: pk },
     select: {
       id: true,
       email: true,
@@ -230,7 +241,8 @@ router.get("/api/v1/auth/me", requireAuth(), async (req, res) => {
 
 router.patch("/api/v1/auth/me/portal-environment", requireAuth(), async (req, res) => {
   const id = req.auth?.sub;
-  if (!id) {
+  const pk = portalAccountPkFromJwtSub(id);
+  if (pk == null) {
     res.status(401).json({ error: "unauthorized" });
     return;
   }
@@ -248,7 +260,7 @@ router.patch("/api/v1/auth/me/portal-environment", requireAuth(), async (req, re
   }
   const next =
     v === "sandbox" ? MerchantGatewayEnv.sandbox : MerchantGatewayEnv.live;
-  const gate = await assertPortalEnvironmentUpdateAllowed(id, next);
+  const gate = await assertPortalEnvironmentUpdateAllowed(pk, next);
   if (!gate.ok) {
     res.status(gate.status).json({
       error: gate.error,
@@ -258,12 +270,12 @@ router.patch("/api/v1/auth/me/portal-environment", requireAuth(), async (req, re
   }
   if (req.auth.role === PORTAL_ROLE_ADMIN) {
     await prisma.admin.update({
-      where: { publicId: id },
+      where: { id: pk },
       data: { portalEnvironment: next },
     });
   } else {
     await prisma.merchant.update({
-      where: { publicId: id },
+      where: { id: pk },
       data: { portalEnvironment: next },
     });
   }
@@ -405,14 +417,19 @@ async function changePasswordHandler(req, res) {
     res.status(401).json({ error: "unauthorized" });
     return;
   }
+  const pk = portalAccountPkFromJwtSub(id);
+  if (pk == null) {
+    res.status(401).json({ error: "unauthorized" });
+    return;
+  }
   const pwdRow =
     jwtRole === PORTAL_ROLE_ADMIN
       ? await prisma.admin.findUnique({
-          where: { publicId: id },
+          where: { id: pk },
           select: { passwordHash: true, isActive: true, deletedAt: true },
         })
       : await prisma.merchant.findUnique({
-          where: { publicId: id },
+          where: { id: pk },
           select: { passwordHash: true, isActive: true, deletedAt: true },
         });
   if (!pwdRow?.isActive || pwdRow.deletedAt) {
@@ -427,7 +444,7 @@ async function changePasswordHandler(req, res) {
   const hashed = await bcrypt.hash(newPassword, 10);
   if (jwtRole === PORTAL_ROLE_ADMIN) {
     await prisma.admin.update({
-      where: { publicId: id },
+      where: { id: pk },
       data: {
         passwordHash: hashed,
         passwordResetTokenHash: null,
@@ -436,7 +453,7 @@ async function changePasswordHandler(req, res) {
     });
   } else {
     await prisma.merchant.update({
-      where: { publicId: id },
+      where: { id: pk },
       data: {
         passwordHash: hashed,
         passwordResetTokenHash: null,

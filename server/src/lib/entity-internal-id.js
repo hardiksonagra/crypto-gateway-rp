@@ -1,31 +1,77 @@
 import { prisma } from "./prisma.js";
 
 /**
- * Resolve a merchant row’s numeric PK from JWT `sub`, route param (numeric or legacy `public_id`), or an existing number.
+ * Prisma `where` fragment `{ id: n }` from JWT `sub` or route param (digits only).
+ *
+ * @param {unknown} raw
+ * @returns {{ id: number } | null}
+ */
+export function merchantWhereFromRouteParam(raw) {
+  const s = String(raw ?? "").trim();
+  if (!/^\d+$/.test(s)) return null;
+  const n = parseInt(s, 10);
+  if (!Number.isInteger(n) || n < 1) return null;
+  return { id: n };
+}
+
+/**
+ * @param {string} raw
+ * @returns {{ id: number } | null}
+ */
+export function userWhereFromRouteParam(raw) {
+  return merchantWhereFromRouteParam(raw);
+}
+
+/**
+ * @param {string} raw
+ * @returns {{ id: number } | null}
+ */
+export function walletWhereFromRouteParam(raw) {
+  return merchantWhereFromRouteParam(raw);
+}
+
+/**
+ * @param {string} raw
+ * @returns {{ id: number } | null}
+ */
+export function transactionWhereFromRouteParam(raw) {
+  return merchantWhereFromRouteParam(raw);
+}
+
+/**
+ * @param {string} raw
+ * @returns {{ id: number } | null}
+ */
+export function merchantSettlementWhereFromRouteParam(raw) {
+  return merchantWhereFromRouteParam(raw);
+}
+
+/**
+ * @param {string} raw
+ * @returns {{ id: number } | null}
+ */
+export function scannerStateWhereFromRouteParam(raw) {
+  return merchantWhereFromRouteParam(raw);
+}
+
+/**
+ * Resolve merchant numeric PK from JWT `sub`, route param, or an existing number.
  *
  * @param {unknown} opaque
  * @returns {Promise<number | null>}
  */
 export async function resolveMerchantInternalId(opaque) {
-  if (typeof opaque === "number" && Number.isInteger(opaque)) {
+  if (typeof opaque === "number" && Number.isInteger(opaque) && opaque >= 1) {
     const row = await prisma.merchant.findUnique({
       where: { id: opaque },
       select: { id: true },
     });
     return row?.id ?? null;
   }
-  const s = String(opaque ?? "").trim();
-  if (!s) return null;
-  if (/^\d+$/.test(s)) {
-    const n = parseInt(s, 10);
-    const row = await prisma.merchant.findUnique({
-      where: { id: n },
-      select: { id: true },
-    });
-    return row?.id ?? null;
-  }
+  const w = merchantWhereFromRouteParam(opaque);
+  if (!w) return null;
   const row = await prisma.merchant.findUnique({
-    where: { publicId: s },
+    where: w,
     select: { id: true },
   });
   return row?.id ?? null;
@@ -36,90 +82,24 @@ export async function resolveMerchantInternalId(opaque) {
  * @returns {Promise<number | null>}
  */
 export async function resolveAdminInternalId(opaque) {
-  if (typeof opaque === "number" && Number.isInteger(opaque)) {
+  if (typeof opaque === "number" && Number.isInteger(opaque) && opaque >= 1) {
     const row = await prisma.admin.findUnique({
       where: { id: opaque },
       select: { id: true },
     });
     return row?.id ?? null;
   }
-  const s = String(opaque ?? "").trim();
-  if (!s) return null;
-  if (/^\d+$/.test(s)) {
-    const n = parseInt(s, 10);
-    const row = await prisma.admin.findUnique({
-      where: { id: n },
-      select: { id: true },
-    });
-    return row?.id ?? null;
-  }
+  const w = merchantWhereFromRouteParam(opaque);
+  if (!w) return null;
   const row = await prisma.admin.findUnique({
-    where: { publicId: s },
+    where: w,
     select: { id: true },
   });
   return row?.id ?? null;
 }
 
 /**
- * Prisma `where` for a merchant looked up by admin route param (numeric id or `public_id`).
- *
- * @param {string} raw
- * @returns {{ OR: Array<{ id: number } | { publicId: string }> } | null}
- */
-export function merchantWhereFromRouteParam(raw) {
-  const s = String(raw ?? "").trim();
-  if (!s) return null;
-  const or = /** @type {Array<{ id: number } | { publicId: string }>} */ ([
-    { publicId: s },
-  ]);
-  if (/^\d+$/.test(s)) {
-    or.unshift({ id: parseInt(s, 10) });
-  }
-  return { OR: or };
-}
-
-/**
- * @param {string} raw
- * @returns {{ OR: Array<{ id: number } | { publicId: string }> } | null}
- */
-export function userWhereFromRouteParam(raw) {
-  return merchantWhereFromRouteParam(raw);
-}
-
-/**
- * @param {string} raw
- * @returns {{ OR: Array<{ id: number } | { publicId: string }> } | null}
- */
-export function walletWhereFromRouteParam(raw) {
-  return merchantWhereFromRouteParam(raw);
-}
-
-/**
- * @param {string} raw
- * @returns {{ OR: Array<{ id: number } | { publicId: string }> } | null}
- */
-export function transactionWhereFromRouteParam(raw) {
-  return merchantWhereFromRouteParam(raw);
-}
-
-/**
- * @param {string} raw
- * @returns {{ OR: Array<{ id: number } | { publicId: string }> } | null}
- */
-export function merchantSettlementWhereFromRouteParam(raw) {
-  return merchantWhereFromRouteParam(raw);
-}
-
-/**
- * @param {string} raw
- * @returns {{ OR: Array<{ id: number } | { publicId: string }> } | null}
- */
-export function scannerStateWhereFromRouteParam(raw) {
-  return merchantWhereFromRouteParam(raw);
-}
-
-/**
- * End-user row: gateway sends legacy `public_id` or numeric id string.
+ * Gateway / portal: end-user id is the integer `users.id` (string or number in JSON).
  *
  * @param {string} rawUserId
  * @param {number} merchantInternalId
@@ -130,19 +110,11 @@ export async function resolveUserScopedInternalId(
   merchantInternalId,
   environment,
 ) {
-  const s = String(rawUserId ?? "").trim();
-  if (!s) return null;
-  if (/^\d+$/.test(s)) {
-    const n = parseInt(s, 10);
-    const row = await prisma.user.findFirst({
-      where: { id: n, merchantId: merchantInternalId, environment },
-      select: { id: true },
-    });
-    return row?.id ?? null;
-  }
+  const w = userWhereFromRouteParam(String(rawUserId ?? ""));
+  if (!w) return null;
   const row = await prisma.user.findFirst({
     where: {
-      publicId: s,
+      ...w,
       merchantId: merchantInternalId,
       environment,
     },
@@ -152,23 +124,13 @@ export async function resolveUserScopedInternalId(
 }
 
 /**
- * Wallet by client-provided id (numeric or `public_id`).
- *
  * @param {string} rawWalletId
  */
 export async function resolveWalletInternalId(rawWalletId) {
-  const s = String(rawWalletId ?? "").trim();
-  if (!s) return null;
-  if (/^\d+$/.test(s)) {
-    const n = parseInt(s, 10);
-    const row = await prisma.wallet.findUnique({
-      where: { id: n },
-      select: { id: true },
-    });
-    return row?.id ?? null;
-  }
+  const w = walletWhereFromRouteParam(String(rawWalletId ?? ""));
+  if (!w) return null;
   const row = await prisma.wallet.findUnique({
-    where: { publicId: s },
+    where: w,
     select: { id: true },
   });
   return row?.id ?? null;
@@ -178,25 +140,17 @@ export async function resolveWalletInternalId(rawWalletId) {
  * @param {unknown} txOpaque
  */
 export async function resolveTransactionInternalId(txOpaque) {
-  if (typeof txOpaque === "number" && Number.isInteger(txOpaque)) {
+  if (typeof txOpaque === "number" && Number.isInteger(txOpaque) && txOpaque >= 1) {
     const row = await prisma.transaction.findUnique({
       where: { id: txOpaque },
       select: { id: true },
     });
     return row?.id ?? null;
   }
-  const s = String(txOpaque ?? "").trim();
-  if (!s) return null;
-  if (/^\d+$/.test(s)) {
-    const n = parseInt(s, 10);
-    const row = await prisma.transaction.findUnique({
-      where: { id: n },
-      select: { id: true },
-    });
-    return row?.id ?? null;
-  }
+  const w = transactionWhereFromRouteParam(String(txOpaque ?? ""));
+  if (!w) return null;
   const row = await prisma.transaction.findUnique({
-    where: { publicId: s },
+    where: w,
     select: { id: true },
   });
   return row?.id ?? null;

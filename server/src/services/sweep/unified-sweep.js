@@ -206,8 +206,11 @@ export async function sweepUnifiedOne(walletId) {
       : /^\d+$/.test(String(walletId ?? "").trim())
         ? parseInt(String(walletId).trim(), 10)
         : null;
+  if (wid == null) {
+    return { ok: false, error: "WALLET_NOT_FOUND" };
+  }
   const wallet = await prisma.wallet.findFirst({
-    where: wid != null ? { id: wid } : { publicId: String(walletId ?? "").trim() },
+    where: { id: wid },
     select: { id: true, chain: true, currency: true, network: true },
   });
 

@@ -23,7 +23,7 @@ export function parseGatewayEnvironmentFromBody(body) {
 /**
  * If portal environment disagrees with gateway enable flags, persist a valid value (merchant rows only).
  *
- * @param {string | number} userId — numeric PK, or JWT `sub` / `public_id` string.
+ * @param {string | number} userId — account integer `id` or JWT `sub` (numeric string).
  * @returns {Promise<{ portalEnvironment: import("@prisma/client").MerchantGatewayEnv; liveGatewayEnabled: boolean; sandboxGatewayEnabled: boolean } | null>}
  */
 export async function ensureMerchantPortalEnvironmentConsistent(userId) {

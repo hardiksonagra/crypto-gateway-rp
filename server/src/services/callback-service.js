@@ -20,9 +20,7 @@ export function buildPaymentSuccessWebhookBody(tx) {
   const merchant = u?.merchant ?? tx.wallet.merchant;
   return {
     transaction_id: tx.id,
-    transaction_public_id: tx.publicId,
     wallet_id: tx.walletId,
-    wallet_public_id: tx.wallet.publicId,
     tx_hash: tx.txHash,
     amount: tx.amount,
     token_decimals: tx.tokenDecimals,
@@ -36,7 +34,6 @@ export function buildPaymentSuccessWebhookBody(tx) {
     confirmations: tx.confirmations,
     external_user_id: u?.externalUserId ?? "",
     merchant_id: merchant.id,
-    merchant_public_id: merchant.publicId,
     gateway_environment: u?.environment ?? tx.wallet.environment,
   };
 }
@@ -281,9 +278,16 @@ export async function redeliverPaymentSuccessWebhook(txId, merchantId, audit = {
   if (!txw) {
     return { ok: false, code: "transaction_not_found" };
   }
+  const mid =
+    typeof merchantId === "number" && Number.isInteger(merchantId) && merchantId >= 1
+      ? merchantId
+      : parseInt(String(merchantId ?? "").trim(), 10);
+  if (!Number.isInteger(mid) || mid < 1) {
+    return { ok: false, code: "transaction_not_found" };
+  }
   const tx = await prisma.transaction.findFirst({
     where: {
-      AND: [txw, { wallet: { merchant: { publicId: merchantId } } }],
+      AND: [txw, { wallet: { merchantId: mid } }],
     },
     include: {
       wallet: { include: { merchant: true } },

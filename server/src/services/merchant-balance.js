@@ -16,7 +16,7 @@ function bigIntFromPgNumericText(s) {
 }
 
 /**
- * @param {string | number} merchantOpaqueId — internal id, numeric string, or `public_id` / JWT `sub`.
+ * @param {string | number} merchantOpaqueId — merchant integer `id`, numeric string, or JWT `sub`.
  * @param {import("@prisma/client").MerchantGatewayEnv} [environment]
  */
 export async function computeMerchantBalances(

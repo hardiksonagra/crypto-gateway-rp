@@ -36,7 +36,7 @@ export function liveWorkerWalletScanFilter() {
 }
 
 /**
- * @param {string | number} walletIdRaw — numeric id or wallet `public_id`.
+ * @param {string | number} walletIdRaw — wallet integer `id` (digits only as string).
  * @param {{ merchantId?: number | null, asAdmin?: boolean }} opts
  */
 export async function reactivateWalletDepositScan(walletIdRaw, opts = {}) {
