@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { Chain, TxStatus } from "@prisma/client";
 import { formatAtomicAmountString } from "../lib/format-atomic-amount.js";
 import { prisma } from "../lib/prisma.js";
 import { re } from "../config/runtime-env.js";
@@ -32,6 +33,9 @@ import {
 
 const router = Router();
 
+/** @type {ReadonlySet<string>} */
+const CHAIN_QUERY_VALUES = new Set(Object.values(Chain));
+
 function paymentPageBaseUrl() {
   const raw = re.paymentPagePublicUrl.trim() || re.appPublicUrl;
   return String(raw).replace(/\/+$/, "");
@@ -50,6 +54,43 @@ function auditGatewayApi(req, partial) {
     ...partial,
   });
 }
+
+/**
+ * Lightweight poll for the checkout page: same wallet as the payment link token,
+ * no address/currency query params (avoids client/server mismatch vs `/transactions`).
+ */
+router.get("/api/v1/gateway/payment-session/:token/poll", async (req, res) => {
+  try {
+    const rawToken =
+      typeof req.params.token === "string" ? req.params.token.trim() : "";
+    const v = verifyPaymentLinkToken(rawToken);
+    if (!v) {
+      res.status(410).json({ error: "payment_link_invalid_or_expired" });
+      return;
+    }
+    const wid = await resolveWalletInternalId(String(v.walletId ?? ""));
+    if (wid == null) {
+      res.status(410).json({ error: "payment_link_invalid_or_expired" });
+      return;
+    }
+    const w = await prisma.wallet.findUnique({
+      where: { id: wid },
+      select: { id: true },
+    });
+    if (!w) {
+      res.status(410).json({ error: "payment_link_invalid_or_expired" });
+      return;
+    }
+    const successRow = await prisma.transaction.findFirst({
+      where: { walletId: wid, status: TxStatus.success },
+      select: { id: true },
+    });
+    res.json({ has_successful_deposit: Boolean(successRow) });
+  } catch (e) {
+    logger.error("gateway payment-session poll failed", { err: String(e) });
+    res.status(500).json({ error: "internal error" });
+  }
+});
 
 router.get("/api/v1/gateway/payment-session/:token", async (req, res) => {
   try {
@@ -624,6 +665,13 @@ router.get("/api/v1/gateway/transactions", async (req, res) => {
     typeof req.query.network === "string" ? req.query.network : "",
   );
 
+  const chainQ =
+    typeof req.query.chain === "string" ? req.query.chain.trim().toUpperCase() : "";
+  const chainFilter =
+    chainQ && CHAIN_QUERY_VALUES.has(chainQ)
+      ? /** @type {import("@prisma/client").Chain} */ (chainQ)
+      : undefined;
+
   const walletAddressFilter = address.startsWith("0x")
     ? { equals: address, mode: "insensitive" }
     : address;
@@ -632,8 +680,12 @@ router.get("/api/v1/gateway/transactions", async (req, res) => {
     where: {
       wallet: {
         address: walletAddressFilter,
+        ...(chainFilter ? { chain: chainFilter } : {}),
         ...(currencyF && networkF
-          ? { currency: currencyF, network: networkF }
+          ? {
+              currency: { equals: currencyF, mode: "insensitive" },
+              network: { equals: networkF, mode: "insensitive" },
+            }
           : {}),
       },
     },

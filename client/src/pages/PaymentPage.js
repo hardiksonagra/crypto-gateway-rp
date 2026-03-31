@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import QRCode from "react-qr-code";
 import { apiUrl } from "../api";
+import { BrandMark } from "../components/BrandMark.js";
 
 /**
  * @param {number} totalSec
@@ -20,12 +21,18 @@ export default function PaymentPage() {
   const [loading, setLoading] = useState(true);
   const [remainSec, setRemainSec] = useState(null);
   const [copyState, setCopyState] = useState("idle");
+  const [paidNoReturnUrl, setPaidNoReturnUrl] = useState(false);
   const didRedirect = useRef(false);
+  const redirectUrlRef = useRef(null);
 
   const assignRedirect = useCallback((url) => {
     if (!url || didRedirect.current) return;
-    didRedirect.current = true;
-    window.location.assign(url);
+    try {
+      window.location.assign(url);
+      didRedirect.current = true;
+    } catch {
+      /* allow poll to retry if navigation was blocked */
+    }
   }, []);
 
   useEffect(() => {
@@ -63,6 +70,7 @@ export default function PaymentPage() {
     typeof session?.redirect_url === "string" && session.redirect_url.trim()
       ? session.redirect_url.trim()
       : null;
+  redirectUrlRef.current = redirectUrl;
 
   useEffect(() => {
     if (!expiresAt) {
@@ -79,34 +87,31 @@ export default function PaymentPage() {
   }, [expiresAt]);
 
   useEffect(() => {
-    if (!session?.address || !redirectUrl) return;
-    const { address, currency, network } = session;
+    if (!token || !session || paidNoReturnUrl) return;
     let cancelled = false;
     async function check() {
-      const q = new URLSearchParams({
-        address,
-        currency: currency || "",
-        network: network || "",
-      });
       try {
-        const res = await fetch(apiUrl(`/api/v1/gateway/transactions?${q}`));
+        const res = await fetch(
+          apiUrl(`/api/v1/gateway/payment-session/${encodeURIComponent(token)}/poll`),
+        );
+        if (!res.ok) return;
         const data = await res.json().catch(() => ({}));
         if (cancelled || didRedirect.current) return;
-        const txs = Array.isArray(data.transactions) ? data.transactions : [];
-        if (txs.some((t) => t.status === "success")) {
-          assignRedirect(redirectUrl);
-        }
+        if (!data?.has_successful_deposit) return;
+        const url = redirectUrlRef.current;
+        if (url) assignRedirect(url);
+        else setPaidNoReturnUrl(true);
       } catch {
         /* ignore transient errors */
       }
     }
-    const id = setInterval(check, 4000);
+    const id = setInterval(check, 2000);
     check();
     return () => {
       cancelled = true;
       clearInterval(id);
     };
-  }, [session, redirectUrl, assignRedirect]);
+  }, [token, session, assignRedirect, paidNoReturnUrl]);
 
   const ttlNote = useMemo(() => {
     const m = session?.deposit_scan_ttl_minutes;
@@ -160,7 +165,24 @@ export default function PaymentPage() {
   return (
     <div className="mesh-bg flex min-h-screen flex-col items-center justify-center px-4 py-10">
       <div className="glass w-full max-w-lg rounded-2xl p-6 sm:p-8">
+        {paidNoReturnUrl && (
+          <div className="mb-4 rounded-xl border border-emerald-400/30 bg-emerald-500/10 px-4 py-3 text-center">
+            <p className="text-sm font-medium text-emerald-100/95">Payment received</p>
+            <p className="mt-1 text-xs text-white/55">
+              This checkout had no return URL. You can close this page.
+            </p>
+          </div>
+        )}
+        {!redirectUrl && !paidNoReturnUrl && (
+          <p className="mb-4 rounded-xl border border-amber-400/25 bg-amber-500/8 px-3 py-2 text-center text-xs text-amber-100/85">
+            No return URL was provided for this link, so you will not be redirected automatically after
+            payment.
+          </p>
+        )}
         <div className="text-center">
+          <div className="mb-5 flex justify-center">
+            <BrandMark variant="full" className="mx-auto max-h-9 max-w-[200px]" />
+          </div>
           <p className="font-display text-[10px] font-bold tracking-[0.2em] text-white/45 uppercase">
             Send {currency}
           </p>
