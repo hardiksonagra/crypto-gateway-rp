@@ -1,5 +1,5 @@
 import { Link, Outlet, useNavigate } from "react-router-dom";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   api,
   clearImpersonationAdminToken,
@@ -23,7 +23,7 @@ import {
   IconTransactions,
   IconUsers,
   IconWallet,
-  IconWithdraw,
+  IconSettlements,
 } from "./shellNavIcons.js";
 
 const primaryNav = [
@@ -31,7 +31,7 @@ const primaryNav = [
   { to: "/users", label: "Users", Icon: IconUsers },
   { to: "/wallets", label: "Wallets", Icon: IconWallet },
   { to: "/transactions", label: "Transactions", Icon: IconTransactions },
-  { to: "/withdraw", label: "Withdraw", Icon: IconWithdraw },
+  { to: "/settlements", label: "Settlements", Icon: IconSettlements },
 ];
 
 const settingsNav = [
@@ -54,12 +54,6 @@ export default function MerchantShell() {
     sandboxGatewayEnabled,
     flagsLoading: portalEnvFlagsLoading,
   } = useMerchantPortalEnvironment();
-
-  const primaryNavItems = useMemo(() => {
-    const hideWithdraw = !portalEnvFlagsLoading && portalEnvironment === "sandbox";
-    if (!hideWithdraw) return primaryNav;
-    return primaryNav.filter((l) => l.to !== "/withdraw");
-  }, [portalEnvironment, portalEnvFlagsLoading]);
 
   useEffect(() => {
     if (!getToken()) {
@@ -149,7 +143,7 @@ export default function MerchantShell() {
         ) : null}
 
         <nav className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto" aria-label="Main">
-          {primaryNavItems.map((l) => (
+          {primaryNav.map((l) => (
             <ShellNavLink
               key={l.to}
               to={l.to}
@@ -232,7 +226,7 @@ export default function MerchantShell() {
             <div className="mb-6 rounded-xl border border-sky-400/25 bg-sky-500/10 px-4 py-3 text-sm text-sky-100/95">
               <p className="text-pretty">
                 You are in <span className="font-medium text-white">sandbox</span> mode. Dashboard,
-                Users, and Transactions show test data only. To use live data and withdrawals, open{" "}
+                Users, and Transactions show test data only. To use live data and settlements, open{" "}
                 <Link
                   to="/profile"
                   className="font-medium text-white underline decoration-sky-400/50 underline-offset-2 hover:decoration-sky-300/80"

@@ -17,6 +17,10 @@ const initial = {
   default_chains: ["TRON"],
   supported_deposit_rails: ["USDT|TRC20"],
   callback_url: "",
+  mdr_percent: 0,
+  settlement_rate_percent: 0,
+  min_settlement_amount: "0",
+  settlement_period_days: 0,
   live_gateway_enabled: true,
   sandbox_gateway_enabled: true,
 };
@@ -55,6 +59,10 @@ export default function MerchantCreate() {
                   default_chains: values.default_chains,
                   supported_deposit_rails: values.supported_deposit_rails,
                   callback_url: values.callback_url?.trim() || undefined,
+                  mdr_percent: values.mdr_percent,
+                  settlement_rate_percent: values.settlement_rate_percent,
+                  min_settlement_amount: values.min_settlement_amount?.trim() || "0",
+                  settlement_period_days: values.settlement_period_days,
                   live_gateway_enabled: values.live_gateway_enabled,
                   sandbox_gateway_enabled: values.sandbox_gateway_enabled,
                 },
@@ -153,6 +161,92 @@ export default function MerchantCreate() {
                   component="p"
                   className="mt-1 text-xs text-rose-400"
                 />
+              </div>
+              <div>
+                <label className={label} htmlFor="mdr_percent">
+                  MDR (merchant transaction rate) %
+                </label>
+                <Field
+                  id="mdr_percent"
+                  name="mdr_percent"
+                  type="number"
+                  step="0.01"
+                  min={0}
+                  max={100}
+                  className={input}
+                />
+                <ErrorMessage
+                  name="mdr_percent"
+                  component="p"
+                  className="mt-1 text-xs text-rose-400"
+                />
+              </div>
+              <div>
+                <label className={label} htmlFor="settlement_rate_percent">
+                  Settlement rate %
+                </label>
+                <Field
+                  id="settlement_rate_percent"
+                  name="settlement_rate_percent"
+                  type="number"
+                  step="0.01"
+                  min={0}
+                  max={100}
+                  className={input}
+                />
+                <ErrorMessage
+                  name="settlement_rate_percent"
+                  component="p"
+                  className="mt-1 text-xs text-rose-400"
+                />
+                <p className="mt-1 text-[10px] text-white/35">
+                  MDR + settlement cannot exceed 100%. Shown on the merchant dashboard against gross
+                  deposits.
+                </p>
+              </div>
+              <div className="lg:col-span-2">
+                <label className={label} htmlFor="min_settlement_amount">
+                  Minimum settlement (token units, 0 = no minimum)
+                </label>
+                <Field
+                  id="min_settlement_amount"
+                  name="min_settlement_amount"
+                  className={`${input} font-mono`}
+                  placeholder="0"
+                  autoComplete="off"
+                />
+                <ErrorMessage
+                  name="min_settlement_amount"
+                  component="p"
+                  className="mt-1 text-xs text-rose-400"
+                />
+                <p className="mt-1 text-[10px] text-white/35">
+                  Enter the threshold in normal token amount (e.g. 3000 for three thousand USDT), not the
+                  chain smallest-unit integer. Applies per asset using that token&apos;s decimals.
+                </p>
+              </div>
+              <div>
+                <label className={label} htmlFor="settlement_period_days">
+                  Settlement period (days)
+                </label>
+                <Field
+                  id="settlement_period_days"
+                  name="settlement_period_days"
+                  type="number"
+                  min={0}
+                  max={3650}
+                  step={1}
+                  className={input}
+                />
+                <ErrorMessage
+                  name="settlement_period_days"
+                  component="p"
+                  className="mt-1 text-xs text-rose-400"
+                />
+                <p className="mt-1 text-[10px] text-white/35">
+                  0 = no hold. If 2, successful deposits from the last 2 days cannot be included in
+                  settlement gross (per asset).
+                </p>
               </div>
               <div className="lg:col-span-2">
                 <label className={label} htmlFor="callback_url">

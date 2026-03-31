@@ -42,7 +42,7 @@ export async function computeMerchantBalances(
   for (const r of /** @type {{ chain: string, tokenSymbol: string, tokenDecimals: number, sumAmount: string }[]} */ (
     inboundRows
   )) {
-    const k = `${r.chain}:${r.tokenSymbol}`;
+    const k = `${r.chain}:${r.tokenSymbol}:${r.tokenDecimals}`;
     map.set(k, {
       chain: r.chain,
       token_symbol: r.tokenSymbol,
@@ -66,19 +66,43 @@ export async function computeMerchantBalances(
     for (const r of /** @type {{ chain: string, tokenSymbol: string, sumAmount: string }[]} */ (
       outRows
     )) {
-      const k = `${r.chain}:${r.tokenSymbol}`;
       const n = bigIntFromPgNumericText(r.sumAmount);
-      const prev = map.get(k);
-      if (prev) {
-        prev.bal -= n;
-      } else {
-        map.set(k, {
-          chain: r.chain,
-          token_symbol: r.tokenSymbol,
-          token_decimals: 18,
-          bal: -n,
-        });
+      for (const v of map.values()) {
+        if (v.chain === r.chain && v.token_symbol === r.tokenSymbol) {
+          v.bal -= n;
+          break;
+        }
       }
+    }
+  }
+
+  const settleRows = await prisma.$queryRaw`
+    SELECT
+      ms.chain::text AS chain,
+      ms.token_symbol AS "tokenSymbol",
+      ms.token_decimals AS "tokenDecimals",
+      SUM(ms.net_amount::numeric)::text AS "sumAmount"
+    FROM "merchant_settlements" ms
+    WHERE ms.merchant_id = ${merchantId}
+      AND ms.environment = ${environment}::"MerchantGatewayEnv"
+    GROUP BY ms.chain, ms.token_symbol, ms.token_decimals
+  `;
+
+  for (const r of /** @type {{ chain: string, tokenSymbol: string, tokenDecimals: number, sumAmount: string }[]} */ (
+    settleRows
+  )) {
+    const k = `${r.chain}:${r.tokenSymbol}:${r.tokenDecimals}`;
+    const n = bigIntFromPgNumericText(r.sumAmount);
+    const prev = map.get(k);
+    if (prev) {
+      prev.bal -= n;
+    } else {
+      map.set(k, {
+        chain: r.chain,
+        token_symbol: r.tokenSymbol,
+        token_decimals: r.tokenDecimals,
+        bal: -n,
+      });
     }
   }
 
@@ -96,7 +120,7 @@ export async function computeMerchantBalances(
 }
 
 export async function merchantBalanceForAsset(merchantId, chain, tokenSymbol) {
-  const [inRow, outRow] = await Promise.all([
+  const [inRow, outRow, settleRow] = await Promise.all([
     prisma.$queryRaw`
       SELECT COALESCE(SUM(t.amount::numeric), 0)::text AS s
       FROM "transactions" t
@@ -115,11 +139,22 @@ export async function merchantBalanceForAsset(merchantId, chain, tokenSymbol) {
         AND chain = ${chain}::"Chain"
         AND token_symbol = ${tokenSymbol}
     `,
+    prisma.$queryRaw`
+      SELECT COALESCE(SUM(net_amount::numeric), 0)::text AS s
+      FROM "merchant_settlements"
+      WHERE merchant_id = ${merchantId}
+        AND environment = ${MerchantGatewayEnv.live}::"MerchantGatewayEnv"
+        AND chain = ${chain}::"Chain"
+        AND token_symbol = ${tokenSymbol}
+    `,
   ]);
 
   const inS = /** @type {{ s: string }[]} */ (inRow)[0]?.s ?? "0";
   const outS = /** @type {{ s: string }[]} */ (outRow)[0]?.s ?? "0";
+  const settleS = /** @type {{ s: string }[]} */ (settleRow)[0]?.s ?? "0";
   const bal =
-    bigIntFromPgNumericText(inS) - bigIntFromPgNumericText(outS);
+    bigIntFromPgNumericText(inS) -
+    bigIntFromPgNumericText(outS) -
+    bigIntFromPgNumericText(settleS);
   return bal > 0n ? bal : 0n;
 }

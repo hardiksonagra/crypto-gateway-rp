@@ -5,10 +5,8 @@ import {
   MERCHANT_SETTINGS_CHAIN_VALUES,
 } from "./depositRailOptions.js";
 
-/** All chains (filters, withdrawals, history). */
+/** All chains (filters, history). */
 export const CHAIN_VALUES = ["TRON", "SOLANA", "ETH", "BNB", "TON"];
-
-export const EVM_CHAIN_VALUES = ["ETH", "BNB"];
 
 const defaultChainsField = yup
   .array()
@@ -49,6 +47,66 @@ const optionalHttpsUrl = yup
     }
   });
 
+const feePercentField = yup
+  .number()
+  .transform((v, o) => {
+    const raw = o.originalValue;
+    if (raw === "" || raw == null) return 0;
+    return v;
+  })
+  .min(0, "Min 0%")
+  .max(100, "Max 100%")
+  .required();
+
+const mdrPercentField = feePercentField.test(
+  "fee-sum-mdr",
+  "MDR + settlement cannot exceed 100%",
+  function mdrSum(v) {
+    const s = Number(this.parent.settlement_rate_percent) || 0;
+    return (Number(v) || 0) + s <= 100;
+  },
+);
+
+const settlementRatePercentField = feePercentField.test(
+  "fee-sum-settlement",
+  "MDR + settlement cannot exceed 100%",
+  function settlementSum(v) {
+    const m = Number(this.parent.mdr_percent) || 0;
+    return m + (Number(v) || 0) <= 100;
+  },
+);
+
+/** Minimum settlement in token units (e.g. 3000 = three thousand tokens), not chain raw integer; empty → "0". */
+const minSettlementAmountField = yup
+  .string()
+  .trim()
+  .transform((v) => (v === "" || v == null ? "0" : v))
+  .test(
+    "human-tokens",
+    "Use a non-negative token amount (e.g. 3000 or 0.002), digits and at most one decimal point",
+    (v) => {
+      const s = String(v ?? "0");
+      if (s === "0" || /^0\.0*$/.test(s)) return true;
+      if (!/^(?:\d+\.?\d*|\.\d+)$/.test(s)) return false;
+      const dot = s.indexOf(".");
+      const frac = dot === -1 ? "" : s.slice(dot + 1);
+      return frac.length <= 36;
+    },
+  )
+  .required();
+
+const settlementPeriodDaysField = yup
+  .number()
+  .transform((v, o) => {
+    const raw = o.originalValue;
+    if (raw === "" || raw == null) return 0;
+    return v;
+  })
+  .integer("Use whole days only (e.g. 1, 2, 3)")
+  .min(0, "Min 0 days")
+  .max(3650, "Max 3650 days")
+  .required();
+
 export const merchantCreateSchema = yup.object({
   email: yup
     .string()
@@ -68,6 +126,10 @@ export const merchantCreateSchema = yup.object({
   default_chains: defaultChainsField,
   supported_deposit_rails: supportedDepositRailsField,
   callback_url: optionalHttpsUrl,
+  mdr_percent: mdrPercentField,
+  settlement_rate_percent: settlementRatePercentField,
+  min_settlement_amount: minSettlementAmountField,
+  settlement_period_days: settlementPeriodDaysField,
   live_gateway_enabled: yup.boolean().required(),
   sandbox_gateway_enabled: yup.boolean().required(),
 });
@@ -88,6 +150,10 @@ export const merchantEditSchema = yup.object({
     .optional()
     .min(8, "Password must be at least 8 characters"),
   regenerate_api_key: yup.boolean().required(),
+  mdr_percent: mdrPercentField,
+  settlement_rate_percent: settlementRatePercentField,
+  min_settlement_amount: minSettlementAmountField,
+  settlement_period_days: settlementPeriodDaysField,
   live_gateway_enabled: yup.boolean().required(),
   sandbox_gateway_enabled: yup.boolean().required(),
 });
@@ -133,16 +199,6 @@ export const adminTransactionsFilterSchema = yup.object({
   status: yup.string().oneOf(["", "pending", "success", "failed"]),
   token_symbol: yup.string(),
   address: yup.string(),
-});
-
-export const adminWithdrawalsFilterSchema = yup.object({
-  merchant_id: yup.string(),
-  chain: chainFilterField,
-  status: yup
-    .string()
-    .oneOf(["", "pending", "processing", "completed", "failed"]),
-  token_symbol: yup.string(),
-  to_address: yup.string(),
 });
 
 /** Filters for transactions on merchant detail (merchant id is fixed in the page). */
@@ -196,15 +252,6 @@ export const merchantTransactionsFilterSchema = yup.object({
   external_user_id: yup.string(),
 });
 
-export const merchantWithdrawalsListFilterSchema = yup.object({
-  chain: chainFilterField,
-  status: yup
-    .string()
-    .oneOf(["", "pending", "processing", "completed", "failed"]),
-  token_symbol: yup.string(),
-  to_address: yup.string(),
-});
-
 export const loginSchema = yup.object({
   email: yup
     .string()
@@ -220,26 +267,11 @@ export const merchantSettingsSchema = yup.object({
   supported_deposit_rails: supportedDepositRailsField,
 });
 
-export const merchantWithdrawSchema = yup.object({
-  chain: yup
-    .string()
-    .oneOf([...EVM_CHAIN_VALUES], "Pick an EVM chain")
-    .required("Chain is required"),
-  to_address: yup
+/** Filter admin settlement list + pending batch preview (merchant login email). */
+export const adminSettlementsFilterSchema = yup.object({
+  merchant_email: yup
     .string()
     .trim()
-    .required("Address is required")
-    .matches(/^0x[a-fA-F0-9]{40}$/, "Invalid EVM address (0x + 40 hex)"),
-  amount: yup
-    .string()
-    .trim()
-    .required("Amount is required")
-    .test("pos-int", "Enter a positive whole-number amount (e.g. wei)", (v) => {
-      try {
-        const b = BigInt(v);
-        return b > 0n;
-      } catch {
-        return false;
-      }
-    }),
+    .required("Merchant email is required")
+    .email("Enter a valid email"),
 });

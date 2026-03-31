@@ -320,6 +320,35 @@ export default function MerchantDetail() {
                 <p className="mt-1 text-sm text-white/80">{m.end_users_sandbox ?? 0}</p>
               </div>
               <div>
+                <p className="text-[10px] font-semibold tracking-wide text-white/40 uppercase">
+                  MDR (merchant transaction rate)
+                </p>
+                <p className="mt-1 font-mono text-sm text-white/80">
+                  {Number(m.mdr_percent ?? 0).toFixed(2)}%
+                </p>
+              </div>
+              <div>
+                <p className="text-[10px] font-semibold tracking-wide text-white/40 uppercase">Settlement rate</p>
+                <p className="mt-1 font-mono text-sm text-white/80">
+                  {Number(m.settlement_rate_percent ?? 0).toFixed(2)}%
+                </p>
+              </div>
+              <div>
+                <p className="text-[10px] font-semibold tracking-wide text-white/40 uppercase">
+                  Min settlement (token units)
+                </p>
+                <p className="mt-1 font-mono text-sm text-white/80">{m.min_settlement_amount ?? "0"}</p>
+                <p className="mt-0.5 text-[10px] text-white/35">
+                  Compared per asset using token decimals (not raw chain integer).
+                </p>
+              </div>
+              <div>
+                <p className="text-[10px] font-semibold tracking-wide text-white/40 uppercase">
+                  Settlement period (days)
+                </p>
+                <p className="mt-1 font-mono text-sm text-white/80">{m.settlement_period_days ?? 0}</p>
+              </div>
+              <div>
                 <p className="text-[10px] font-semibold tracking-wide text-white/40 uppercase">Live gateway</p>
                 <p className="mt-1 text-sm text-white/80">{m.live_gateway_enabled !== false ? "On" : "Off"}</p>
               </div>

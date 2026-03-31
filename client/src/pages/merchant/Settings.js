@@ -67,7 +67,7 @@ export default function MerchantSettings() {
             )}
           </p>
           <p className="mt-2 text-xs text-white/45">
-            Admins change these on Edit merchant. Withdrawals require live gateway. Sandbox data is
+            Admins change these on Edit merchant. Live gateway controls production API and portal data. Sandbox data is
             separate in the portal (Dashboard / Users / Transactions).
           </p>
         </div>

@@ -73,6 +73,22 @@ import {
   sweepUnifiedOne,
 } from "../services/sweep/unified-sweep.js";
 import crypto from "crypto";
+import fs from "fs";
+import {
+  isValidFeePercent,
+  parseFeePercent,
+  parseSettlementPeriodDays,
+  validateAndNormalizeHumanMinSettlement,
+} from "../lib/merchant-fee-math.js";
+import {
+  proofPathForFileName,
+  settlementProofUpload,
+} from "../lib/settlement-upload.js";
+import { computeMerchantBalances } from "../services/merchant-balance.js";
+import {
+  buildAllPendingPreviews,
+  executeBatchSettlement,
+} from "../services/settlement-batch.js";
 
 const router = Router();
 const adminOnly = requireAuth(PORTAL_ROLE_ADMIN);
@@ -364,6 +380,10 @@ router.get("/api/v1/admin/merchants", async (req, res) => {
         sandboxGatewayEnabled: true,
         portalEnvironment: true,
         createdAt: true,
+        mdrPercent: true,
+        settlementRatePercent: true,
+        minSettlementAmount: true,
+        settlementPeriodDays: true,
       },
     }),
   ]);
@@ -418,6 +438,10 @@ router.get("/api/v1/admin/merchants", async (req, res) => {
       sandbox_gateway_enabled: m.sandboxGatewayEnabled,
       portal_environment: m.portalEnvironment,
       created_at: m.createdAt,
+      mdr_percent: Number(m.mdrPercent),
+      settlement_rate_percent: Number(m.settlementRatePercent),
+      min_settlement_amount: m.minSettlementAmount,
+      settlement_period_days: m.settlementPeriodDays,
       end_users_live: liveUserCounts.get(m.id) ?? 0,
       end_users_sandbox: sandboxUserCounts.get(m.id) ?? 0,
     })),
@@ -467,6 +491,46 @@ router.post("/api/v1/admin/merchants", async (req, res) => {
   const password =
     body.password?.trim() || crypto.randomBytes(12).toString("base64url");
   const apiSecret = generateApiKey();
+
+  const mdrP = parseFeePercent(body.mdr_percent);
+  const settlementP = parseFeePercent(body.settlement_rate_percent);
+  if (mdrP === null || settlementP === null) {
+    res.status(400).json({ error: "invalid_fee_percent" });
+    return;
+  }
+  if (!isValidFeePercent(mdrP) || !isValidFeePercent(settlementP)) {
+    res.status(400).json({
+      error: "fee_percent_range",
+      message: "MDR and settlement rate must be between 0 and 100.",
+    });
+    return;
+  }
+  if (mdrP + settlementP > 100) {
+    res.status(400).json({
+      error: "fee_percent_sum",
+      message: "MDR + settlement rate cannot exceed 100%.",
+    });
+    return;
+  }
+
+  const minSettle = validateAndNormalizeHumanMinSettlement(body.min_settlement_amount);
+  if (!minSettle.ok) {
+    res.status(400).json({
+      error: "invalid_min_settlement_amount",
+      message: minSettle.error,
+    });
+    return;
+  }
+
+  const periodDays = parseSettlementPeriodDays(body.settlement_period_days);
+  if (periodDays === null) {
+    res.status(400).json({
+      error: "invalid_settlement_period_days",
+      message: "Use a whole number of days from 0 to 3650.",
+    });
+    return;
+  }
+
   try {
     const row = await prisma.merchant.create({
       data: {
@@ -484,6 +548,10 @@ router.post("/api/v1/admin/merchants", async (req, res) => {
         sandboxApiKeyHash: hashApiKey(apiSecret),
         sandboxApiKeyHint: apiSecret.slice(-6),
         sandboxApiKeyCipher: encryptMerchantApiKey(apiSecret),
+        mdrPercent: mdrP,
+        settlementRatePercent: settlementP,
+        minSettlementAmount: minSettle.raw,
+        settlementPeriodDays: periodDays,
         ...(typeof body.live_gateway_enabled === "boolean"
           ? { liveGatewayEnabled: body.live_gateway_enabled }
           : {}),
@@ -502,6 +570,10 @@ router.post("/api/v1/admin/merchants", async (req, res) => {
       default_network: row.defaultNetwork,
       supported_deposit_rails: row.supportedDepositRails ?? [],
       callback_url: row.callbackUrl,
+      mdr_percent: Number(row.mdrPercent),
+      settlement_rate_percent: Number(row.settlementRatePercent),
+      min_settlement_amount: row.minSettlementAmount,
+      settlement_period_days: row.settlementPeriodDays,
       temporary_password: body.password?.trim() ? undefined : password,
       api_key: apiSecret,
       sandbox_api_key: apiSecret,
@@ -620,6 +692,67 @@ router.patch("/api/v1/admin/merchants/:id", async (req, res) => {
   if (body.password?.trim()) {
     data.passwordHash = await bcrypt.hash(body.password.trim(), 10);
   }
+
+  let nextMdr = Number(existing.mdrPercent);
+  let nextSettlement = Number(existing.settlementRatePercent);
+  if (body.mdr_percent !== undefined) {
+    const p = parseFeePercent(body.mdr_percent);
+    if (p === null || !isValidFeePercent(p)) {
+      res.status(400).json({
+        error: "invalid_fee_percent",
+        message: "MDR must be a number from 0 to 100.",
+      });
+      return;
+    }
+    nextMdr = p;
+    data.mdrPercent = p;
+  }
+  if (body.settlement_rate_percent !== undefined) {
+    const p = parseFeePercent(body.settlement_rate_percent);
+    if (p === null || !isValidFeePercent(p)) {
+      res.status(400).json({
+        error: "invalid_fee_percent",
+        message: "Settlement rate must be a number from 0 to 100.",
+      });
+      return;
+    }
+    nextSettlement = p;
+    data.settlementRatePercent = p;
+  }
+  const feeFieldsInBody =
+    body.mdr_percent !== undefined || body.settlement_rate_percent !== undefined;
+  if (feeFieldsInBody && nextMdr + nextSettlement > 100) {
+    res.status(400).json({
+      error: "fee_percent_sum",
+      message: "MDR + settlement rate cannot exceed 100%.",
+    });
+    return;
+  }
+
+  if (body.min_settlement_amount !== undefined) {
+    const m = validateAndNormalizeHumanMinSettlement(body.min_settlement_amount);
+    if (!m.ok) {
+      res.status(400).json({
+        error: "invalid_min_settlement_amount",
+        message: m.error,
+      });
+      return;
+    }
+    data.minSettlementAmount = m.raw;
+  }
+
+  if (body.settlement_period_days !== undefined) {
+    const pd = parseSettlementPeriodDays(body.settlement_period_days);
+    if (pd === null) {
+      res.status(400).json({
+        error: "invalid_settlement_period_days",
+        message: "Use a whole number of days from 0 to 3650.",
+      });
+      return;
+    }
+    data.settlementPeriodDays = pd;
+  }
+
   if (body.regenerate_api_key || body.regenerate_sandbox_api_key) {
     const k = generateApiKey();
     newApiKey = k;
@@ -649,6 +782,10 @@ router.patch("/api/v1/admin/merchants/:id", async (req, res) => {
       isActive: true,
       liveGatewayEnabled: true,
       sandboxGatewayEnabled: true,
+      mdrPercent: true,
+      settlementRatePercent: true,
+      minSettlementAmount: true,
+      settlementPeriodDays: true,
     },
   });
   let message;
@@ -670,6 +807,10 @@ router.patch("/api/v1/admin/merchants/:id", async (req, res) => {
     is_active: row.isActive,
     live_gateway_enabled: row.liveGatewayEnabled,
     sandbox_gateway_enabled: row.sandboxGatewayEnabled,
+    mdr_percent: Number(row.mdrPercent),
+    settlement_rate_percent: Number(row.settlementRatePercent),
+    min_settlement_amount: row.minSettlementAmount,
+    settlement_period_days: row.settlementPeriodDays,
     api_key: newApiKey,
     sandbox_api_key: newSandboxApiKey,
     message,
@@ -697,6 +838,10 @@ router.get("/api/v1/admin/merchants/:id", async (req, res) => {
       sandboxGatewayEnabled: true,
       portalEnvironment: true,
       createdAt: true,
+      mdrPercent: true,
+      settlementRatePercent: true,
+      minSettlementAmount: true,
+      settlementPeriodDays: true,
     },
   });
   if (!row) {
@@ -728,6 +873,10 @@ router.get("/api/v1/admin/merchants/:id", async (req, res) => {
     sandbox_gateway_enabled: row.sandboxGatewayEnabled,
     portal_environment: row.portalEnvironment,
     created_at: row.createdAt,
+    mdr_percent: Number(row.mdrPercent),
+    settlement_rate_percent: Number(row.settlementRatePercent),
+    min_settlement_amount: row.minSettlementAmount,
+    settlement_period_days: row.settlementPeriodDays,
     end_users_live: endUsersLive,
     end_users_sandbox: endUsersSandbox,
   });
@@ -1717,6 +1866,289 @@ router.post("/api/v1/admin/sweep/all", async (req, res) => {
     logger.error("admin unified sweep all failed", { err: String(e) });
     res.status(500).json({ error: "server_error", message: String(e) });
   }
+});
+
+/**
+ * @param {unknown} emailRaw
+ */
+async function resolveMerchantByEmailForSettlements(emailRaw) {
+  const email = typeof emailRaw === "string" ? emailRaw.trim() : "";
+  if (!email) {
+    return {
+      ok: false,
+      status: 400,
+      json: {
+        error: "merchant_email_required",
+        message: "Enter the merchant login email to load settlements.",
+      },
+    };
+  }
+  const merchant = await prisma.merchant.findFirst({
+    where: {
+      email: { equals: email, mode: "insensitive" },
+      deletedAt: null,
+    },
+    select: {
+      id: true,
+      email: true,
+      displayName: true,
+      mdrPercent: true,
+      settlementRatePercent: true,
+      minSettlementAmount: true,
+      settlementPeriodDays: true,
+    },
+  });
+  if (!merchant) {
+    return {
+      ok: false,
+      status: 404,
+      json: {
+        error: "merchant_not_found",
+        message: "No active merchant with that email.",
+      },
+    };
+  }
+  return { ok: true, merchant };
+}
+
+router.get("/api/v1/admin/settlements", async (req, res) => {
+  const { skip, take, page, pageSize } = parsePageQuery(req.query);
+  const resolved = await resolveMerchantByEmailForSettlements(req.query.merchant_email);
+  if (!resolved.ok) {
+    res.status(resolved.status).json(resolved.json);
+    return;
+  }
+  const merchantId = resolved.merchant.id;
+  /** Admin settlements are live gateway only (no sandbox payouts). */
+  const environment = MerchantGatewayEnv.live;
+  const where = { merchantId, environment };
+  const [total, rows] = await Promise.all([
+    prisma.merchantSettlement.count({ where }),
+    prisma.merchantSettlement.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      skip,
+      take,
+      include: {
+        merchant: { select: { email: true, displayName: true } },
+      },
+    }),
+  ]);
+  res.json({
+    total,
+    page,
+    pageSize,
+    settlements: rows.map((s) => ({
+      id: s.id,
+      merchant_id: s.merchantId,
+      merchant_email: s.merchant.email,
+      merchant_display_name: s.merchant.displayName,
+      environment: s.environment,
+      chain: s.chain,
+      token_symbol: s.tokenSymbol,
+      token_decimals: s.tokenDecimals,
+      gross_amount: s.grossAmount,
+      mdr_percent: Number(s.mdrPercent),
+      settlement_rate_percent: Number(s.settlementRatePercent),
+      mdr_amount: s.mdrAmount,
+      settlement_fee_amount: s.settlementFeeAmount,
+      net_amount: s.netAmount,
+      transaction_count: s.transactionCount,
+      has_proof: Boolean(s.proofFileName),
+      created_by_admin_id: s.createdByAdminId,
+      created_at: s.createdAt,
+    })),
+  });
+});
+
+router.get("/api/v1/admin/settlements/pending-preview", async (req, res) => {
+  const resolved = await resolveMerchantByEmailForSettlements(req.query.merchant_email);
+  if (!resolved.ok) {
+    res.status(resolved.status).json(resolved.json);
+    return;
+  }
+  const { merchant } = resolved;
+  const merchantId = merchant.id;
+  const environment = MerchantGatewayEnv.live;
+
+  const buckets = await buildAllPendingPreviews(merchantId, environment, merchant);
+  res.json({
+    merchant_id: merchantId,
+    merchant_email: merchant.email,
+    merchant_display_name: merchant.displayName,
+    environment,
+    fee_rates: {
+      mdr_percent: Number(merchant.mdrPercent),
+      settlement_rate_percent: Number(merchant.settlementRatePercent),
+      min_settlement_amount: merchant.minSettlementAmount,
+      settlement_period_days: Number(merchant.settlementPeriodDays ?? 0),
+    },
+    buckets,
+  });
+});
+
+router.post(
+  "/api/v1/admin/settlements/batch",
+  (req, res, next) => {
+    settlementProofUpload.single("proof")(req, res, (err) => {
+      if (err) {
+        logger.warn("settlement upload", { err: String(err) });
+        const msg =
+          err.message === "invalid_proof_type"
+            ? "Proof must be JPEG, PNG, WebP, GIF, or PDF (max 8MB)."
+            : "File upload failed.";
+        res.status(400).json({ error: "upload_error", message: msg });
+        return;
+      }
+      next();
+    });
+  },
+  async (req, res) => {
+    const unlinkUploaded = async () => {
+      if (req.file?.path) {
+        try {
+          await fs.promises.unlink(req.file.path);
+        } catch {
+          /* ignore */
+        }
+      }
+    };
+
+    const merchantId =
+      typeof req.body.merchant_id === "string" ? req.body.merchant_id.trim() : "";
+    if (!merchantId) {
+      await unlinkUploaded();
+      res.status(400).json({ error: "merchant_id required" });
+      return;
+    }
+
+    const environment = MerchantGatewayEnv.live;
+
+    const chainRaw = String(req.body.chain ?? "").trim().toUpperCase();
+    if (!CHAINS.has(chainRaw)) {
+      await unlinkUploaded();
+      res.status(400).json({ error: "invalid_chain" });
+      return;
+    }
+    const chain = /** @type {import("@prisma/client").Chain} */ (chainRaw);
+
+    const tokenSymbol =
+      typeof req.body.token_symbol === "string" ? req.body.token_symbol.trim() : "";
+    if (!tokenSymbol) {
+      await unlinkUploaded();
+      res.status(400).json({ error: "token_symbol required" });
+      return;
+    }
+
+    const td = Number(req.body.token_decimals);
+    if (!Number.isInteger(td) || td < 0 || td > 36) {
+      await unlinkUploaded();
+      res.status(400).json({ error: "invalid_token_decimals" });
+      return;
+    }
+
+    const adminId = req.auth?.sub ?? null;
+
+    if (!req.file?.filename) {
+      await unlinkUploaded();
+      res.status(400).json({
+        error: "proof_required",
+        message: "Settlement proof file is required (JPEG, PNG, WebP, GIF, or PDF, max 8MB).",
+      });
+      return;
+    }
+
+    try {
+      const row = await executeBatchSettlement({
+        merchantId,
+        environment,
+        chain,
+        tokenSymbol,
+        tokenDecimals: td,
+        proofFileName: req.file.filename,
+        adminId,
+      });
+      res.status(201).json({
+        id: row.id,
+        merchant_id: row.merchantId,
+        environment: row.environment,
+        chain: row.chain,
+        token_symbol: row.tokenSymbol,
+        token_decimals: row.tokenDecimals,
+        gross_amount: row.grossAmount,
+        mdr_percent: Number(row.mdrPercent),
+        settlement_rate_percent: Number(row.settlementRatePercent),
+        mdr_amount: row.mdrAmount,
+        settlement_fee_amount: row.settlementFeeAmount,
+        net_amount: row.netAmount,
+        transaction_count: row.transactionCount,
+        has_proof: Boolean(row.proofFileName),
+        created_at: row.createdAt,
+      });
+    } catch (e) {
+      await unlinkUploaded();
+      const code = /** @type {Error & { code?: string }} */ (e).code;
+      const msg = String(e?.message ?? e);
+      if (code === "merchant_not_found") {
+        res.status(404).json({ error: "merchant_not_found" });
+        return;
+      }
+      if (code === "no_eligible_transactions") {
+        res.status(400).json({
+          error: "no_eligible_transactions",
+          message: "No unsettled successful transactions for this asset (check settlement period).",
+        });
+        return;
+      }
+      if (code === "below_min_settlement_amount") {
+        res.status(400).json({
+          error: "below_min_settlement_amount",
+          message:
+            "Net after fees must be greater than the merchant’s minimum settlement in token units (converted per asset); equal is not enough.",
+        });
+        return;
+      }
+      if (code === "proof_required") {
+        res.status(400).json({
+          error: "proof_required",
+          message: "Settlement proof file is required.",
+        });
+        return;
+      }
+      if (code === "insufficient_balance") {
+        res.status(400).json({
+          error: "insufficient_balance",
+          message:
+            "Net settlement exceeds available portal balance for this chain/token.",
+        });
+        return;
+      }
+      if (code === "fee_calculation") {
+        res.status(400).json({ error: "fee_calculation", message: msg });
+        return;
+      }
+      logger.error("admin batch settlement", { err: msg });
+      res.status(500).json({ error: "internal error" });
+    }
+  },
+);
+
+router.get("/api/v1/admin/settlements/:id/proof", async (req, res) => {
+  const id = String(req.params.id ?? "");
+  const row = await prisma.merchantSettlement.findUnique({
+    where: { id },
+    select: { proofFileName: true },
+  });
+  if (!row?.proofFileName) {
+    res.status(404).json({ error: "not_found" });
+    return;
+  }
+  const full = proofPathForFileName(row.proofFileName);
+  if (!full || !fs.existsSync(full)) {
+    res.status(404).json({ error: "not_found" });
+    return;
+  }
+  res.sendFile(full);
 });
 
 router.get("/api/v1/admin/system-settings", (_req, res) => {

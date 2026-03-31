@@ -81,6 +81,10 @@ export default function MerchantEdit() {
           ? inferredRails
           : [railKeyFromParts(m.default_currency, m.default_network)],
     callback_url: m.callback_url ?? "",
+    mdr_percent: m.mdr_percent ?? 0,
+    settlement_rate_percent: m.settlement_rate_percent ?? 0,
+    min_settlement_amount: m.min_settlement_amount ?? "0",
+    settlement_period_days: m.settlement_period_days ?? 0,
     password: "",
     regenerate_api_key: false,
     live_gateway_enabled: m.live_gateway_enabled !== false,
@@ -130,6 +134,10 @@ export default function MerchantEdit() {
                   regenerate_sandbox_api_key: values.regenerate_api_key,
                   live_gateway_enabled: values.live_gateway_enabled,
                   sandbox_gateway_enabled: values.sandbox_gateway_enabled,
+                  mdr_percent: values.mdr_percent,
+                  settlement_rate_percent: values.settlement_rate_percent,
+                  min_settlement_amount: values.min_settlement_amount?.trim() || "0",
+                  settlement_period_days: values.settlement_period_days,
                 },
               });
               if (r.api_key || r.sandbox_api_key) {
@@ -222,6 +230,86 @@ export default function MerchantEdit() {
                 />
               </div>
               <div>
+                <label className={label} htmlFor="mdr_percent">
+                  MDR (merchant transaction rate) %
+                </label>
+                <Field
+                  id="mdr_percent"
+                  name="mdr_percent"
+                  type="number"
+                  step="0.01"
+                  min={0}
+                  max={100}
+                  className={input}
+                />
+                <ErrorMessage
+                  name="mdr_percent"
+                  component="p"
+                  className="mt-1 text-xs text-rose-400"
+                />
+              </div>
+              <div>
+                <label className={label} htmlFor="settlement_rate_percent">
+                  Settlement rate %
+                </label>
+                <Field
+                  id="settlement_rate_percent"
+                  name="settlement_rate_percent"
+                  type="number"
+                  step="0.01"
+                  min={0}
+                  max={100}
+                  className={input}
+                />
+                <ErrorMessage
+                  name="settlement_rate_percent"
+                  component="p"
+                  className="mt-1 text-xs text-rose-400"
+                />
+              </div>
+              <div className="lg:col-span-2">
+                <label className={label} htmlFor="min_settlement_amount">
+                  Minimum settlement (token units, 0 = no minimum)
+                </label>
+                <Field
+                  id="min_settlement_amount"
+                  name="min_settlement_amount"
+                  className={`${input} font-mono`}
+                  autoComplete="off"
+                />
+                <ErrorMessage
+                  name="min_settlement_amount"
+                  component="p"
+                  className="mt-1 text-xs text-rose-400"
+                />
+                <p className="mt-1 text-[10px] text-white/35">
+                  Token amount (e.g. 3000), not smallest-unit integer; each chain/token uses its decimals when
+                  settling.
+                </p>
+              </div>
+              <div>
+                <label className={label} htmlFor="settlement_period_days">
+                  Settlement period (days)
+                </label>
+                <Field
+                  id="settlement_period_days"
+                  name="settlement_period_days"
+                  type="number"
+                  min={0}
+                  max={3650}
+                  step={1}
+                  className={input}
+                />
+                <ErrorMessage
+                  name="settlement_period_days"
+                  component="p"
+                  className="mt-1 text-xs text-rose-400"
+                />
+                <p className="mt-1 text-[10px] text-white/35">
+                  0 = no hold. N &gt; 0 reserves deposits from the last N days from settlement.
+                </p>
+              </div>
+              <div>
                 <label className={label} htmlFor="password">
                   New password (optional)
                 </label>
@@ -251,7 +339,7 @@ export default function MerchantEdit() {
               <div className="flex items-end pb-1">
                 <label className={`${label} flex items-center gap-2`}>
                   <Field type="checkbox" name="live_gateway_enabled" className="rounded border-white/20" />
-                  Live gateway enabled (API + portal live data + withdrawals)
+                  Live gateway enabled (API + portal live data + settlements)
                 </label>
               </div>
               <div className="flex items-end pb-1">

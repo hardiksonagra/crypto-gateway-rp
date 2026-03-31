@@ -71,3 +71,58 @@ export async function api(path, init) {
   }
   return data;
 }
+
+/**
+ * Multipart POST (e.g. settlement proof). Do not set Content-Type — browser sets boundary.
+ * @param {string} path
+ * @param {FormData} formData
+ * @param {RequestInit} [init]
+ */
+export async function apiForm(path, formData, init = {}) {
+  const headers = {
+    ...(init.headers && typeof init.headers === "object" ? init.headers : {}),
+  };
+  const tok = getToken();
+  if (tok) headers.Authorization = `Bearer ${tok}`;
+  const res = await fetch(apiUrl(path), {
+    ...init,
+    method: init.method ?? "POST",
+    headers,
+    body: formData,
+  });
+  const text = await res.text();
+  const data = text ? JSON.parse(text) : null;
+  if (!res.ok) {
+    const err = data;
+    const msg =
+      typeof err?.message === "string" && err.message.trim()
+        ? err.message.trim()
+        : null;
+    throw new Error(msg ?? err?.error ?? err?.detail ?? res.statusText);
+  }
+  return data;
+}
+
+/**
+ * Authenticated GET returning a Blob (e.g. settlement proof image).
+ * @param {string} path
+ */
+export async function apiBlobGet(path) {
+  const headers = {};
+  const tok = getToken();
+  if (tok) headers.Authorization = `Bearer ${tok}`;
+  const res = await fetch(apiUrl(path), { headers });
+  if (!res.ok) {
+    const text = await res.text();
+    let msg = res.statusText;
+    try {
+      const j = text ? JSON.parse(text) : null;
+      if (j?.message) msg = j.message;
+      else if (j?.error) msg = j.error;
+    } catch {
+      /* ignore */
+    }
+    throw new Error(msg);
+  }
+  return res.blob();
+}

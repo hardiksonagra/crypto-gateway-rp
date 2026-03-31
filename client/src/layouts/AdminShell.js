@@ -18,7 +18,7 @@ import {
   IconTransactions,
   IconUsers,
   IconWallet,
-  IconWithdrawals,
+  IconSettlements,
 } from "./shellNavIcons.js";
 
 const navGroups = [
@@ -35,7 +35,7 @@ const navGroups = [
   {
     label: "OPERATIONS",
     items: [
-      { to: "/control/withdrawals", label: "Withdrawals", Icon: IconWithdrawals },
+      { to: "/control/settlements", label: "Settlements", Icon: IconSettlements },
       { to: "/control/sweep", label: "Sweep", Icon: IconWallet },
       { to: "/control/activity", label: "Activity log", Icon: IconActivity },
     ],

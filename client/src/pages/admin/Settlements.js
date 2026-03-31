@@ -1,0 +1,267 @@
+import { Formik, Form, Field, ErrorMessage } from "formik";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
+import { api, apiBlobGet } from "../../api";
+import { adminSettlementsFilterSchema } from "../../admin/merchantSchemas";
+import ListPaginationBar, { DEFAULT_LIST_PAGE_SIZE } from "../../components/ListPaginationBar";
+import { PendingSettlementBucketCard } from "../../components/PendingSettlementBucketCard.js";
+import { formatTokenAmount } from "../../lib/formatTokenAmount.js";
+
+const DEFAULT_PAGE_SIZE = DEFAULT_LIST_PAGE_SIZE;
+
+const filterInput =
+  "w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none ring-white/20 focus:ring-1";
+
+export default function AdminSettlements() {
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  const [proofErr, setProofErr] = useState(null);
+  const [applied, setApplied] = useState({ merchantEmail: "" });
+  const qc = useQueryClient();
+
+  const hasFilter = Boolean(applied.merchantEmail.trim());
+
+  const pendingQ = useQuery({
+    queryKey: ["admin-settlements-pending", applied.merchantEmail],
+    queryFn: () => {
+      const p = new URLSearchParams({
+        merchant_email: applied.merchantEmail.trim(),
+      });
+      return api(`/api/v1/admin/settlements/pending-preview?${p}`);
+    },
+    enabled: hasFilter,
+  });
+
+  const listQ = useQuery({
+    queryKey: ["admin-settlements", page, pageSize, applied.merchantEmail],
+    queryFn: () => {
+      const p = new URLSearchParams({
+        page: String(page),
+        pageSize: String(pageSize),
+        merchant_email: applied.merchantEmail.trim(),
+      });
+      return api(`/api/v1/admin/settlements?${p}`);
+    },
+    enabled: hasFilter,
+  });
+
+  const total = listQ.data?.total ?? 0;
+  const rows = listQ.data?.settlements ?? [];
+  const buckets = pendingQ.data?.buckets ?? [];
+  const pendingMerchantEmail = pendingQ.data?.merchant_email;
+  const pendingMerchantDisplayName = pendingQ.data?.merchant_display_name;
+
+  function invalidateSettlementQueries() {
+    void qc.invalidateQueries({
+      queryKey: ["admin-settlements", page, pageSize, applied.merchantEmail],
+    });
+    void qc.invalidateQueries({
+      queryKey: ["admin-settlements-pending", applied.merchantEmail],
+    });
+  }
+
+  async function openProof(id) {
+    setProofErr(null);
+    try {
+      const blob = await apiBlobGet(`/api/v1/admin/settlements/${id}/proof`);
+      const u = URL.createObjectURL(blob);
+      window.open(u, "_blank", "noopener,noreferrer");
+      setTimeout(() => URL.revokeObjectURL(u), 60_000);
+    } catch (e) {
+      setProofErr(String(e));
+    }
+  }
+
+  return (
+    <div className="w-full max-w-none">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="font-display text-2xl font-semibold text-white">Settlements</h1>
+          <p className="mt-1 text-sm text-white/50">
+            Live gateway only. Enter the merchant&apos;s <span className="text-white/70">login email</span>,
+            then load. Pending batches use successful live deposits not yet linked to a settlement and past
+            the settlement hold (if any).
+          </p>
+        </div>
+      </div>
+
+      <div className="glass mt-6 w-full rounded-2xl p-4 lg:p-6">
+        <Formik
+          initialValues={{ merchant_email: "" }}
+          validationSchema={adminSettlementsFilterSchema}
+          validateOnBlur
+          validateOnChange={false}
+          onSubmit={(values, { setSubmitting }) => {
+            setApplied({
+              merchantEmail: values.merchant_email.trim(),
+            });
+            setPage(1);
+            setSubmitting(false);
+          }}
+        >
+          {() => (
+            <Form className="flex flex-wrap items-end gap-4">
+              <div className="min-w-[min(100%,24rem)] flex-1">
+                <label className={labelCls} htmlFor="merchant_email">
+                  Merchant email
+                </label>
+                <Field
+                  id="merchant_email"
+                  name="merchant_email"
+                  type="email"
+                  className={filterInput}
+                  placeholder="merchant@example.com"
+                  autoComplete="email"
+                />
+                <ErrorMessage name="merchant_email" component="p" className="mt-1 text-xs text-rose-400" />
+              </div>
+              <button type="submit" className="btn-primary rounded-lg px-4 py-2 text-sm">
+                Load merchant
+              </button>
+            </Form>
+          )}
+        </Formik>
+      </div>
+
+      {hasFilter ? (
+        <>
+          <h2 className="mt-10 text-sm font-semibold tracking-wide text-white/40 uppercase">
+            Next settlement batches (unsettled transactions)
+          </h2>
+          {!pendingQ.isLoading && !pendingQ.isError && pendingMerchantEmail ? (
+            <p className="mt-2 text-sm text-white/75">
+              <span className="text-white/45">Merchant</span>{" "}
+              <span className="font-mono text-white/90">{pendingMerchantEmail}</span>
+              {pendingMerchantDisplayName?.trim() ? (
+                <span className="text-white/55"> · {pendingMerchantDisplayName.trim()}</span>
+              ) : null}
+            </p>
+          ) : null}
+          <p className="mt-1 text-xs text-white/40">
+            MDR applies to gross; settlement fee applies to the amount after MDR. Net is what reduces the
+            merchant&apos;s portal balance when you settle. Minimum settlement on the merchant is in{" "}
+            <span className="font-medium text-white/70">token units</span> (e.g. 3000 USDT), converted per
+            asset using decimals. Proof is required; &quot;Settle batch&quot; only when net (smallest units)
+            is strictly above that threshold, or min is 0 and net is positive. Change email and Load again
+            anytime.
+          </p>
+          {pendingQ.isLoading ? (
+            <p className="mt-3 text-sm text-white/45">Loading preview…</p>
+          ) : pendingQ.isError ? (
+            <p className="mt-3 text-sm text-rose-400">{String(pendingQ.error)}</p>
+          ) : buckets.length === 0 ? (
+            <p className="mt-3 text-sm text-white/45">No pending unsettled live volume for this merchant.</p>
+          ) : (
+            <div className="mt-4 flex w-full flex-col gap-4">
+              {buckets.map((b) => (
+                <PendingSettlementBucketCard
+                  key={`${b.chain}-${b.token_symbol}-${b.token_decimals}`}
+                  variant="admin"
+                  b={b}
+                  merchantEmail={pendingMerchantEmail ?? undefined}
+                  merchantDisplayName={pendingMerchantDisplayName}
+                  merchantId={pendingQ.data?.merchant_id ?? ""}
+                  onSettled={invalidateSettlementQueries}
+                />
+              ))}
+            </div>
+          )}
+        </>
+      ) : null}
+
+      {proofErr ? <p className="mt-6 text-sm text-rose-400">{proofErr}</p> : null}
+
+      <h2 className="mt-10 text-sm font-semibold tracking-wide text-white/40 uppercase">
+        Settlement history
+      </h2>
+      <div className="data-table-surface mt-3">
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>When</th>
+              <th>Merchant</th>
+              <th>Asset</th>
+              <th>Txs</th>
+              <th>Gross</th>
+              <th>MDR</th>
+              <th>Settle fee</th>
+              <th>Net</th>
+              <th>Proof</th>
+            </tr>
+          </thead>
+          <tbody>
+            {!hasFilter ? (
+              <tr>
+                <td colSpan={9} className="!py-12 text-center text-sm text-white/45">
+                  Enter a merchant email and click Load merchant.
+                </td>
+              </tr>
+            ) : listQ.isLoading ? (
+              <tr>
+                <td colSpan={9} className="!py-12 text-center text-sm text-white/45">
+                  Loading…
+                </td>
+              </tr>
+            ) : rows.length === 0 ? (
+              <tr>
+                <td colSpan={9} className="!py-12 text-center text-sm text-white/45">
+                  No live settlements recorded for this merchant yet.
+                </td>
+              </tr>
+            ) : (
+              rows.map((s) => (
+                <tr key={s.id}>
+                  <td className="whitespace-nowrap text-xs text-white/45">
+                    {s.created_at ? String(s.created_at).slice(0, 19) : "—"}
+                  </td>
+                  <td className="max-w-[200px] truncate text-sm text-white/80" title={s.merchant_email}>
+                    {s.merchant_email}
+                  </td>
+                  <td className="text-xs text-white/70">
+                    {s.chain} {s.token_symbol}
+                  </td>
+                  <td className="font-mono text-xs text-white/70">{s.transaction_count ?? 0}</td>
+                  <td className="font-mono text-xs text-white/85">
+                    {formatTokenAmount(s.gross_amount, s.token_decimals)}
+                  </td>
+                  <td className="font-mono text-xs text-white/70">
+                    {formatTokenAmount(s.mdr_amount, s.token_decimals)}
+                  </td>
+                  <td className="font-mono text-xs text-white/70">
+                    {formatTokenAmount(s.settlement_fee_amount, s.token_decimals)}
+                  </td>
+                  <td className="font-mono text-xs text-emerald-200/90">
+                    {formatTokenAmount(s.net_amount, s.token_decimals)}
+                  </td>
+                  <td>
+                    {s.has_proof ? (
+                      <button
+                        type="button"
+                        onClick={() => void openProof(s.id)}
+                        className="text-xs text-sky-300/90 hover:text-sky-200"
+                      >
+                        View
+                      </button>
+                    ) : (
+                      <span className="text-xs text-white/35">—</span>
+                    )}
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {hasFilter ? (
+        <ListPaginationBar
+          page={page}
+          setPage={setPage}
+          pageSize={pageSize}
+          setPageSize={setPageSize}
+          total={total}
+        />
+      ) : null}
+    </div>
+  );
+}

@@ -657,6 +657,14 @@ router.get("/api/v1/gateway/transactions", async (req, res) => {
   });
 });
 
+router.get("/api/v1/gateway/sandbox/simulate-deposit", (req, res) => {
+  res.status(405).set("Allow", "POST").json({
+    error: "method_not_allowed",
+    message:
+      "simulate-deposit requires POST with Content-Type: application/json (api_key, wallet_id, optional amount). Browser address bar uses GET and will not work.",
+  });
+});
+
 router.post("/api/v1/gateway/sandbox/simulate-deposit", async (req, res) => {
   try {
     const body = req.body ?? {};

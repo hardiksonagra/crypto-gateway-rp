@@ -30,6 +30,11 @@ import {
   computeMerchantBalances,
   merchantBalanceForAsset,
 } from "../services/merchant-balance.js";
+import { buildAllPendingPreviews } from "../services/settlement-batch.js";
+import {
+  proofPathForFileName,
+} from "../lib/settlement-upload.js";
+import fs from "fs";
 import { re } from "../config/runtime-env.js";
 import { isEvmChain } from "../config/chains.js";
 import { nativeSymbolForChain } from "../services/native-symbols.js";
@@ -120,8 +125,16 @@ router.get("/api/v1/merchant/dashboard", async (req, res) => {
   const { environment } = gate;
 
   const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-  const [balances, recent, users, txs] = await Promise.all([
-    computeMerchantBalances(mid, environment),
+  const [merchRates, recent, users, txs] = await Promise.all([
+    prisma.merchant.findUnique({
+      where: { id: mid },
+      select: {
+        mdrPercent: true,
+        settlementRatePercent: true,
+        minSettlementAmount: true,
+        settlementPeriodDays: true,
+      },
+    }),
     prisma.transaction.findMany({
       where: {
         wallet: { merchantId: mid, environment },
@@ -138,13 +151,33 @@ router.get("/api/v1/merchant/dashboard", async (req, res) => {
       where: { wallet: { merchantId: mid, environment } },
     }),
   ]);
+  if (!merchRates) {
+    res.status(404).json({ error: "not_found" });
+    return;
+  }
+  const mdrP = Number(merchRates.mdrPercent);
+  const settlementP = Number(merchRates.settlementRatePercent);
+  const periodDays = Number(merchRates.settlementPeriodDays ?? 0);
+  const balances = await computeMerchantBalances(mid, environment);
+  const pendingSettlementBatches = await buildAllPendingPreviews(
+    mid,
+    environment,
+    merchRates,
+  );
   res.json({
     environment,
     portal: {
       live_gateway_enabled: gate.flags.liveGatewayEnabled,
       sandbox_gateway_enabled: gate.flags.sandboxGatewayEnabled,
     },
+    fee_rates: {
+      mdr_percent: mdrP,
+      settlement_rate_percent: settlementP,
+      min_settlement_amount: merchRates.minSettlementAmount ?? "0",
+      settlement_period_days: periodDays,
+    },
     balances,
+    pending_settlement_batches: pendingSettlementBatches,
     stats: { end_users: users, transactions: txs },
     recent_transactions: recent.map((t) => ({
       id: t.id,
@@ -969,6 +1002,125 @@ router.patch("/api/v1/merchant/settings", async (req, res) => {
   }
   await prisma.merchant.update({ where: { id: mid }, data });
   res.json({ ok: true });
+});
+
+router.get("/api/v1/merchant/settlements/pending-preview", async (req, res) => {
+  const mid = merchantId(req);
+  if (!mid) {
+    res.status(401).json({ error: "unauthorized" });
+    return;
+  }
+  const gate = await resolveMerchantPortalForLists(mid);
+  if (!gate.ok) {
+    res.status(gate.status).json({
+      error: gate.error,
+      ...(gate.message ? { message: gate.message } : {}),
+    });
+    return;
+  }
+  const { environment } = gate;
+  const merchRates = await prisma.merchant.findUnique({
+    where: { id: mid },
+    select: {
+      mdrPercent: true,
+      settlementRatePercent: true,
+      minSettlementAmount: true,
+      settlementPeriodDays: true,
+    },
+  });
+  if (!merchRates) {
+    res.status(404).json({ error: "not_found" });
+    return;
+  }
+  const buckets = await buildAllPendingPreviews(mid, environment, merchRates);
+  res.json({
+    environment,
+    fee_rates: {
+      mdr_percent: Number(merchRates.mdrPercent),
+      settlement_rate_percent: Number(merchRates.settlementRatePercent),
+      min_settlement_amount: merchRates.minSettlementAmount,
+      settlement_period_days: Number(merchRates.settlementPeriodDays ?? 0),
+    },
+    buckets,
+  });
+});
+
+router.get("/api/v1/merchant/settlements", async (req, res) => {
+  const mid = merchantId(req);
+  if (!mid) {
+    res.status(401).json({ error: "unauthorized" });
+    return;
+  }
+  const gate = await resolveMerchantPortalForLists(mid);
+  if (!gate.ok) {
+    res.status(gate.status).json({
+      error: gate.error,
+      ...(gate.message ? { message: gate.message } : {}),
+    });
+    return;
+  }
+  const { environment } = gate;
+  const { skip, take, page, pageSize } = parsePageQuery(req.query);
+  const where = { merchantId: mid, environment };
+  const [total, rows] = await Promise.all([
+    prisma.merchantSettlement.count({ where }),
+    prisma.merchantSettlement.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      skip,
+      take,
+      select: {
+        id: true,
+        environment: true,
+        chain: true,
+        tokenSymbol: true,
+        tokenDecimals: true,
+        netAmount: true,
+        transactionCount: true,
+        proofFileName: true,
+        createdAt: true,
+      },
+    }),
+  ]);
+  res.json({
+    total,
+    page,
+    pageSize,
+    settlements: rows.map((s) => ({
+      id: s.id,
+      environment: s.environment,
+      chain: s.chain,
+      token_symbol: s.tokenSymbol,
+      token_decimals: s.tokenDecimals,
+      net_amount: s.netAmount,
+      transaction_count: s.transactionCount,
+      has_proof: Boolean(s.proofFileName),
+      created_at: s.createdAt,
+    })),
+  });
+});
+
+router.get("/api/v1/merchant/settlements/:id/proof", async (req, res) => {
+  const mid = merchantId(req);
+  if (!mid) {
+    res.status(401).json({ error: "unauthorized" });
+    return;
+  }
+  const id = String(req.params.id ?? "");
+  const row = await prisma.merchantSettlement.findFirst({
+    where: { id, merchantId: mid },
+    select: { proofFileName: true },
+  });
+  if (!row?.proofFileName) {
+    res.status(404).json({ error: "not_found" });
+    return;
+  }
+  const full = proofPathForFileName(row.proofFileName);
+  if (!full || !fs.existsSync(full)) {
+    res.status(404).json({ error: "not_found" });
+    return;
+  }
+  res.sendFile(full);
 });
 
 export { router as merchantRouter };

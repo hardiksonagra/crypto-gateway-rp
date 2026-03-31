@@ -168,6 +168,10 @@ router.get("/api/v1/auth/me", requireAuth(), async (req, res) => {
       liveGatewayEnabled: true,
       sandboxGatewayEnabled: true,
       portalEnvironment: true,
+      mdrPercent: true,
+      settlementRatePercent: true,
+      minSettlementAmount: true,
+      settlementPeriodDays: true,
       apiKeyCipher: true,
       sandboxApiKeyCipher: true,
       sandboxApiKeyHash: true,
@@ -177,10 +181,23 @@ router.get("/api/v1/auth/me", requireAuth(), async (req, res) => {
     res.status(401).json({ error: "unauthorized" });
     return;
   }
-  const { apiKeyCipher, sandboxApiKeyCipher, sandboxApiKeyHash, ...rest } = user;
+  const {
+    apiKeyCipher,
+    sandboxApiKeyCipher,
+    sandboxApiKeyHash,
+    mdrPercent,
+    settlementRatePercent,
+    minSettlementAmount,
+    settlementPeriodDays,
+    ...rest
+  } = user;
   const out = {
     ...rest,
     role: PORTAL_ROLE_MERCHANT,
+    mdr_percent: Number(mdrPercent),
+    settlement_rate_percent: Number(settlementRatePercent),
+    min_settlement_amount: minSettlementAmount ?? "0",
+    settlement_period_days: Number(settlementPeriodDays ?? 0),
   };
   out.hasSandboxApiKey = Boolean(sandboxApiKeyHash);
   out.api_key_cipher_present = Boolean(apiKeyCipher);

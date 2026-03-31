@@ -14,15 +14,15 @@ import MerchantDetail from "./pages/admin/MerchantDetail";
 import AdminUsers from "./pages/admin/Users";
 import AdminWallets from "./pages/admin/AdminWallets";
 import AdminTransactions from "./pages/admin/Transactions";
-import AdminWithdrawals from "./pages/admin/Withdrawals";
 import AdminActivityLog from "./pages/admin/ActivityLog";
 import AdminSystemSettings from "./pages/admin/SystemSettings";
 import AdminUnifiedSweep from "./pages/admin/UnifiedSweep";
+import AdminSettlements from "./pages/admin/Settlements";
 import MerchantDashboard from "./pages/merchant/Dashboard";
 import MerchantUsers from "./pages/merchant/Users";
 import MerchantWallets from "./pages/merchant/Wallets";
 import MerchantTransactions from "./pages/merchant/Transactions";
-import MerchantWithdraw from "./pages/merchant/Withdraw";
+import MerchantSettlements from "./pages/merchant/Settlements";
 import MerchantSettings from "./pages/merchant/Settings";
 import GatewayApiKey from "./pages/merchant/GatewayApiKey";
 import GatewayApiDocs from "./pages/merchant/GatewayApiDocs";
@@ -61,7 +61,9 @@ export default function App() {
         <Route path="users" element={<AdminUsers />} />
         <Route path="wallets" element={<AdminWallets />} />
         <Route path="transactions" element={<AdminTransactions />} />
-        <Route path="withdrawals" element={<AdminWithdrawals />} />
+        <Route path="withdrawals" element={<Navigate to="/control" replace />} />
+        <Route path="settlements/new" element={<Navigate to="/control/settlements" replace />} />
+        <Route path="settlements" element={<AdminSettlements />} />
         <Route path="sweep" element={<AdminUnifiedSweep />} />
         <Route path="tron-sweep" element={<Navigate to="/control/sweep" replace />} />
         <Route path="evm-usdt-sweep" element={<Navigate to="/control/sweep" replace />} />
@@ -79,7 +81,8 @@ export default function App() {
         <Route path="users" element={<MerchantUsers />} />
         <Route path="wallets" element={<MerchantWallets />} />
         <Route path="transactions" element={<MerchantTransactions />} />
-        <Route path="withdraw" element={<MerchantWithdraw />} />
+        <Route path="withdraw" element={<Navigate to="/settlements" replace />} />
+        <Route path="settlements" element={<MerchantSettlements />} />
         <Route path="settings" element={<MerchantSettings />} />
         <Route path="api-key" element={<GatewayApiKey />} />
         <Route path="docs" element={<GatewayApiDocs />} />

@@ -81,6 +81,14 @@ model Merchant {
   portalEnvironment     MerchantGatewayEnv @default(sandbox) @map("portal_environment")
   passwordResetTokenHash   String?   @map("password_reset_token_hash")
   passwordResetExpiresAt    DateTime? @map("password_reset_expires_at")
+  /// Merchant discount rate (fee on gross deposit volume), percent 0–100.
+  mdrPercent            Decimal   @default(0) @map("mdr_percent") @db.Decimal(7, 4)
+  /// Settlement fee (percent of same gross base as MDR for display and settlement forms).
+  settlementRatePercent Decimal   @default(0) @map("settlement_rate_percent") @db.Decimal(7, 4)
+  /// Minimum gross (atomic integer string) per settlement for this merchant; "0" = no minimum.
+  minSettlementAmount   String    @default("0") @map("min_settlement_amount") @db.VarChar(128)
+  /// Successful deposits newer than this many whole days cannot be settled; 0 = no hold.
+  settlementPeriodDays  Int       @default(0) @map("settlement_period_days")
   createdAt    DateTime  @default(now()) @map("created_at")
   updatedAt    DateTime  @updatedAt @map("updated_at")
 
@@ -88,9 +96,36 @@ model Merchant {
   withdrawals   Withdrawal[]
   pooledWallets Wallet[]
   walletAssignmentEvents WalletAssignmentEvent[]
+  settlements   MerchantSettlement[]
 
   @@index([deletedAt])
   @@map("merchants")
+}
+
+/// Admin-recorded settlement payout; `net_amount` reduces portal balance like a withdrawal.
+model MerchantSettlement {
+  id                    String             @id @default(cuid())
+  merchantId            String             @map("merchant_id")
+  merchant              Merchant           @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  environment           MerchantGatewayEnv @map("environment")
+  chain                 Chain
+  tokenSymbol           String             @map("token_symbol")
+  tokenDecimals         Int                @map("token_decimals")
+  grossAmount           String             @map("gross_amount") @db.VarChar(128)
+  mdrPercent            Decimal            @map("mdr_percent") @db.Decimal(7, 4)
+  settlementRatePercent Decimal            @map("settlement_rate_percent") @db.Decimal(7, 4)
+  mdrAmount             String             @map("mdr_amount") @db.VarChar(128)
+  settlementFeeAmount   String             @map("settlement_fee_amount") @db.VarChar(128)
+  netAmount             String             @map("net_amount") @db.VarChar(128)
+  proofFileName         String?            @map("proof_file_name") @db.VarChar(512)
+  createdByAdminId      String?            @map("created_by_admin_id")
+  transactionCount      Int                @default(0) @map("transaction_count")
+  createdAt             DateTime           @default(now()) @map("created_at")
+
+  settledTransactions Transaction[]
+
+  @@index([merchantId, environment, createdAt(sort: Desc)])
+  @@map("merchant_settlements")
 }
 
 model User {
@@ -193,6 +228,9 @@ model Transaction {
   callbackDeliveredAt DateTime? @map("callback_delivered_at")
   createdAt           DateTime  @default(now()) @map("created_at")
   updatedAt           DateTime  @updatedAt @map("updated_at")
+  /// When set, this deposit was included in a batch settlement payout.
+  merchantSettlementId String?  @map("merchant_settlement_id")
+  merchantSettlement   MerchantSettlement? @relation(fields: [merchantSettlementId], references: [id], onDelete: SetNull)
 
   wallet Wallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
 
@@ -200,6 +238,7 @@ model Transaction {
   @@index([toAddress, chain])
   @@index([status])
   @@index([payerUserId])
+  @@index([merchantSettlementId])
   /// List txs per wallet (portal, gateway) ordered by time.
   @@index([walletId, createdAt(sort: Desc)])
   @@map("transactions")

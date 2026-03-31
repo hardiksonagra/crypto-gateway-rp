@@ -77,7 +77,7 @@ export default function AdminLoginPage() {
             Operator console.
           </h1>
           <p className="mt-5 max-w-sm text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
-            Full-platform access: merchants, chains, withdrawals, and audit. Use a platform admin account only.
+            Full-platform access: merchants, chains, settlements, and audit. Use a platform admin account only.
           </p>
 
           <div className="mt-8 flex flex-wrap gap-2">

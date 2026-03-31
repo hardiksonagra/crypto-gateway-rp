@@ -574,9 +574,10 @@ export default function AdminMerchants() {
 
       <div className="mt-10 space-y-4">
         <div className="data-table-surface">
-          <table className="data-table min-w-[720px]">
+          <table className="data-table min-w-[880px]">
             <thead>
               <tr>
+                <th className="whitespace-nowrap text-xs">Merchant ID</th>
                 <th>Email</th>
                 <th>Chains</th>
                 <th>Rails</th>
@@ -589,14 +590,14 @@ export default function AdminMerchants() {
             <tbody>
               {q.isLoading ? (
                 <tr>
-                  <td colSpan={7} className="!py-12 text-center text-sm text-white/40">
+                  <td colSpan={8} className="!py-12 text-center text-sm text-white/40">
                     Loading…
                   </td>
                 </tr>
               ) : null}
               {showEmpty ? (
                 <tr>
-                  <td colSpan={7} className="!py-12 text-center text-sm text-white/45">
+                  <td colSpan={8} className="!py-12 text-center text-sm text-white/45">
                     No record found.
                   </td>
                 </tr>
@@ -606,6 +607,11 @@ export default function AdminMerchants() {
                   const isDeleted = Boolean(m.deleted_at);
                   return (
                   <tr key={m.id}>
+                    <td className="max-w-[min(200px,28vw)] font-mono text-[10px] leading-snug text-white/60">
+                      <span className="break-all" title={m.id}>
+                        {m.id}
+                      </span>
+                    </td>
                     <td className="font-mono text-xs text-white/80">
                       <span className="block">{m.email}</span>
                       {isDeleted ? (
