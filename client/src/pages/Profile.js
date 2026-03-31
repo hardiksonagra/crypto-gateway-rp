@@ -258,7 +258,7 @@ function MerchantProfileHero({ me }) {
   const initial = email.length ? email[0].toUpperCase() : "?";
 
   return (
-    <header className="relative w-full overflow-hidden rounded-2xl border border-white/[0.08] bg-gradient-to-br from-[#151a2e]/95 via-[#0e1222]/98 to-[#090c18] p-4 shadow-[0_20px_50px_-20px_rgba(0,0,0,0.55)] ring-1 ring-inset ring-white/[0.04] sm:p-5 lg:p-6">
+    <header className="surface-adaptive-hero relative w-full overflow-hidden rounded-2xl border border-white/[0.08] bg-gradient-to-br from-[#151a2e]/95 via-[#0e1222]/98 to-[#090c18] p-4 shadow-[0_20px_50px_-20px_rgba(0,0,0,0.55)] ring-1 ring-inset ring-white/[0.04] sm:p-5 lg:p-6">
       <div
         className="pointer-events-none absolute -right-12 -top-16 h-40 w-56 rounded-full bg-indigo-500/[0.12] blur-3xl"
         aria-hidden

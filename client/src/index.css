@@ -85,8 +85,8 @@ html.light {
   --bg-surface2: #f4f6ff;
   --bg-surface3: #eef1ff;
   --text-1: rgba(15, 18, 40, 0.9);
-  --text-2: rgba(60, 72, 120, 0.62);
-  --text-3: rgba(80, 96, 150, 0.45);
+  --text-2: rgba(24, 32, 62, 0.82);
+  --text-3: rgba(40, 52, 95, 0.65);
   --border: rgba(60, 80, 180, 0.1);
   --border-mid: rgba(60, 80, 180, 0.14);
   --border-subtle: rgba(60, 80, 180, 0.06);
@@ -94,7 +94,7 @@ html.light {
   --sidebar-border: rgba(60, 80, 180, 0.1);
   --topbar-bg: rgba(255, 255, 255, 0.92);
   --topbar-border: rgba(60, 80, 180, 0.1);
-  --link-color: rgba(60, 72, 120, 0.55);
+  --link-color: rgba(28, 38, 78, 0.82);
   --link-hover-bg: rgba(90, 111, 255, 0.07);
   --link-hover-color: rgba(15, 18, 40, 0.85);
   --link-active-bg: rgba(90, 111, 255, 0.1);
@@ -136,7 +136,7 @@ html.light {
   --menu-item-hover: rgba(90, 111, 255, 0.06);
   --tab-active-bg: rgba(90, 111, 255, 0.1);
   --tab-active-color: #3a4ecc;
-  --tab-inactive-color: rgba(60, 72, 120, 0.55);
+  --tab-inactive-color: rgba(35, 48, 90, 0.72);
   --tab-hover-bg: rgba(90, 111, 255, 0.05);
   --empty-icon-color: rgba(90, 111, 255, 0.15);
 }
@@ -165,7 +165,7 @@ html[data-vt-going="dark"]::view-transition-new(root) {
 }
 
 /* ── Base ─────────────────────────────────────────────────────── */
-html { color-scheme: dark; }
+html.dark { color-scheme: dark; }
 
 .font-display { font-family: var(--font-display); }
 
@@ -176,6 +176,38 @@ body {
   background: var(--bg-base);
   color: var(--text-1);
   letter-spacing: 0.01em;
+}
+
+/* Pointer on actionable controls — :where() keeps specificity 0 so Tailwind cursor-* utilities still win */
+:where(
+  button:not(:disabled),
+  input[type="button"]:not(:disabled),
+  input[type="submit"]:not(:disabled),
+  input[type="reset"]:not(:disabled),
+  input[type="checkbox"]:not(:disabled),
+  input[type="radio"]:not(:disabled),
+  input[type="file"]:not(:disabled),
+  input[type="range"]:not(:disabled),
+  input[type="image"]:not(:disabled),
+  a[href],
+  summary,
+  select:not(:disabled),
+  label,
+  [role="button"]:not([aria-disabled="true"]),
+  [role="tab"]:not([aria-disabled="true"]),
+  [role="menuitem"]:not([aria-disabled="true"]),
+  [role="option"]:not([aria-disabled="true"])
+) {
+  cursor: pointer;
+}
+
+:where(button:disabled, input:disabled, select:disabled, textarea:disabled, [aria-disabled="true"]) {
+  cursor: not-allowed;
+}
+
+/* Modal overlays that dismiss on click (role="presentation" + full-screen) */
+[role="presentation"].fixed {
+  cursor: pointer;
 }
 
 /* ── Light-mode overrides for hardcoded Tailwind dark classes ─── */
@@ -202,9 +234,122 @@ html.light .bg-black\/20,
 html.light .bg-black\/25,
 html.light .bg-black\/30,
 html.light .bg-black\/35,
-html.light .bg-black\/40 { background-color: var(--input-bg) !important; }
+html.light .bg-black\/40,
+html.light .bg-black\/60 { background-color: var(--input-bg) !important; }
 
 html.light [class*="border-white"] { border-color: var(--border) !important; }
+
+/* Nested “glass” chips on cards (merchant dashboard, settlement cards) */
+html.light [class*="bg-white/[0.03]"],
+html.light [class*="bg-white/[0.04]"],
+html.light [class*="bg-white/[0.06]"],
+html.light [class*="bg-white/[0.07]"] {
+  background-color: var(--input-bg) !important;
+}
+
+html.light [class*="bg-slate-950"] {
+  background-color: var(--bg-surface3) !important;
+}
+
+html.light [class*="to-black/20"],
+html.light [class*="to-black/30"] {
+  --tw-gradient-to: transparent !important;
+}
+
+/* Semantic text meant for dark panels — darker inks on light background */
+html.light [class*="text-rose-100"],
+html.light [class*="text-rose-200"],
+html.light [class*="text-rose-300"] {
+  color: #be123c !important;
+}
+html.light [class*="text-sky-100"],
+html.light [class*="text-sky-200"],
+html.light [class*="text-sky-300"] {
+  color: #0369a1 !important;
+}
+html.light [class*="text-emerald-100"],
+html.light [class*="text-emerald-200"] {
+  color: #047857 !important;
+}
+html.light [class*="text-amber-100"],
+html.light [class*="text-amber-200"],
+html.light [class*="text-amber-300"] {
+  color: #b45309 !important;
+}
+html.light [class*="text-cyan-100"],
+html.light [class*="text-cyan-200"] {
+  color: #0e7490 !important;
+}
+html.light [class*="text-violet-100"],
+html.light [class*="text-violet-200"] {
+  color: #5b21b6 !important;
+}
+html.light [class*="text-indigo-100"],
+html.light [class*="text-indigo-200"],
+html.light [class*="text-indigo-300"] {
+  color: #4338ca !important;
+}
+
+/* Code / mono blocks that use zinc on dark charcoal */
+html.light [class*="text-zinc-200"],
+html.light [class*="text-zinc-300"] {
+  color: var(--text-1) !important;
+}
+
+html.light [class*="ring-white/"] {
+  --tw-ring-color: var(--border-mid) !important;
+}
+
+/* ── Adaptive surfaces (dark gradients in JSX; light uses theme tokens) ── */
+html.light .surface-adaptive-hero {
+  background: linear-gradient(118deg, var(--bg-surface), var(--bg-surface3)) !important;
+  background-image: linear-gradient(118deg, var(--bg-surface), var(--bg-surface3)) !important;
+  border-color: var(--border-mid) !important;
+  box-shadow: 0 12px 40px var(--glass-shadow) !important;
+  --tw-shadow: 0 12px 40px var(--glass-shadow);
+  --tw-ring-color: var(--border-subtle);
+}
+
+html.light .surface-adaptive-card {
+  background: linear-gradient(165deg, var(--bg-surface), var(--bg-surface2)) !important;
+  background-image: linear-gradient(165deg, var(--bg-surface), var(--bg-surface2)) !important;
+  border-color: var(--border-mid) !important;
+  box-shadow: 0 16px 44px var(--glass-shadow) !important;
+  --tw-shadow: 0 16px 44px var(--glass-shadow);
+  --tw-ring-color: var(--border-subtle);
+}
+
+html.light .surface-adaptive-card:hover {
+  box-shadow: 0 20px 48px var(--glass-shadow) !important;
+}
+
+html.light .surface-adaptive-row {
+  background: linear-gradient(90deg, var(--bg-surface), var(--bg-surface2)) !important;
+  background-image: linear-gradient(90deg, var(--bg-surface), var(--bg-surface2)) !important;
+  border-color: var(--border-mid) !important;
+  --tw-ring-color: var(--border-subtle);
+}
+
+html.light .surface-adaptive-inset {
+  background: var(--table-surface) !important;
+  border-color: var(--border) !important;
+  --tw-ring-color: var(--border-subtle);
+}
+
+html.light .surface-adaptive-admin-strip {
+  background: linear-gradient(
+    90deg,
+    rgba(99, 102, 241, 0.1),
+    rgba(99, 102, 241, 0.04),
+    transparent
+  ) !important;
+  border-color: var(--border-mid) !important;
+  --tw-ring-color: var(--border-subtle);
+}
+
+html.light .menu-shell {
+  box-shadow: 0 12px 40px rgba(15, 18, 40, 0.12);
+}
 
 /* ── Mesh background ──────────────────────────────────────────── */
 .mesh-bg {
@@ -481,6 +626,27 @@ html.light .badge-deleted {
   background: var(--link-active-bg);
   border-color: var(--link-active-border);
   color: var(--link-active-color);
+}
+
+/* Stronger inactive nav + section labels in light sidebar */
+html.light .sidebar-nav-link:not(.active) {
+  color: rgba(22, 30, 62, 0.86);
+}
+html.light .sidebar-nav-link:not(.active):hover {
+  color: rgba(10, 14, 32, 0.95);
+}
+
+/* Tailwind amber/emerald “400” on pale washes — use readable browns/greens */
+html.light [class*="text-amber-400"] {
+  color: #92400e !important;
+}
+html.light [class*="text-emerald-400"] {
+  color: #047857 !important;
+}
+
+/* Slate muted copy on white cards (hubs, forms) */
+html.light [class*="text-slate-500"] {
+  color: #475569 !important;
 }
 
 /* ── Top bar ──────────────────────────────────────────────────── */

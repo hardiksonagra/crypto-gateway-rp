@@ -8,7 +8,7 @@ import { formatLocalDateTime } from "../../lib/formatLocalDateTime.js";
 import { BrandLoader } from "../../components/BrandLoader.js";
 
 const cardShell =
-  "group relative overflow-hidden rounded-2xl border border-white/[0.09] bg-gradient-to-br from-[#141a2e]/92 via-[#0e1222]/96 to-[#090c18] p-5 shadow-[0_20px_40px_-14px_rgba(0,0,0,0.5)] ring-1 ring-inset ring-white/[0.04]";
+  "surface-adaptive-card group relative overflow-hidden rounded-2xl border border-white/[0.09] bg-gradient-to-br from-[#141a2e]/92 via-[#0e1222]/96 to-[#090c18] p-5 shadow-[0_20px_40px_-14px_rgba(0,0,0,0.5)] ring-1 ring-inset ring-white/[0.04]";
 
 const rail =
   "pointer-events-none absolute inset-y-3 left-0 w-1 rounded-full bg-gradient-to-b from-cyan-400 via-indigo-500 to-fuchsia-500 opacity-90";
@@ -122,7 +122,7 @@ export default function MerchantDashboard() {
 
   return (
     <div className="w-full max-w-[1400px]">
-      <header className="relative overflow-hidden rounded-2xl border border-white/[0.08] bg-gradient-to-r from-[#151a2e]/95 via-[#0c1020]/98 to-[#0a0d18] p-6 ring-1 ring-inset ring-white/[0.04] sm:p-7">
+      <header className="surface-adaptive-hero relative overflow-hidden rounded-2xl border border-white/[0.08] bg-gradient-to-r from-[#151a2e]/95 via-[#0c1020]/98 to-[#0a0d18] p-6 ring-1 ring-inset ring-white/[0.04] sm:p-7">
         <div
           className="pointer-events-none absolute -right-8 -top-12 h-40 w-56 rounded-full bg-indigo-500/[0.15] blur-3xl"
           aria-hidden
@@ -215,7 +215,7 @@ export default function MerchantDashboard() {
             {data.balances.map((b) => (
               <article
                 key={`${b.chain}-${b.token_symbol}-${b.token_decimals}`}
-                className="relative flex flex-wrap items-center justify-between gap-4 overflow-hidden rounded-2xl border border-white/[0.08] bg-gradient-to-r from-slate-900/80 via-[#0e1324]/90 to-[#090c16] px-5 py-4 pl-6 ring-1 ring-inset ring-white/[0.04] sm:px-6"
+                className="surface-adaptive-row relative flex flex-wrap items-center justify-between gap-4 overflow-hidden rounded-2xl border border-white/[0.08] bg-gradient-to-r from-slate-900/80 via-[#0e1324]/90 to-[#090c16] px-5 py-4 pl-6 ring-1 ring-inset ring-white/[0.04] sm:px-6"
               >
                 <div
                   className="pointer-events-none absolute inset-y-2 left-0 w-0.5 rounded-full bg-gradient-to-b from-violet-400 to-cyan-500 opacity-90"
@@ -243,7 +243,7 @@ export default function MerchantDashboard() {
 
       <section className="mt-12">
         <h2 className="text-sm font-semibold tracking-wide text-white/40 uppercase">Recent (7d)</h2>
-        <div className="mt-4 overflow-hidden rounded-2xl border border-white/[0.08] bg-[#0a0d14]/60 ring-1 ring-inset ring-white/[0.04]">
+        <div className="surface-adaptive-inset mt-4 overflow-hidden rounded-2xl border border-white/[0.08] bg-[#0a0d14]/60 ring-1 ring-inset ring-white/[0.04]">
           <div className="data-table-surface border-0 !shadow-none">
             <table className="data-table">
               <thead>

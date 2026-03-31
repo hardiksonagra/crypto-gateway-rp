@@ -1,5 +1,5 @@
 import { Link, Outlet, useNavigate } from "react-router-dom";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   api,
   clearImpersonationAdminToken,
@@ -62,9 +62,30 @@ function IconMoon() {
   );
 }
 
+function IconChevronDown({ className }) {
+  return (
+    <svg
+      className={className}
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="m6 9 6 6 6-6" />
+    </svg>
+  );
+}
+
 export default function MerchantShell() {
   const navigate = useNavigate();
   const [email, setEmail] = useState(null);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const userMenuRef = useRef(null);
   const [adminImpersonation, setAdminImpersonation] = useState(() =>
     Boolean(getImpersonationAdminToken()),
   );
@@ -96,6 +117,24 @@ export default function MerchantShell() {
       })
       .catch(() => navigate("/login", { replace: true }));
   }, [navigate]);
+
+  useEffect(() => {
+    if (!userMenuOpen) return;
+    function onDocMouseDown(e) {
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target)) {
+        setUserMenuOpen(false);
+      }
+    }
+    function onKey(e) {
+      if (e.key === "Escape") setUserMenuOpen(false);
+    }
+    document.addEventListener("mousedown", onDocMouseDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDocMouseDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [userMenuOpen]);
 
   function logout() {
     clearImpersonationAdminToken();
@@ -155,14 +194,6 @@ export default function MerchantShell() {
           </button>
         </div>
 
-        {email ? (
-          <p
-            className={`mb-4 truncate px-1 text-xs text-white/35 ${collapsed ? "md:sr-only" : ""}`}
-          >
-            {email}
-          </p>
-        ) : null}
-
         <nav className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto" aria-label="Main">
           {primaryNav.map((l) => (
             <ShellNavLink
@@ -175,27 +206,6 @@ export default function MerchantShell() {
               onPick={closeMobile}
             />
           ))}
-          <div className="mt-6 border-t border-white/10 pt-4">
-            <p
-              className={`mb-2 px-3 text-[10px] font-semibold tracking-wider text-white/30 uppercase ${
-                collapsed ? "md:sr-only" : ""
-              }`}
-            >
-              Settings
-            </p>
-            <div className="flex flex-col gap-0.5">
-              {settingsNav.map((l) => (
-                <ShellNavLink
-                  key={l.to}
-                  to={l.to}
-                  label={l.label}
-                  Icon={l.Icon}
-                  collapsed={collapsed}
-                  onPick={closeMobile}
-                />
-              ))}
-            </div>
-          </div>
         </nav>
 
         <button
@@ -239,13 +249,23 @@ export default function MerchantShell() {
                 <span
                   className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider sm:px-2.5 sm:py-0.5 ${
                     portalEnvironment === "sandbox"
-                      ? "border-amber-400/25 bg-amber-500/10 text-amber-400"
-                      : "border-emerald-400/25 bg-emerald-500/10 text-emerald-400"
+                      ? isDark
+                        ? "border-amber-400/25 bg-amber-500/10 text-amber-400"
+                        : "border-amber-300 bg-amber-100 text-amber-950"
+                      : isDark
+                        ? "border-emerald-400/25 bg-emerald-500/10 text-emerald-400"
+                        : "border-emerald-300 bg-emerald-100 text-emerald-950"
                   }`}
                 >
                   <span
                     className={`h-1.5 w-1.5 animate-pulse rounded-full ${
-                      portalEnvironment === "sandbox" ? "bg-amber-400" : "bg-emerald-400"
+                      portalEnvironment === "sandbox"
+                        ? isDark
+                          ? "bg-amber-400"
+                          : "bg-amber-600"
+                        : isDark
+                          ? "bg-emerald-400"
+                          : "bg-emerald-600"
                     }`}
                   />
                   {portalEnvironment === "sandbox" ? "Sandbox" : "Live"}
@@ -263,27 +283,102 @@ export default function MerchantShell() {
               </button>
 
               {email ? (
-                <div className="flex items-center gap-2 sm:gap-2.5">
-                  <div className="hidden flex-col items-end lg:flex">
-                    <span
-                      className="max-w-[140px] truncate text-xs font-semibold xl:max-w-[200px]"
-                      style={{ color: "var(--text-1)" }}
-                    >
-                      {email}
-                    </span>
-                    <span
-                      className="text-[10px] uppercase tracking-wider"
-                      style={{ color: "var(--text-3)" }}
-                    >
-                      Merchant
-                    </span>
-                  </div>
-                  <div
-                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[#5a6fff] to-[#9b59ff] text-sm font-bold text-white"
-                    style={{ boxShadow: "0 2px 10px rgba(90,111,255,0.35)" }}
+                <div className="relative" ref={userMenuRef}>
+                  <button
+                    type="button"
+                    id="merchant-user-menu-button"
+                    aria-haspopup="menu"
+                    aria-expanded={userMenuOpen}
+                    aria-controls="merchant-user-menu"
+                    onClick={() => setUserMenuOpen((o) => !o)}
+                    className="flex max-w-[min(100vw-8rem,20rem)] items-center gap-2 rounded-xl border py-1.5 pl-2 pr-2 transition-colors sm:gap-2.5 sm:pl-2.5 sm:pr-2"
+                    style={{
+                      borderColor: "var(--border)",
+                      background: isDark ? "var(--bg-surface2)" : "rgba(255,255,255,0.85)",
+                      boxShadow: isDark ? undefined : "0 1px 3px rgba(15, 23, 42, 0.06)",
+                    }}
                   >
-                    {avatarInitial}
-                  </div>
+                    <div className="hidden min-w-0 flex-1 flex-col items-end text-right sm:flex">
+                      <span
+                        className="max-w-[140px] truncate text-xs font-semibold xl:max-w-[200px]"
+                        style={{ color: "var(--text-1)" }}
+                      >
+                        {email}
+                      </span>
+                      <span
+                        className="text-[10px] uppercase tracking-wider"
+                        style={{ color: "var(--text-3)" }}
+                      >
+                        Merchant
+                      </span>
+                    </div>
+                    <div
+                      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-[#5a6fff] to-[#9b59ff] text-sm font-bold text-white sm:rounded-xl"
+                      style={{ boxShadow: "0 2px 10px rgba(90,111,255,0.35)" }}
+                    >
+                      {avatarInitial}
+                    </div>
+                    <span className="shrink-0 opacity-70" style={{ color: "var(--text-2)" }}>
+                      <IconChevronDown
+                        className={`transition-transform duration-200 ${userMenuOpen ? "rotate-180" : ""}`}
+                      />
+                    </span>
+                  </button>
+
+                  {userMenuOpen ? (
+                    <div
+                      id="merchant-user-menu"
+                      role="menu"
+                      aria-labelledby="merchant-user-menu-button"
+                      className="absolute right-0 top-[calc(100%+0.375rem)] z-50 min-w-[13.5rem] overflow-hidden rounded-xl border py-1 shadow-lg"
+                      style={{
+                        borderColor: "var(--border)",
+                        background: isDark ? "var(--bg-surface2)" : "#ffffff",
+                        boxShadow: isDark
+                          ? "0 12px 40px rgba(0,0,0,0.45)"
+                          : "0 12px 40px rgba(15, 23, 42, 0.12)",
+                      }}
+                    >
+                      <div
+                        className="border-b px-3 py-2.5 sm:hidden"
+                        style={{ borderColor: "var(--border)" }}
+                      >
+                        <p
+                          className="truncate text-xs font-semibold"
+                          style={{ color: "var(--text-1)" }}
+                        >
+                          {email}
+                        </p>
+                        <p className="text-[10px] uppercase tracking-wider" style={{ color: "var(--text-3)" }}>
+                          Merchant
+                        </p>
+                      </div>
+                      {settingsNav.map((l) => {
+                        const Icon = l.Icon;
+                        return (
+                          <Link
+                            key={l.to}
+                            role="menuitem"
+                            to={l.to}
+                            onClick={() => setUserMenuOpen(false)}
+                            className="flex items-center gap-3 px-3 py-2.5 text-sm font-medium transition-colors"
+                            style={{ color: "var(--text-2)" }}
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.background = isDark
+                                ? "var(--bg-surface3)"
+                                : "rgba(99,102,241,0.08)";
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.background = "";
+                            }}
+                          >
+                            <Icon />
+                            {l.label}
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  ) : null}
                 </div>
               ) : null}
             </div>
@@ -291,15 +386,28 @@ export default function MerchantShell() {
 
           <main className="flex min-h-0 flex-1 flex-col overflow-auto p-5 sm:p-8 lg:p-10">
             {adminImpersonation ? (
-              <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-400/25 bg-amber-500/10 px-4 py-3 text-sm text-amber-100/95">
+              <div
+                className={`mb-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border px-4 py-3 text-sm ${
+                  isDark
+                    ? "border-amber-400/25 bg-amber-500/10 text-amber-100/95"
+                    : "border-amber-300 bg-amber-50 text-amber-950"
+                }`}
+              >
                 <p className="min-w-0 text-pretty">
-                  You are signed in to the <span className="font-medium text-white">merchant</span> portal
-                  from an admin session.
+                  You are signed in to the{" "}
+                  <span className={`font-medium ${isDark ? "text-white" : "text-amber-950"}`}>
+                    merchant
+                  </span>{" "}
+                  portal from an admin session.
                 </p>
                 <button
                   type="button"
                   onClick={backToAdmin}
-                  className="shrink-0 rounded-lg border border-amber-300/35 bg-white/10 px-3 py-1.5 text-xs font-semibold tracking-wide text-white uppercase transition hover:bg-white/15"
+                  className={`shrink-0 rounded-lg border px-3 py-1.5 text-xs font-semibold tracking-wide uppercase transition ${
+                    isDark
+                      ? "border-amber-300/35 bg-white/10 text-white hover:bg-white/15"
+                      : "border-amber-400 bg-amber-100 text-amber-950 hover:bg-amber-200"
+                  }`}
                 >
                   Back to admin
                 </button>
@@ -308,17 +416,32 @@ export default function MerchantShell() {
             {!portalEnvFlagsLoading &&
             portalEnvironment === "sandbox" &&
             sandboxGatewayEnabled ? (
-              <div className="mb-6 rounded-xl border border-sky-400/25 bg-sky-500/10 px-4 py-3 text-sm text-sky-100/95">
+              <div
+                className={`mb-6 rounded-xl border px-4 py-3 text-sm ${
+                  isDark
+                    ? "border-sky-400/25 bg-sky-500/10 text-sky-100/95"
+                    : "border-sky-300 bg-sky-50 text-sky-950"
+                }`}
+              >
                 <p className="text-pretty">
-                  You are in <span className="font-medium text-white">sandbox</span> mode. Dashboard,
-                  Users, and Transactions show test data only. To use live data and settlements, open{" "}
+                  You are in{" "}
+                  <span className={`font-medium ${isDark ? "text-white" : "text-sky-900"}`}>
+                    sandbox
+                  </span>{" "}
+                  mode. Dashboard, Users, and Transactions show test data only. To use live data and
+                  settlements, open{" "}
                   <Link
                     to="/profile"
-                    className="font-medium text-white underline decoration-sky-400/50 underline-offset-2 hover:decoration-sky-300/80"
+                    className={`font-medium underline underline-offset-2 ${
+                      isDark
+                        ? "text-white decoration-sky-400/50 hover:decoration-sky-300/80"
+                        : "text-sky-900 decoration-sky-700/40 hover:decoration-sky-800"
+                    }`}
                   >
                     Profile
                   </Link>{" "}
-                  and switch to <span className="font-medium text-white">Live</span>.
+                  and switch to{" "}
+                  <span className={`font-medium ${isDark ? "text-white" : "text-sky-900"}`}>Live</span>.
                 </p>
               </div>
             ) : null}

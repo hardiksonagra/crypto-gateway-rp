@@ -67,7 +67,7 @@ export function PendingSettlementBucketCard({
     variant === "admin" && Boolean(merchantId) && typeof onSettled === "function";
 
   return (
-    <article className="group relative w-full overflow-hidden rounded-2xl border border-white/[0.09] bg-gradient-to-br from-[#141a2e]/95 via-[#0e1222]/98 to-[#090c18] shadow-[0_24px_48px_-12px_rgba(0,0,0,0.55)] ring-1 ring-inset ring-white/[0.04] transition-[box-shadow,transform] duration-300 hover:shadow-[0_28px_56px_-12px_rgba(60,80,200,0.12)]">
+    <article className="surface-adaptive-card group relative w-full overflow-hidden rounded-2xl border border-white/[0.09] bg-gradient-to-br from-[#141a2e]/95 via-[#0e1222]/98 to-[#090c18] shadow-[0_24px_48px_-12px_rgba(0,0,0,0.55)] ring-1 ring-inset ring-white/[0.04] transition-[box-shadow,transform] duration-300 hover:shadow-[0_28px_56px_-12px_rgba(60,80,200,0.12)]">
       <div
         className="pointer-events-none absolute inset-y-3 left-0 w-1 rounded-full bg-gradient-to-b from-cyan-400 via-indigo-500 to-fuchsia-500 opacity-95 shadow-[0_0_12px_rgba(99,102,241,0.45)]"
         aria-hidden
@@ -195,7 +195,7 @@ export function PendingSettlementBucketCard({
         ) : null}
 
         {showAdminSettle && eligible ? (
-          <div className="mt-2 rounded-xl border border-indigo-400/25 bg-gradient-to-r from-indigo-500/[0.1] via-indigo-600/[0.04] to-black/20 px-3 py-2.5 ring-1 ring-inset ring-indigo-400/10 xl:flex xl:items-end xl:gap-4">
+          <div className="surface-adaptive-admin-strip mt-2 rounded-xl border border-indigo-400/25 bg-gradient-to-r from-indigo-500/[0.1] via-indigo-600/[0.04] to-black/20 px-3 py-2.5 ring-1 ring-inset ring-indigo-400/10 xl:flex xl:items-end xl:gap-4">
             <p className="mb-2 shrink-0 text-[9px] font-bold uppercase tracking-[0.15em] text-indigo-200/55 xl:mb-0 xl:pt-1">
               Record payout
             </p>

@@ -121,7 +121,7 @@ const CARDS_META = [
     lightAccent: "#6d28d9",
     lightLabel: "#5b21b6",
     lightValue: "#1e0a4a",
-    lightSub: "rgba(109,40,217,0.55)",
+    lightSub: "rgba(91,33,182,0.82)",
     lightIconBg: "rgba(109,40,217,0.14)",
     lightIconColor: "#6d28d9",
     lightGlow: "rgba(109,40,217,0.18)",
@@ -146,7 +146,7 @@ const CARDS_META = [
     lightAccent: "#0369a1",
     lightLabel: "#0c5a8a",
     lightValue: "#082f49",
-    lightSub: "rgba(3,105,161,0.55)",
+    lightSub: "rgba(3,105,161,0.82)",
     lightIconBg: "rgba(3,105,161,0.14)",
     lightIconColor: "#0369a1",
     lightGlow: "rgba(3,105,161,0.18)",
@@ -171,7 +171,7 @@ const CARDS_META = [
     lightAccent: "#0369a1",
     lightLabel: "#0c5a8a",
     lightValue: "#082f49",
-    lightSub: "rgba(3,105,161,0.55)",
+    lightSub: "rgba(3,105,161,0.82)",
     lightIconBg: "rgba(3,105,161,0.14)",
     lightIconColor: "#0369a1",
     lightGlow: "rgba(3,105,161,0.18)",
@@ -196,7 +196,7 @@ const CARDS_META = [
     lightAccent: "#7e22ce",
     lightLabel: "#6b21a8",
     lightValue: "#2e0a5e",
-    lightSub: "rgba(126,34,206,0.55)",
+    lightSub: "rgba(107,33,168,0.82)",
     lightIconBg: "rgba(126,34,206,0.14)",
     lightIconColor: "#7e22ce",
     lightGlow: "rgba(126,34,206,0.18)",
@@ -221,7 +221,7 @@ const CARDS_META = [
     lightAccent: "#15803d",
     lightLabel: "#166534",
     lightValue: "#052e16",
-    lightSub: "rgba(21,128,61,0.55)",
+    lightSub: "rgba(21,128,61,0.82)",
     lightIconBg: "rgba(21,128,61,0.15)",
     lightIconColor: "#15803d",
     lightGlow: "rgba(21,128,61,0.18)",
@@ -250,7 +250,7 @@ const CARDS_META = [
     lightAccent: "#b45309",
     lightLabel: "#92400e",
     lightValue: "#451a03",
-    lightSub: "rgba(180,83,9,0.55)",
+    lightSub: "rgba(146,64,14,0.88)",
     lightIconBg: "rgba(180,83,9,0.14)",
     lightIconColor: "#b45309",
     lightGlow: "rgba(180,83,9,0.18)",
@@ -466,7 +466,7 @@ export default function AdminDashboard() {
               title="Portal list & transaction environment"
             >
               <span
-                className={`text-[10px] font-bold uppercase tracking-wider ${isDark ? "text-white/40" : "text-slate-500"}`}
+                className={`text-[10px] font-bold uppercase tracking-wider ${isDark ? "text-white/40" : "text-slate-700"}`}
               >
                 Data plane
               </span>
@@ -516,7 +516,7 @@ export default function AdminDashboard() {
                   {item.label}
                 </span>
                 <span
-                  className={`hidden text-[10px] sm:block ${isDark ? "text-white/40" : "text-slate-500"}`}
+                  className={`hidden text-[10px] sm:block ${isDark ? "text-white/40" : "text-slate-700"}`}
                 >
                   {item.desc}
                 </span>
