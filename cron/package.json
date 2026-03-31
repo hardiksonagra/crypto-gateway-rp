@@ -6,15 +6,17 @@
   "description": "Scheduled jobs + blockchain worker; separate Node service from API (see ../docs/split-services.md)",
   "main": "src/index.js",
   "scripts": {
-    "build": "node --check src/index.js && node --check src/bootstrap-runtime.js && node --check src/entry-worker.js && node --check src/entry-cron-1.js && node --check src/entry-cron-2.js && node --check src/run.js && node --check src/run-worker.js && node --check src/run-cron-1.js && node --check src/run-cron-2.js && node --check src/lib/scheduled-jobs-host.js && node --check src/services/tracker/worker.js && node --check src/services/deposit-full-scan-pass.js && node --check src/services/wallet-pool/assign-pooled-wallet.js && node --check src/services/wallet-pool/wallet-pool-release.js && node --check src/jobs/index.js && node --check src/jobs/group1.js && node --check src/jobs/group2.js && node --check src/jobs/wallet-pool-holds-cron.js && node --check src/jobs/deposit-full-scan-cron.js && node --check src/jobs/tron-usdt-auto-sweep-cron.js && node --check src/jobs/example-heartbeat.js",
+    "build": "node --check src/index.js && node --check src/bootstrap-runtime.js && node --check src/entry-worker.js && node --check src/entry-cron-1.js && node --check src/entry-cron-2.js && node --check src/entry-cron-deposit-full-scan.js && node --check src/run.js && node --check src/run-worker.js && node --check src/run-cron-1.js && node --check src/run-cron-2.js && node --check src/run-cron-deposit-full-scan.js && node --check src/lib/scheduled-jobs-host.js && node --check src/services/tracker/worker.js && node --check src/services/deposit-full-scan-pass.js && node --check src/services/wallet-pool/assign-pooled-wallet.js && node --check src/services/wallet-pool/wallet-pool-release.js && node --check src/jobs/index.js && node --check src/jobs/group1.js && node --check src/jobs/group2.js && node --check src/jobs/wallet-pool-holds-cron.js && node --check src/jobs/deposit-full-scan-cron.js && node --check src/jobs/tron-usdt-auto-sweep-cron.js && node --check src/jobs/example-heartbeat.js",
     "start": "node src/index.js",
     "start:worker": "node src/entry-worker.js",
     "start:cron:maintenance": "node src/entry-cron-1.js",
     "start:cron:tron-sweep": "node src/entry-cron-2.js",
+    "start:cron:deposit-full-scan": "node src/entry-cron-deposit-full-scan.js",
     "dev": "node --watch src/index.js",
     "dev:worker": "node --watch src/entry-worker.js",
     "dev:cron:maintenance": "node --watch src/entry-cron-1.js",
-    "dev:cron:tron-sweep": "node --watch src/entry-cron-2.js"
+    "dev:cron:tron-sweep": "node --watch src/entry-cron-2.js",
+    "dev:cron:deposit-full-scan": "node --watch src/entry-cron-deposit-full-scan.js"
   },
   "engines": {
     "node": ">=20"

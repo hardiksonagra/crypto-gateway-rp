@@ -7,7 +7,7 @@ import {
 
 startBlockchainWorker();
 logger.info("blockchain deposit / transaction tracker started (worker process)", {
-  note: "poll interval: WORKER_POLL_INTERVAL_MS",
+  note: "poll interval: WORKER_POLL_INTERVAL_MS; full deposit scan: separate PM2 app crypto-gateway-cron-deposit-full-scan",
   tron_deposit_scan: "tronscan",
   deposit_scanner_tron_only: re.depositScannerTronOnly,
   tronscan_key_configured: Boolean(re.tronscanApiKey?.trim()),

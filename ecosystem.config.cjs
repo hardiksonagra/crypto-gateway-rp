@@ -4,7 +4,8 @@
  * Apps:
  * - `crypto-gateway-api` — HTTP + static client (no timers).
  * - `crypto-gateway-worker` — deposit / transaction tracker (`WORKER_POLL_INTERVAL_MS`).
- * - `crypto-gateway-cron-maintenance` — example heartbeat + wallet-pool expired holds.
+ * - `crypto-gateway-cron-maintenance` — heartbeat + wallet-pool expired holds.
+ * - `crypto-gateway-cron-deposit-full-scan` — periodic full live-wallet deposit scan (`DEPOSIT_FULL_SCAN_INTERVAL_HOURS`).
  * - `crypto-gateway-cron-tron-sweep` — TRON USDT auto-sweep (and similar chain-heavy jobs).
  *
  * Add another process: copy the tron-sweep block, add `jobs/group3.js`, `run-cron-3.js`, `entry-cron-3.js`,
@@ -48,6 +49,19 @@ module.exports = {
       name: "crypto-gateway-cron-maintenance",
       cwd: "./cron",
       script: "src/entry-cron-1.js",
+      interpreter: "node",
+      exec_mode: "fork",
+      instances: 1,
+      autorestart: true,
+      max_memory_restart: "400M",
+      env: {
+        NODE_ENV: "production",
+      },
+    },
+    {
+      name: "crypto-gateway-cron-deposit-full-scan",
+      cwd: "./cron",
+      script: "src/entry-cron-deposit-full-scan.js",
       interpreter: "node",
       exec_mode: "fork",
       instances: 1,

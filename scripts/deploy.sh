@@ -77,9 +77,9 @@ fi
 # ecosystem.config.cjs exactly (fork + instances:1) and fixes EADDRINUSE loops.
 # Remove this project’s PM2 names (incl. legacy single-cron app). Use `npm run pm2:resync` for `pm2 delete all`.
 log "PM2 restart from ecosystem.config.cjs (delete gateway apps, then start)"
-pm2 delete crypto-gateway-api crypto-gateway-worker crypto-gateway-cron-maintenance crypto-gateway-cron-tron-sweep crypto-gateway-cron-1 crypto-gateway-cron-2 crypto-gateway-cron 2>/dev/null || true
+pm2 delete crypto-gateway-api crypto-gateway-worker crypto-gateway-cron-maintenance crypto-gateway-cron-deposit-full-scan crypto-gateway-cron-tron-sweep crypto-gateway-cron-1 crypto-gateway-cron-2 crypto-gateway-cron 2>/dev/null || true
 pm2 start ecosystem.config.cjs
 
 pm2 save 2>/dev/null || true
 
-log "Done. Check: pm2 status (api + worker + cron-maintenance + cron-tron-sweep online) && pm2 logs crypto-gateway-api --lines 50"
+log "Done. Check: pm2 status (api + worker + cron-maintenance + cron-deposit-full-scan + cron-tron-sweep online) && pm2 logs crypto-gateway-api --lines 50"

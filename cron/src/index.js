@@ -1,6 +1,7 @@
 /**
- * All-in-one: worker + every cron group (local dev / single process).
- * Production PM2: `entry-worker.js`, `entry-cron-1.js` (maintenance), `entry-cron-2.js` (tron sweep).
+ * All-in-one: worker + maintenance + tron-sweep groups (single process).
+ * Does **not** include deposit full-scan — run `entry-cron-deposit-full-scan.js` separately (or PM2 app).
+ * Production PM2: worker, maintenance, deposit-full-scan, tron-sweep as separate apps.
  */
 import { bootstrapCronRuntime } from "./bootstrap-runtime.js";
 

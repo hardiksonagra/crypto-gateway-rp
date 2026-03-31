@@ -219,6 +219,7 @@ export default function SystemSettings() {
         on save; restart PM2{" "}
         <span className="font-mono text-white/80">crypto-gateway-worker</span> /{" "}
         <span className="font-mono text-white/80">crypto-gateway-cron-maintenance</span> /{" "}
+        <span className="font-mono text-white/80">crypto-gateway-cron-deposit-full-scan</span> /{" "}
         <span className="font-mono text-white/80">crypto-gateway-cron-tron-sweep</span> if you change
         scanner poll interval or other cron-only behavior.
       </p>

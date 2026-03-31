@@ -40,5 +40,5 @@ process.on("SIGTERM", () => shutdown("SIGTERM"));
 
 logger.info("crypto-gateway-cron-combined: ready", {
   nodeCronTasks: tasks.length,
-  note: "blockchain poll uses WORKER_POLL_INTERVAL_MS; PM2 uses worker + cron-maintenance + cron-tron-sweep",
+  note: "full deposit scan is a separate process: crypto-gateway-cron-deposit-full-scan (or npm run start:cron:deposit-full-scan -w cron)",
 });
