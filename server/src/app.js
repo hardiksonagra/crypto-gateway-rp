@@ -113,7 +113,9 @@ export function createApp() {
       res.json({
         ok: true,
         service: "crypto-payment-gateway-api",
-        login: "POST /api/v1/auth/login (JSON: { email, password })",
+        login_merchant: "POST /api/v1/auth/login",
+        login_admin: "POST /api/v1/auth/login/admin",
+        login_body: '{ "email", "password" }',
         health: "GET /health",
         note: "Run the server workspace: npm run dev -w server (PORT from .env, default 3000).",
       });
@@ -155,7 +157,7 @@ export function createApp() {
       path: req.originalUrl,
       hint: serveSpa
         ? "Unknown API path. The React app is served for non-API routes."
-        : "If you expected login: POST JSON to /api/v1/auth/login with this API process listening (npm run dev -w server). SPA dev uses Vite on :5173 and proxies /api to the API port.",
+        : "Portal login: merchants POST /api/v1/auth/login, admins POST /api/v1/auth/login/admin (JSON { email, password }). npm run dev -w server. SPA dev: Vite :5173 proxies /api.",
     });
   });
 

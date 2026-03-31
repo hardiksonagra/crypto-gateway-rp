@@ -29,7 +29,7 @@ export default function MerchantCreate() {
     <div className="w-full max-w-none">
       <div className="mb-6 flex flex-wrap items-center gap-3">
         <Link
-          to="/admin/merchants"
+          to="/control/merchants"
           className="text-sm text-white/50 hover:text-white"
         >
           ← Merchants
@@ -195,7 +195,7 @@ export default function MerchantCreate() {
                   {isSubmitting ? "Creating…" : "Create merchant"}
                 </button>
                 <Link
-                  to="/admin/merchants"
+                  to="/control/merchants"
                   className="rounded-lg border border-white/15 px-4 py-2 text-sm text-white/70"
                 >
                   Cancel
@@ -235,7 +235,7 @@ export default function MerchantCreate() {
               className="mt-6 rounded-lg bg-white/10 px-4 py-2 text-sm text-white"
               onClick={() => {
                 setSecretModal(null);
-                nav("/admin/merchants");
+                nav("/control/merchants");
               }}
             >
               Done

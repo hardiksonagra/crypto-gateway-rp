@@ -241,7 +241,7 @@ export default function GatewayApiDocs() {
           still send optional <span className="font-mono">gateway_environment</span> to override.
           Your merchant secret is only on the{" "}
           <Link
-            to="/m/api-key"
+            to="/api-key"
             className="text-sky-300/90 underline decoration-white/20 underline-offset-2 hover:decoration-sky-300/60"
           >
             API key

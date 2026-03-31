@@ -25,26 +25,26 @@ const navGroups = [
   {
     label: "MAIN",
     items: [
-      { to: "/admin", label: "Dashboard", end: true, Icon: IconDashboard },
-      { to: "/admin/merchants", label: "Merchants", Icon: IconMerchants },
-      { to: "/admin/users", label: "Users", Icon: IconUsers },
-      { to: "/admin/wallets", label: "Wallets", Icon: IconWallet },
-      { to: "/admin/transactions", label: "Transactions", Icon: IconTransactions },
+      { to: "/control", label: "Dashboard", end: true, Icon: IconDashboard },
+      { to: "/control/merchants", label: "Merchants", Icon: IconMerchants },
+      { to: "/control/users", label: "Users", Icon: IconUsers },
+      { to: "/control/wallets", label: "Wallets", Icon: IconWallet },
+      { to: "/control/transactions", label: "Transactions", Icon: IconTransactions },
     ],
   },
   {
     label: "OPERATIONS",
     items: [
-      { to: "/admin/withdrawals", label: "Withdrawals", Icon: IconWithdrawals },
-      { to: "/admin/sweep", label: "Sweep", Icon: IconWallet },
-      { to: "/admin/activity", label: "Activity log", Icon: IconActivity },
+      { to: "/control/withdrawals", label: "Withdrawals", Icon: IconWithdrawals },
+      { to: "/control/sweep", label: "Sweep", Icon: IconWallet },
+      { to: "/control/activity", label: "Activity log", Icon: IconActivity },
     ],
   },
   {
     label: "SETTINGS",
     items: [
-      { to: "/admin/settings", label: "System settings", Icon: IconSettings },
-      { to: "/admin/profile", label: "Profile", Icon: IconProfile },
+      { to: "/control/settings", label: "System settings", Icon: IconSettings },
+      { to: "/control/profile", label: "Profile", Icon: IconProfile },
     ],
   },
 ];
@@ -88,24 +88,24 @@ export default function AdminShell() {
 
   useEffect(() => {
     if (!getToken()) {
-      navigate("/login", { replace: true });
+      navigate("/control/login", { replace: true });
       return;
     }
     api("/api/v1/auth/me")
       .then((u) => {
         if (u.role !== "ADMIN") {
           setToken(null);
-          navigate("/login", { replace: true });
+          navigate("/control/login", { replace: true });
           return;
         }
         setEmail(u.email);
       })
-      .catch(() => navigate("/login", { replace: true }));
+      .catch(() => navigate("/control/login", { replace: true }));
   }, [navigate]);
 
   function logout() {
     setToken(null);
-    navigate("/login");
+    navigate("/control/login");
   }
 
   const avatarInitial = email ? email[0].toUpperCase() : "A";
@@ -306,7 +306,7 @@ export default function AdminShell() {
               <p style={{ color: "var(--text-1)" }}>
                 Viewing <span className="font-semibold text-amber-400">sandbox</span> data only.{" "}
                 <Link
-                  to="/admin/profile"
+                  to="/control/profile"
                   className="font-semibold text-amber-400 underline decoration-amber-400/40 underline-offset-2 hover:decoration-amber-300"
                 >
                   Open Profile

@@ -27,18 +27,18 @@ import {
 } from "./shellNavIcons.js";
 
 const primaryNav = [
-  { to: "/m", label: "Dashboard", end: true, Icon: IconDashboard },
-  { to: "/m/users", label: "Users", Icon: IconUsers },
-  { to: "/m/wallets", label: "Wallets", Icon: IconWallet },
-  { to: "/m/transactions", label: "Transactions", Icon: IconTransactions },
-  { to: "/m/withdraw", label: "Withdraw", Icon: IconWithdraw },
+  { to: "/", label: "Dashboard", end: true, Icon: IconDashboard },
+  { to: "/users", label: "Users", Icon: IconUsers },
+  { to: "/wallets", label: "Wallets", Icon: IconWallet },
+  { to: "/transactions", label: "Transactions", Icon: IconTransactions },
+  { to: "/withdraw", label: "Withdraw", Icon: IconWithdraw },
 ];
 
 const settingsNav = [
-  { to: "/m/profile", label: "Profile", Icon: IconProfile },
-  { to: "/m/api-key", label: "API key", Icon: IconKey },
-  { to: "/m/settings", label: "Gateway & webhooks", Icon: IconSettings },
-  { to: "/m/docs", label: "Doc", Icon: IconDoc },
+  { to: "/profile", label: "Profile", Icon: IconProfile },
+  { to: "/api-key", label: "API key", Icon: IconKey },
+  { to: "/settings", label: "Gateway & webhooks", Icon: IconSettings },
+  { to: "/docs", label: "Doc", Icon: IconDoc },
 ];
 
 export default function MerchantShell() {
@@ -58,7 +58,7 @@ export default function MerchantShell() {
   const primaryNavItems = useMemo(() => {
     const hideWithdraw = !portalEnvFlagsLoading && portalEnvironment === "sandbox";
     if (!hideWithdraw) return primaryNav;
-    return primaryNav.filter((l) => l.to !== "/m/withdraw");
+    return primaryNav.filter((l) => l.to !== "/withdraw");
   }, [portalEnvironment, portalEnvFlagsLoading]);
 
   useEffect(() => {
@@ -92,7 +92,7 @@ export default function MerchantShell() {
     clearImpersonationAdminToken();
     setToken(adminTok);
     setAdminImpersonation(false);
-    navigate("/admin", { replace: true });
+    navigate("/control", { replace: true });
   }
 
   return (
@@ -234,7 +234,7 @@ export default function MerchantShell() {
                 You are in <span className="font-medium text-white">sandbox</span> mode. Dashboard,
                 Users, and Transactions show test data only. To use live data and withdrawals, open{" "}
                 <Link
-                  to="/m/profile"
+                  to="/profile"
                   className="font-medium text-white underline decoration-sky-400/50 underline-offset-2 hover:decoration-sky-300/80"
                 >
                   Profile

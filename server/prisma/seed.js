@@ -1,4 +1,4 @@
-import { PrismaClient, AdminRole, Chain, MerchantGatewayEnv } from "@prisma/client";
+import { PrismaClient, Chain, MerchantGatewayEnv } from "@prisma/client";
 import bcrypt from "bcrypt";
 import crypto from "crypto";
 import { encryptMerchantApiKey } from "../src/lib/merchant-api-key-cipher.js";
@@ -18,22 +18,21 @@ async function main() {
   const adminHash = await bcrypt.hash(adminPass, 10);
   const merchHash = await bcrypt.hash(merchPass, 10);
 
-  const existingAdmin = await prisma.adminUser.findFirst({
+  const existingAdmin = await prisma.admin.findFirst({
     where: { email: adminEmail, deletedAt: null },
   });
   if (existingAdmin) {
-    await prisma.adminUser.update({
+    await prisma.admin.update({
       where: { id: existingAdmin.id },
-      data: { passwordHash: adminHash, defaultChains: [Chain.ETH] },
+      data: { passwordHash: adminHash },
     });
   } else {
-    await prisma.adminUser.create({
+    await prisma.admin.create({
       data: {
         email: adminEmail,
         passwordHash: adminHash,
-        role: AdminRole.ADMIN,
         displayName: "Super Admin",
-        defaultChains: [Chain.ETH],
+        portalEnvironment: MerchantGatewayEnv.live,
       },
     });
   }
@@ -44,11 +43,11 @@ async function main() {
     "cpg_demo_dev_only_change_me";
   const apiHash = sha256Hex(apiSecret);
 
-  const existingMerch = await prisma.adminUser.findFirst({
+  const existingMerch = await prisma.merchant.findFirst({
     where: { email: merchEmail, deletedAt: null },
   });
   if (existingMerch) {
-    await prisma.adminUser.update({
+    await prisma.merchant.update({
       where: { id: existingMerch.id },
       data: {
         passwordHash: merchHash,
@@ -63,11 +62,10 @@ async function main() {
       },
     });
   } else {
-    await prisma.adminUser.create({
+    await prisma.merchant.create({
       data: {
         email: merchEmail,
         passwordHash: merchHash,
-        role: AdminRole.MERCHANT,
         displayName: "Demo Merchant",
         apiKeyHash: apiHash,
         apiKeyHint: apiSecret.slice(-6),

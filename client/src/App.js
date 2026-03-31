@@ -1,5 +1,6 @@
-import { Navigate, Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import LoginPage from "./pages/LoginPage";
+import AdminLoginPage from "./pages/AdminLoginPage";
 import ForgotPasswordPage from "./pages/ForgotPasswordPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
 import Profile from "./pages/Profile";
@@ -27,6 +28,22 @@ import GatewayApiKey from "./pages/merchant/GatewayApiKey";
 import GatewayApiDocs from "./pages/merchant/GatewayApiDocs";
 import PaymentPage from "./pages/PaymentPage";
 
+/** Bookmarked `/admin/...` → `/control/...` */
+function RedirectAdminToControl() {
+  const { pathname } = useLocation();
+  const suffix = pathname.startsWith("/admin/") ? pathname.slice("/admin/".length) : "";
+  const to = suffix ? `/control/${suffix}` : "/control";
+  return <Navigate to={to} replace />;
+}
+
+/** Bookmarked `/m/...` → `/...` (merchant app lives at `/`) */
+function RedirectMToRoot() {
+  const { pathname } = useLocation();
+  const suffix = pathname.startsWith("/m/") ? pathname.slice("/m/".length) : "";
+  const to = suffix ? `/${suffix}` : "/";
+  return <Navigate to={to} replace />;
+}
+
 export default function App() {
   return (
     <Routes>
@@ -34,7 +51,8 @@ export default function App() {
       <Route path="/login" element={<LoginPage />} />
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/reset-password" element={<ResetPasswordPage />} />
-      <Route path="/admin" element={<AdminShell />}>
+      <Route path="/control/login" element={<AdminLoginPage />} />
+      <Route path="/control" element={<AdminShell />}>
         <Route index element={<AdminDashboard />} />
         <Route path="merchants/new" element={<MerchantCreate />} />
         <Route path="merchants/:id/edit" element={<MerchantEdit />} />
@@ -45,14 +63,18 @@ export default function App() {
         <Route path="transactions" element={<AdminTransactions />} />
         <Route path="withdrawals" element={<AdminWithdrawals />} />
         <Route path="sweep" element={<AdminUnifiedSweep />} />
-        <Route path="tron-sweep" element={<Navigate to="/admin/sweep" replace />} />
-        <Route path="evm-usdt-sweep" element={<Navigate to="/admin/sweep" replace />} />
-        <Route path="solana-sweep" element={<Navigate to="/admin/sweep" replace />} />
+        <Route path="tron-sweep" element={<Navigate to="/control/sweep" replace />} />
+        <Route path="evm-usdt-sweep" element={<Navigate to="/control/sweep" replace />} />
+        <Route path="solana-sweep" element={<Navigate to="/control/sweep" replace />} />
         <Route path="activity" element={<AdminActivityLog />} />
         <Route path="settings" element={<AdminSystemSettings />} />
         <Route path="profile" element={<Profile />} />
       </Route>
-      <Route path="/m" element={<MerchantShell />}>
+      <Route path="/admin" element={<Navigate to="/control" replace />} />
+      <Route path="/admin/*" element={<RedirectAdminToControl />} />
+      <Route path="/m" element={<Navigate to="/" replace />} />
+      <Route path="/m/*" element={<RedirectMToRoot />} />
+      <Route path="/" element={<MerchantShell />}>
         <Route index element={<MerchantDashboard />} />
         <Route path="users" element={<MerchantUsers />} />
         <Route path="wallets" element={<MerchantWallets />} />
@@ -63,7 +85,6 @@ export default function App() {
         <Route path="docs" element={<GatewayApiDocs />} />
         <Route path="profile" element={<Profile />} />
       </Route>
-      <Route path="/" element={<Navigate to="/login" replace />} />
       <Route path="*" element={<Navigate to="/login" replace />} />
     </Routes>
   );

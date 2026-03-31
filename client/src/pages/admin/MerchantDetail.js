@@ -179,7 +179,7 @@ export default function MerchantDetail() {
   if (merchantQ.isError || !merchantQ.data) {
     return (
       <div>
-        <Link to="/admin/merchants" className="text-sm text-white/60 hover:text-white">
+        <Link to="/control/merchants" className="text-sm text-white/60 hover:text-white">
           ← Merchants
         </Link>
         <p className="mt-4 text-rose-400">Merchant not found.</p>
@@ -221,7 +221,7 @@ export default function MerchantDetail() {
     <div className="w-full max-w-none">
       <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
-          <Link to="/admin/merchants" className="text-sm text-white/50 hover:text-white">
+          <Link to="/control/merchants" className="text-sm text-white/50 hover:text-white">
             ← Merchants
           </Link>
           <h1 className="mt-3 font-display text-2xl font-semibold text-white">Merchant</h1>
@@ -232,7 +232,7 @@ export default function MerchantDetail() {
         </div>
         {m.deleted_at ? null : (
           <Link
-            to={`/admin/merchants/${merchantId}/edit`}
+            to={`/control/merchants/${merchantId}/edit`}
             className="inline-flex items-center gap-2 rounded-xl border border-white/12 bg-white/5 px-4 py-2.5 text-sm font-medium text-white/80 transition-colors hover:border-white/20 hover:bg-white/10"
           >
             Edit merchant

@@ -115,20 +115,31 @@ function FieldForItem({ it }) {
       <Field
         id={name}
         name={name}
-        type={isSecret ? "password" : "text"}
-        className={input}
+        type="text"
+        className={isSecret ? `${input} font-mono text-xs` : input}
         autoComplete="off"
+        spellCheck={false}
         placeholder={
           isSecret
             ? it.has_db_override
-              ? "Leave blank to keep stored value"
-              : "Set to override .env"
+              ? "Edit or clear to remove DB override (.env)"
+              : "Set to store in DB (overrides .env)"
             : undefined
         }
       />
       {isSecret ? (
         <p className="mt-1 text-[11px] text-white/40">
-          Stored value is never shown. Effective: {it.effective_display}
+          {it.has_db_override ? (
+            <>
+              Value is stored in the database (shown in the field). Clear the field and save to remove
+              it and use <span className="font-mono text-white/55">.env</span> instead.
+            </>
+          ) : (
+            <>
+              <span className="font-mono text-white/55">.env</span> may define this key ({it.effective_display}
+              ); it is not loaded into the form. Enter a value and save to store an override in the database.
+            </>
+          )}
         </p>
       ) : null}
       <ErrorMessage

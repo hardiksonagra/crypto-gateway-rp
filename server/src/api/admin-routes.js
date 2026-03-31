@@ -1,13 +1,16 @@
 import { Router } from "express";
 import bcrypt from "bcrypt";
 import {
-  AdminRole,
   Chain,
   MerchantGatewayEnv,
   Prisma,
   TxStatus,
   WithdrawalStatus,
 } from "@prisma/client";
+import {
+  PORTAL_ROLE_ADMIN,
+  PORTAL_ROLE_MERCHANT,
+} from "../constants/portal-role.js";
 import { formatAtomicAmountString } from "../lib/format-atomic-amount.js";
 import {
   reactivateWalletDepositScan,
@@ -72,7 +75,7 @@ import {
 import crypto from "crypto";
 
 const router = Router();
-const adminOnly = requireAuth(AdminRole.ADMIN);
+const adminOnly = requireAuth(PORTAL_ROLE_ADMIN);
 
 const CHAINS = new Set(Object.values(Chain));
 
@@ -87,11 +90,11 @@ router.use("/api/v1/admin", adminOnly, logPanelMutations("admin"));
 async function adminListViewerEnvironment(req) {
   const id = req.auth?.sub;
   if (!id) return MerchantGatewayEnv.live;
-  const row = await prisma.adminUser.findUnique({
+  const row = await prisma.admin.findUnique({
     where: { id },
-    select: { portalEnvironment: true, role: true },
+    select: { portalEnvironment: true },
   });
-  if (!row || row.role !== AdminRole.ADMIN) return MerchantGatewayEnv.live;
+  if (!row) return MerchantGatewayEnv.live;
   return row.portalEnvironment === MerchantGatewayEnv.sandbox
     ? MerchantGatewayEnv.sandbox
     : MerchantGatewayEnv.live;
@@ -105,8 +108,8 @@ router.get("/api/v1/admin/dashboard", async (req, res) => {
 
   const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
   const [merchants, users, txs, successTxs, txs24h] = await Promise.all([
-    prisma.adminUser.count({
-      where: { role: AdminRole.MERCHANT, deletedAt: null },
+    prisma.merchant.count({
+      where: { deletedAt: null },
     }),
     prisma.user.count({ where: { environment: listEnv } }),
     prisma.transaction.count({ where: txEnvWhere }),
@@ -175,7 +178,7 @@ router.get("/api/v1/admin/audit-logs", async (req, res) => {
   const mids = [...new Set(rows.map((r) => r.merchantId).filter(Boolean))];
   const merchants =
     mids.length > 0
-      ? await prisma.adminUser.findMany({
+      ? await prisma.merchant.findMany({
           where: { id: { in: mids } },
           select: { id: true, email: true },
         })
@@ -261,13 +264,20 @@ router.get("/api/v1/admin/panel-audit-logs", async (req, res) => {
     ...new Set(rows.map((r) => r.targetMerchantId).filter(Boolean)),
   ];
   const allUserIds = [...new Set([...actorIds, ...targetIds])];
-  const users =
-    allUserIds.length > 0
-      ? await prisma.adminUser.findMany({
-          where: { id: { in: allUserIds } },
-          select: { id: true, email: true },
-        })
-      : [];
+  let users = [];
+  if (allUserIds.length > 0) {
+    const [adminRows, merchantRows] = await Promise.all([
+      prisma.admin.findMany({
+        where: { id: { in: allUserIds } },
+        select: { id: true, email: true },
+      }),
+      prisma.merchant.findMany({
+        where: { id: { in: allUserIds } },
+        select: { id: true, email: true },
+      }),
+    ]);
+    users = [...adminRows, ...merchantRows];
+  }
   const emailById = Object.fromEntries(users.map((u) => [u.id, u.email]));
 
   res.json({
@@ -317,7 +327,6 @@ router.get("/api/v1/admin/merchants", async (req, res) => {
         : { deletedAt: null };
 
   const where = {
-    role: AdminRole.MERCHANT,
     ...deletedClause,
     ...(typeof isActive === "boolean" ? { isActive } : {}),
     ...(search
@@ -331,8 +340,8 @@ router.get("/api/v1/admin/merchants", async (req, res) => {
   };
 
   const [total, rows] = await Promise.all([
-    prisma.adminUser.count({ where }),
-    prisma.adminUser.findMany({
+    prisma.merchant.count({ where }),
+    prisma.merchant.findMany({
       where,
       orderBy: { createdAt: "desc" },
       skip,
@@ -459,11 +468,10 @@ router.post("/api/v1/admin/merchants", async (req, res) => {
     body.password?.trim() || crypto.randomBytes(12).toString("base64url");
   const apiSecret = generateApiKey();
   try {
-    const row = await prisma.adminUser.create({
+    const row = await prisma.merchant.create({
       data: {
         email,
         passwordHash: await bcrypt.hash(password, 10),
-        role: AdminRole.MERCHANT,
         displayName: body.display_name?.trim() || null,
         defaultChains: parsedChains.chains,
         defaultCurrency: picked.currency,
@@ -516,8 +524,8 @@ router.post("/api/v1/admin/merchants", async (req, res) => {
 router.patch("/api/v1/admin/merchants/:id", async (req, res) => {
   const id = String(req.params.id ?? "");
   const body = req.body ?? {};
-  const existing = await prisma.adminUser.findFirst({
-    where: { id, role: AdminRole.MERCHANT },
+  const existing = await prisma.merchant.findUnique({
+    where: { id },
   });
   if (!existing) {
     res.status(404).json({ error: "not_found" });
@@ -624,7 +632,7 @@ router.patch("/api/v1/admin/merchants/:id", async (req, res) => {
     data.sandboxApiKeyCipher = data.apiKeyCipher;
   }
 
-  const row = await prisma.adminUser.update({
+  const row = await prisma.merchant.update({
     where: { id },
     data,
     select: {
@@ -670,8 +678,8 @@ router.patch("/api/v1/admin/merchants/:id", async (req, res) => {
 
 router.get("/api/v1/admin/merchants/:id", async (req, res) => {
   const id = String(req.params.id ?? "");
-  const row = await prisma.adminUser.findFirst({
-    where: { id, role: AdminRole.MERCHANT },
+  const row = await prisma.merchant.findUnique({
+    where: { id },
     select: {
       id: true,
       email: true,
@@ -728,13 +736,12 @@ router.get("/api/v1/admin/merchants/:id", async (req, res) => {
 /** Admin-only: issue a portal JWT for the merchant (same shape as POST /auth/login). */
 router.post("/api/v1/admin/merchants/:id/impersonate", async (req, res) => {
   const id = String(req.params.id ?? "");
-  const row = await prisma.adminUser.findFirst({
-    where: { id, role: AdminRole.MERCHANT, deletedAt: null },
+  const row = await prisma.merchant.findFirst({
+    where: { id, deletedAt: null },
     select: {
       id: true,
       email: true,
       displayName: true,
-      role: true,
       isActive: true,
     },
   });
@@ -746,10 +753,10 @@ router.post("/api/v1/admin/merchants/:id/impersonate", async (req, res) => {
     res.status(403).json({ error: "merchant_inactive" });
     return;
   }
-  const token = signAuthToken({ sub: row.id, role: row.role });
+  const token = signAuthToken({ sub: row.id, role: PORTAL_ROLE_MERCHANT });
   res.json({
     token,
-    role: row.role,
+    role: PORTAL_ROLE_MERCHANT,
     email: row.email,
     display_name: row.displayName,
   });
@@ -757,8 +764,8 @@ router.post("/api/v1/admin/merchants/:id/impersonate", async (req, res) => {
 
 router.delete("/api/v1/admin/merchants/:id", async (req, res) => {
   const id = String(req.params.id ?? "");
-  const hit = await prisma.adminUser.findFirst({
-    where: { id, role: AdminRole.MERCHANT },
+  const hit = await prisma.merchant.findUnique({
+    where: { id },
   });
   if (!hit) {
     res.status(404).json({ error: "not_found" });
@@ -768,7 +775,7 @@ router.delete("/api/v1/admin/merchants/:id", async (req, res) => {
     res.status(400).json({ error: "already_deleted" });
     return;
   }
-  await prisma.adminUser.update({
+  await prisma.merchant.update({
     where: { id },
     data: { deletedAt: new Date(), isActive: false },
   });

@@ -55,7 +55,12 @@ export async function api(path, init) {
       setToken(null);
       const p = String(path);
       if (typeof window !== "undefined" && !p.includes("/auth/login")) {
-        window.location.assign("/login");
+        const dest =
+          typeof window.location?.pathname === "string" &&
+          window.location.pathname.startsWith("/control")
+            ? "/control/login"
+            : "/login";
+        window.location.assign(dest);
       }
     }
     const msg =

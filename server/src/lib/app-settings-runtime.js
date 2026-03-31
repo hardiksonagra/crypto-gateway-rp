@@ -474,8 +474,13 @@ export function buildAppSettingsAdminList() {
     const dbVal = hasDbOverride(def.key) ? rawDbValue(def.key) : null;
     const effective = hasDbOverride(def.key) ? String(dbVal ?? "") : envVal;
     let displayEffective = effective;
-    if (def.sensitive && (dbVal?.trim() || envVal?.trim())) {
-      displayEffective = MASK;
+    if (def.sensitive) {
+      /** DB override: round-trip in admin UI (plain text). `.env` only: never send secret to browser. */
+      if (dbVal?.trim()) {
+        displayEffective = String(dbVal);
+      } else if (envVal?.trim()) {
+        displayEffective = MASK;
+      }
     }
     if (def.type === "json" && effective?.trim()) {
       try {
@@ -496,9 +501,14 @@ export function buildAppSettingsAdminList() {
       has_db_override: Boolean(dbVal != null && hasDbOverride(def.key)),
       env_display: coerceEnvStringForDisplay(def, envVal),
       effective_display: displayEffective,
-      /** For Formik: secrets never prefilled; bool empty = follow .env (no DB row). */
+      /**
+       * For Formik: sensitive values prefilled from DB so “Save” does not wipe them when other fields change.
+       * Empty sensitive + DB row still means “remove override” on save. `.env`-only secrets stay out of the form.
+       */
       form_initial: def.sensitive
-        ? ""
+        ? dbVal != null && String(dbVal).trim() !== ""
+          ? String(dbVal)
+          : ""
         : def.type === "bool" || def.type === "bool_tron_gateway"
           ? hasDbOverride(def.key)
             ? (() => {

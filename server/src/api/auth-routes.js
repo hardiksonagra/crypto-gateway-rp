@@ -1,10 +1,11 @@
 import { Router } from "express";
 import crypto from "crypto";
 import bcrypt from "bcrypt";
-import { AdminRole, MerchantGatewayEnv } from "@prisma/client";
+import { MerchantGatewayEnv } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
 import { signAuthToken } from "../lib/auth-jwt.js";
 import { requireAuth } from "../middleware/require-auth.js";
+import { PORTAL_ROLE_ADMIN, PORTAL_ROLE_MERCHANT } from "../constants/portal-role.js";
 import { decryptMerchantApiKey } from "../lib/merchant-api-key-cipher.js";
 import {
   assertPortalEnvironmentUpdateAllowed,
@@ -29,11 +30,20 @@ router.get("/api/v1/auth/login", (_req, res) => {
   res.status(405).setHeader("Allow", "POST").json({
     error: "method_not_allowed",
     message:
-      'Login is POST only. Send JSON: { "email": "…", "password": "…" }. Open /login in the app, or use curl/Postman.',
+      'Merchant login: POST JSON { "email", "password" } here. Admins use POST /api/v1/auth/login/admin (see /control/login in the app).',
   });
 });
 
-async function loginHandler(req, res) {
+router.get("/api/v1/auth/login/admin", (_req, res) => {
+  res.status(405).setHeader("Allow", "POST").json({
+    error: "method_not_allowed",
+    message:
+      'Admin login: POST JSON { "email", "password" } to this path. Merchants use POST /api/v1/auth/login (see /login).',
+  });
+});
+
+/** Merchant portal only — queries `merchants` table. */
+async function merchantLoginHandler(req, res) {
   const body = req.body ?? {};
   const email = body.email?.trim().toLowerCase();
   const password = body.password ?? "";
@@ -41,42 +51,111 @@ async function loginHandler(req, res) {
     res.status(400).json({ error: "email and password required" });
     return;
   }
-  const user = await prisma.adminUser.findFirst({
+  const account = await prisma.merchant.findFirst({
     where: { email, deletedAt: null },
   });
-  if (!user || !user.isActive) {
+  if (!account || !account.isActive) {
     res.status(401).json({ error: "invalid_credentials" });
     return;
   }
-  const ok = await bcrypt.compare(password, user.passwordHash);
+  const ok = await bcrypt.compare(password, account.passwordHash);
   if (!ok) {
     res.status(401).json({ error: "invalid_credentials" });
     return;
   }
-  const token = signAuthToken({ sub: user.id, role: user.role });
+  const token = signAuthToken({ sub: account.id, role: PORTAL_ROLE_MERCHANT });
   res.json({
     token,
-    role: user.role,
-    email: user.email,
-    display_name: user.displayName,
+    role: PORTAL_ROLE_MERCHANT,
+    email: account.email,
+    display_name: account.displayName,
   });
 }
 
-router.post("/api/v1/auth/login", loginHandler);
-router.post("/api/v1/auth/login/", loginHandler);
+/** Control / ops portal only — queries `admins` table. */
+async function adminLoginHandler(req, res) {
+  const body = req.body ?? {};
+  const email = body.email?.trim().toLowerCase();
+  const password = body.password ?? "";
+  if (!email || !password) {
+    res.status(400).json({ error: "email and password required" });
+    return;
+  }
+  const account = await prisma.admin.findFirst({
+    where: { email, deletedAt: null },
+  });
+  if (!account || !account.isActive) {
+    res.status(401).json({ error: "invalid_credentials" });
+    return;
+  }
+  const ok = await bcrypt.compare(password, account.passwordHash);
+  if (!ok) {
+    res.status(401).json({ error: "invalid_credentials" });
+    return;
+  }
+  const token = signAuthToken({ sub: account.id, role: PORTAL_ROLE_ADMIN });
+  res.json({
+    token,
+    role: PORTAL_ROLE_ADMIN,
+    email: account.email,
+    display_name: account.displayName,
+  });
+}
+
+router.post("/api/v1/auth/login", merchantLoginHandler);
+router.post("/api/v1/auth/login/", merchantLoginHandler);
+router.post("/api/v1/auth/login/admin", adminLoginHandler);
+router.post("/api/v1/auth/login/admin/", adminLoginHandler);
 
 router.get("/api/v1/auth/me", requireAuth(), async (req, res) => {
   const id = req.auth?.sub;
-  if (!id) {
+  const jwtRole = req.auth?.role;
+  if (!id || !jwtRole) {
     res.status(401).json({ error: "unauthorized" });
     return;
   }
-  const user = await prisma.adminUser.findUnique({
+
+  if (jwtRole === PORTAL_ROLE_ADMIN) {
+    const user = await prisma.admin.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        email: true,
+        displayName: true,
+        isActive: true,
+        portalEnvironment: true,
+      },
+    });
+    if (!user) {
+      res.status(401).json({ error: "unauthorized" });
+      return;
+    }
+    res.json({
+      id: user.id,
+      email: user.email,
+      role: PORTAL_ROLE_ADMIN,
+      displayName: user.displayName,
+      isActive: user.isActive,
+      portalEnvironment: user.portalEnvironment,
+      defaultChains: [],
+      defaultCurrency: "USDT",
+      defaultNetwork: "TRC20",
+      supportedDepositRails: [],
+      callbackUrl: null,
+      apiKeyHint: null,
+      sandboxApiKeyHint: null,
+      liveGatewayEnabled: true,
+      sandboxGatewayEnabled: true,
+      hasSandboxApiKey: false,
+    });
+    return;
+  }
+
+  const user = await prisma.merchant.findUnique({
     where: { id },
     select: {
       id: true,
       email: true,
-      role: true,
       displayName: true,
       defaultChains: true,
       defaultCurrency: true,
@@ -99,22 +178,23 @@ router.get("/api/v1/auth/me", requireAuth(), async (req, res) => {
     return;
   }
   const { apiKeyCipher, sandboxApiKeyCipher, sandboxApiKeyHash, ...rest } = user;
-  const out = { ...rest };
+  const out = {
+    ...rest,
+    role: PORTAL_ROLE_MERCHANT,
+  };
   out.hasSandboxApiKey = Boolean(sandboxApiKeyHash);
-  if (user.role === AdminRole.MERCHANT) {
-    out.api_key_cipher_present = Boolean(apiKeyCipher);
-    if (apiKeyCipher) {
-      try {
-        out.apiKey = decryptMerchantApiKey(apiKeyCipher);
-      } catch (e) {
-        logger.warn("auth/me decrypt merchant api key failed", {
-          err: String(e),
-          userId: user.id,
-        });
-      }
+  out.api_key_cipher_present = Boolean(apiKeyCipher);
+  if (apiKeyCipher) {
+    try {
+      out.apiKey = decryptMerchantApiKey(apiKeyCipher);
+    } catch (e) {
+      logger.warn("auth/me decrypt merchant api key failed", {
+        err: String(e),
+        userId: user.id,
+      });
     }
   }
-  if (user.role === AdminRole.MERCHANT && sandboxApiKeyCipher) {
+  if (sandboxApiKeyCipher) {
     try {
       out.sandboxApiKey = decryptMerchantApiKey(sandboxApiKeyCipher);
     } catch (e) {
@@ -124,15 +204,9 @@ router.get("/api/v1/auth/me", requireAuth(), async (req, res) => {
       });
     }
   }
-  if (user.role === AdminRole.MERCHANT) {
-    const synced = await ensureMerchantPortalEnvironmentConsistent(user.id);
-    if (synced) {
-      out.portalEnvironment = synced.portalEnvironment;
-    }
-  } else if (user.role === AdminRole.ADMIN) {
-    out.portalEnvironment = user.portalEnvironment;
-  } else {
-    delete out.portalEnvironment;
+  const synced = await ensureMerchantPortalEnvironmentConsistent(user.id);
+  if (synced) {
+    out.portalEnvironment = synced.portalEnvironment;
   }
   res.json(out);
 });
@@ -165,10 +239,17 @@ router.patch("/api/v1/auth/me/portal-environment", requireAuth(), async (req, re
     });
     return;
   }
-  await prisma.adminUser.update({
-    where: { id },
-    data: { portalEnvironment: next },
-  });
+  if (req.auth.role === PORTAL_ROLE_ADMIN) {
+    await prisma.admin.update({
+      where: { id },
+      data: { portalEnvironment: next },
+    });
+  } else {
+    await prisma.merchant.update({
+      where: { id },
+      data: { portalEnvironment: next },
+    });
+  }
   logAuthenticatedPortalMutation(req, {
     path: "/api/v1/auth/me/portal-environment",
     summary: `Profile: portal environment → ${v}`,
@@ -191,29 +272,45 @@ async function forgotPasswordHandler(req, res) {
     res.status(400).json({ error: "email required" });
     return;
   }
-  const user = await prisma.adminUser.findUnique({ where: { email } });
-  if (!user?.isActive) {
+  const adminAcc = await prisma.admin.findFirst({
+    where: { email, deletedAt: null },
+  });
+  const merchAcc = adminAcc
+    ? null
+    : await prisma.merchant.findFirst({ where: { email, deletedAt: null } });
+  const account = adminAcc ?? merchAcc;
+  if (!account?.isActive) {
     res.json(forgotPasswordResponse);
     return;
   }
   const token = crypto.randomBytes(32).toString("base64url");
   const tokenHash = hashResetToken(token);
   const expires = new Date(Date.now() + re.passwordResetTtlMinutes * 60_000);
-  await prisma.adminUser.update({
-    where: { id: user.id },
-    data: {
-      passwordResetTokenHash: tokenHash,
-      passwordResetExpiresAt: expires,
-    },
-  });
+  if (adminAcc) {
+    await prisma.admin.update({
+      where: { id: account.id },
+      data: {
+        passwordResetTokenHash: tokenHash,
+        passwordResetExpiresAt: expires,
+      },
+    });
+  } else {
+    await prisma.merchant.update({
+      where: { id: account.id },
+      data: {
+        passwordResetTokenHash: tokenHash,
+        passwordResetExpiresAt: expires,
+      },
+    });
+  }
   const base = re.appPublicUrl.replace(/\/$/, "");
   const resetUrl = `${base}/reset-password?token=${encodeURIComponent(token)}`;
   try {
-    await sendPasswordResetEmail({ to: user.email, resetUrl });
+    await sendPasswordResetEmail({ to: account.email, resetUrl });
   } catch (e) {
     logger.error("password_reset_email_failed", {
       err: String(e),
-      userId: user.id,
+      userId: account.id,
     });
   }
   res.json(forgotPasswordResponse);
@@ -234,25 +331,40 @@ async function resetPasswordHandler(req, res) {
     return;
   }
   const tokenHash = hashResetToken(token);
-  const user = await prisma.adminUser.findFirst({
-    where: {
-      passwordResetTokenHash: tokenHash,
-      passwordResetExpiresAt: { gt: new Date() },
-      deletedAt: null,
-    },
-  });
-  if (!user?.isActive) {
+  const resetWhere = {
+    passwordResetTokenHash: tokenHash,
+    passwordResetExpiresAt: { gt: new Date() },
+    deletedAt: null,
+  };
+  const adminHit = await prisma.admin.findFirst({ where: resetWhere });
+  const merchHit = adminHit
+    ? null
+    : await prisma.merchant.findFirst({ where: resetWhere });
+  const account = adminHit ?? merchHit;
+  if (!account?.isActive) {
     res.status(400).json({ error: "invalid_or_expired_token" });
     return;
   }
-  await prisma.adminUser.update({
-    where: { id: user.id },
-    data: {
-      passwordHash: await bcrypt.hash(newPassword, 10),
-      passwordResetTokenHash: null,
-      passwordResetExpiresAt: null,
-    },
-  });
+  const hashed = await bcrypt.hash(newPassword, 10);
+  if (adminHit) {
+    await prisma.admin.update({
+      where: { id: account.id },
+      data: {
+        passwordHash: hashed,
+        passwordResetTokenHash: null,
+        passwordResetExpiresAt: null,
+      },
+    });
+  } else {
+    await prisma.merchant.update({
+      where: { id: account.id },
+      data: {
+        passwordHash: hashed,
+        passwordResetTokenHash: null,
+        passwordResetExpiresAt: null,
+      },
+    });
+  }
   res.json({ ok: true });
 }
 
@@ -271,31 +383,50 @@ async function changePasswordHandler(req, res) {
     return;
   }
   const id = req.auth?.sub;
-  if (!id) {
+  const jwtRole = req.auth?.role;
+  if (!id || !jwtRole) {
     res.status(401).json({ error: "unauthorized" });
     return;
   }
-  const user = await prisma.adminUser.findUnique({
-    where: { id },
-    select: { passwordHash: true, isActive: true, deletedAt: true },
-  });
-  if (!user?.isActive || user.deletedAt) {
+  const pwdRow =
+    jwtRole === PORTAL_ROLE_ADMIN
+      ? await prisma.admin.findUnique({
+          where: { id },
+          select: { passwordHash: true, isActive: true, deletedAt: true },
+        })
+      : await prisma.merchant.findUnique({
+          where: { id },
+          select: { passwordHash: true, isActive: true, deletedAt: true },
+        });
+  if (!pwdRow?.isActive || pwdRow.deletedAt) {
     res.status(401).json({ error: "unauthorized" });
     return;
   }
-  const ok = await bcrypt.compare(current, user.passwordHash);
+  const ok = await bcrypt.compare(current, pwdRow.passwordHash);
   if (!ok) {
     res.status(400).json({ error: "current_password_invalid" });
     return;
   }
-  await prisma.adminUser.update({
-    where: { id },
-    data: {
-      passwordHash: await bcrypt.hash(newPassword, 10),
-      passwordResetTokenHash: null,
-      passwordResetExpiresAt: null,
-    },
-  });
+  const hashed = await bcrypt.hash(newPassword, 10);
+  if (jwtRole === PORTAL_ROLE_ADMIN) {
+    await prisma.admin.update({
+      where: { id },
+      data: {
+        passwordHash: hashed,
+        passwordResetTokenHash: null,
+        passwordResetExpiresAt: null,
+      },
+    });
+  } else {
+    await prisma.merchant.update({
+      where: { id },
+      data: {
+        passwordHash: hashed,
+        passwordResetTokenHash: null,
+        passwordResetExpiresAt: null,
+      },
+    });
+  }
   logAuthenticatedPortalMutation(req, {
     path: "/api/v1/auth/me/password",
     summary: "Profile: password changed",

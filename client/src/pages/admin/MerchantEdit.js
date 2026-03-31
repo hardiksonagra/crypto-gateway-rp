@@ -35,7 +35,7 @@ export default function MerchantEdit() {
   if (q.isError || !q.data) {
     return (
       <div>
-        <Link to="/admin/merchants" className="text-sm text-white/60 hover:text-white">
+        <Link to="/control/merchants" className="text-sm text-white/60 hover:text-white">
           ← Back
         </Link>
         <p className="mt-4 text-rose-400">Merchant not found.</p>
@@ -48,7 +48,7 @@ export default function MerchantEdit() {
   if (m.deleted_at) {
     return (
       <div>
-        <Link to="/admin/merchants" className="text-sm text-white/50 hover:text-white">
+        <Link to="/control/merchants" className="text-sm text-white/50 hover:text-white">
           ← Merchants
         </Link>
         <p className="mt-4 text-rose-200/90">
@@ -56,7 +56,7 @@ export default function MerchantEdit() {
           read-only view.
         </p>
         <Link
-          to={`/admin/merchants/${id}`}
+          to={`/control/merchants/${id}`}
           className="mt-4 inline-block text-sm text-sky-300/90 hover:text-sky-200"
         >
           View merchant →
@@ -91,7 +91,7 @@ export default function MerchantEdit() {
     <div className="w-full max-w-none">
       <div className="mb-6">
         <Link
-          to="/admin/merchants"
+          to="/control/merchants"
           className="text-sm text-white/50 hover:text-white"
         >
           ← Merchants
@@ -289,7 +289,7 @@ export default function MerchantEdit() {
                   {isSubmitting ? "Saving…" : "Save changes"}
                 </button>
                 <Link
-                  to="/admin/merchants"
+                  to="/control/merchants"
                   className="rounded-lg border border-white/15 px-4 py-2 text-sm text-white/70"
                 >
                   Cancel
@@ -320,7 +320,7 @@ export default function MerchantEdit() {
               className="mt-6 rounded-lg bg-white/10 px-4 py-2 text-sm"
               onClick={() => {
                 setNewKeysModal(null);
-                nav("/admin/merchants");
+                nav("/control/merchants");
               }}
             >
               Close

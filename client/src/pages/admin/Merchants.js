@@ -208,7 +208,7 @@ export default function AdminMerchants() {
       const r = await api(`/api/v1/admin/merchants/${id}/impersonate`, { method: "POST" });
       setImpersonationAdminToken(adminTok);
       setToken(r.token);
-      nav("/m", { replace: true });
+      nav("/", { replace: true });
     } catch (e) {
       setImpersonateError(String(e));
     } finally {
@@ -316,7 +316,7 @@ export default function AdminMerchants() {
         </div>
         <div className="flex flex-shrink-0 flex-wrap items-center justify-end gap-2">
           <Link
-            to="/admin/merchants/new"
+            to="/control/merchants/new"
             className="btn-primary rounded-xl px-4 py-2.5 text-sm"
           >
             + Create merchant
@@ -703,7 +703,7 @@ export default function AdminMerchants() {
               aria-label="Merchant actions"
             >
               <Link
-                to={`/admin/merchants/${actionMenuMerchant.id}`}
+                to={`/control/merchants/${actionMenuMerchant.id}`}
                 role="menuitem"
                 className={merchantActionsMenuItemClass}
                 onClick={() => setOpenActionsId(null)}
@@ -722,7 +722,7 @@ export default function AdminMerchants() {
                 </span>
               ) : (
                 <Link
-                  to={`/admin/merchants/${actionMenuMerchant.id}/edit`}
+                  to={`/control/merchants/${actionMenuMerchant.id}/edit`}
                   role="menuitem"
                   className={merchantActionsMenuItemClass}
                   onClick={() => setOpenActionsId(null)}

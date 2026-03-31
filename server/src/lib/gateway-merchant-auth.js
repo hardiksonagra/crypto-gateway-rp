@@ -1,9 +1,9 @@
-import { AdminRole, MerchantGatewayEnv } from "@prisma/client";
+import { MerchantGatewayEnv } from "@prisma/client";
 import { prisma } from "./prisma.js";
 import { hashApiKey } from "./api-key.js";
 
 /**
- * @param {import("@prisma/client").AdminUser} merchant
+ * @param {import("@prisma/client").Merchant} merchant
  * @returns {boolean}
  */
 function isUnifiedGatewayApiKey(merchant) {
@@ -21,15 +21,14 @@ function isUnifiedGatewayApiKey(merchant) {
  *
  * @param {string} apiKey
  * @param {{ gatewayEnvironment?: "live" | "sandbox" }} [options]
- * @returns {Promise<{ merchant: import("@prisma/client").AdminUser, keyType: "live" | "sandbox" } | null>}
+ * @returns {Promise<{ merchant: import("@prisma/client").Merchant, keyType: "live" | "sandbox" } | null>}
  */
 export async function resolveMerchantByGatewayApiKey(apiKey, options = {}) {
   const trimmed = apiKey?.trim();
   if (!trimmed) return null;
   const h = hashApiKey(trimmed);
-  const merchant = await prisma.adminUser.findFirst({
+  const merchant = await prisma.merchant.findFirst({
     where: {
-      role: AdminRole.MERCHANT,
       isActive: true,
       deletedAt: null,
       OR: [{ apiKeyHash: h }, { sandboxApiKeyHash: h }],

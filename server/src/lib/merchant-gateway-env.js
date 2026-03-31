@@ -1,4 +1,4 @@
-import { AdminRole, MerchantGatewayEnv } from "@prisma/client";
+import { MerchantGatewayEnv } from "@prisma/client";
 import { prisma } from "./prisma.js";
 
 /**
@@ -26,16 +26,15 @@ export function parseGatewayEnvironmentFromBody(body) {
  * @returns {Promise<{ portalEnvironment: import("@prisma/client").MerchantGatewayEnv; liveGatewayEnabled: boolean; sandboxGatewayEnabled: boolean } | null>}
  */
 export async function ensureMerchantPortalEnvironmentConsistent(userId) {
-  const m = await prisma.adminUser.findUnique({
+  const m = await prisma.merchant.findUnique({
     where: { id: userId },
     select: {
       portalEnvironment: true,
       liveGatewayEnabled: true,
       sandboxGatewayEnabled: true,
-      role: true,
     },
   });
-  if (!m || m.role !== AdminRole.MERCHANT) return null;
+  if (!m) return null;
 
   let nextEnv = m.portalEnvironment;
   if (nextEnv === MerchantGatewayEnv.sandbox && !m.sandboxGatewayEnabled) {
@@ -49,7 +48,7 @@ export async function ensureMerchantPortalEnvironmentConsistent(userId) {
   }
 
   if (nextEnv !== m.portalEnvironment) {
-    await prisma.adminUser.update({
+    await prisma.merchant.update({
       where: { id: userId },
       data: { portalEnvironment: nextEnv },
     });
@@ -73,22 +72,22 @@ export async function ensureMerchantPortalEnvironmentConsistent(userId) {
  * @param {import("@prisma/client").MerchantGatewayEnv} environment
  */
 export async function assertPortalEnvironmentUpdateAllowed(userId, environment) {
-  const m = await prisma.adminUser.findUnique({
+  const adminRow = await prisma.admin.findUnique({
+    where: { id: userId },
+    select: { id: true },
+  });
+  if (adminRow) {
+    return { ok: true };
+  }
+  const m = await prisma.merchant.findUnique({
     where: { id: userId },
     select: {
-      role: true,
       liveGatewayEnabled: true,
       sandboxGatewayEnabled: true,
     },
   });
   if (!m) {
     return { ok: false, status: 401, error: "unauthorized" };
-  }
-  if (m.role === AdminRole.ADMIN) {
-    return { ok: true };
-  }
-  if (m.role !== AdminRole.MERCHANT) {
-    return { ok: false, status: 403, error: "forbidden" };
   }
   if (environment === MerchantGatewayEnv.sandbox && !m.sandboxGatewayEnabled) {
     return {
@@ -118,7 +117,7 @@ export function gatewayEnvironmentFromKeyType(keyType) {
 }
 
 /**
- * @param {import("@prisma/client").AdminUser} merchant
+ * @param {import("@prisma/client").Merchant} merchant
  * @param {"live" | "sandbox"} keyType
  * @returns {{ ok: true } | { ok: false, error: string, message?: string }}
  */

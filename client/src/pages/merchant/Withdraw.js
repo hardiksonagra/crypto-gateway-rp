@@ -127,7 +127,7 @@ export default function MerchantWithdraw() {
   );
 
   if (!portalEnvLoading && portalEnvironment === "sandbox") {
-    return <Navigate to="/m" replace />;
+    return <Navigate to="/" replace />;
   }
 
   return (

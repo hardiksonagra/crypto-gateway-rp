@@ -1,6 +1,5 @@
 import { Router } from "express";
 import {
-  AdminRole,
   Chain,
   MerchantGatewayEnv,
   TxStatus,
@@ -23,6 +22,7 @@ import {
   loadUserPayerDepositHistory,
 } from "../lib/user-portal-stats.js";
 import { requireAuth } from "../middleware/require-auth.js";
+import { PORTAL_ROLE_MERCHANT } from "../constants/portal-role.js";
 import { logPanelMutations } from "../middleware/log-panel-mutations.js";
 import { parsePageQuery } from "../lib/pagination.js";
 import { ensureMerchantPortalEnvironmentConsistent } from "../lib/merchant-gateway-env.js";
@@ -46,7 +46,7 @@ import { ethers } from "ethers";
 const CHAIN_SET = new Set(Object.values(Chain));
 
 const router = Router();
-const merchantOnly = requireAuth(AdminRole.MERCHANT);
+const merchantOnly = requireAuth(PORTAL_ROLE_MERCHANT);
 
 router.use("/api/v1/merchant", merchantOnly, logPanelMutations("merchant"));
 
@@ -656,7 +656,7 @@ router.post(
       return;
     }
 
-    const actorRow = await prisma.adminUser.findUnique({
+    const actorRow = await prisma.merchant.findUnique({
       where: { id: mid },
       select: { email: true },
     });
@@ -742,7 +742,7 @@ router.post("/api/v1/merchant/withdrawals", async (req, res) => {
     res.status(401).json({ error: "unauthorized" });
     return;
   }
-  const merchantGate = await prisma.adminUser.findUnique({
+  const merchantGate = await prisma.merchant.findUnique({
     where: { id: mid },
     select: { liveGatewayEnabled: true },
   });
@@ -878,7 +878,7 @@ router.patch("/api/v1/merchant/settings", async (req, res) => {
     return;
   }
   const body = req.body ?? {};
-  const existing = await prisma.adminUser.findUnique({
+  const existing = await prisma.merchant.findUnique({
     where: { id: mid },
     select: {
       defaultChains: true,
@@ -966,7 +966,7 @@ router.patch("/api/v1/merchant/settings", async (req, res) => {
     res.status(400).json({ error: "no_updates" });
     return;
   }
-  await prisma.adminUser.update({ where: { id: mid }, data });
+  await prisma.merchant.update({ where: { id: mid }, data });
   res.json({ ok: true });
 });
 

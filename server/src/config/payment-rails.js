@@ -139,7 +139,7 @@ export function walletAcceptsEvmErc20(chain, w, tokenSymbol) {
 }
 
 /**
- * @param {import("@prisma/client").AdminUser} merchant
+ * @param {import("@prisma/client").Merchant} merchant
  * @param {PaymentRail} rail
  * @returns {boolean}
  */
@@ -181,7 +181,7 @@ function finalizeMerchantGatewayPairs(pairs) {
 
 /**
  * Currency/network pairs this merchant may use on the gateway (order matches portal Settings when `supportedDepositRails` is set).
- * @param {import("@prisma/client").AdminUser} merchant
+ * @param {import("@prisma/client").Merchant} merchant
  * @returns {Array<{ currency: string, network: string, chain: Chain }>}
  */
 export function listMerchantSupportedCurrencyPairs(merchant) {

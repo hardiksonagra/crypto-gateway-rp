@@ -6,8 +6,8 @@ import { logPaymentSuccessCallback, writeAuditLog } from "./audit-log.js";
 
 /**
  * @param {import("@prisma/client").Transaction & {
- *   wallet: import("@prisma/client").Wallet & { merchant: import("@prisma/client").AdminUser },
- *   payerUser: (import("@prisma/client").User & { merchant: import("@prisma/client").AdminUser }) | null,
+ *   wallet: import("@prisma/client").Wallet & { merchant: import("@prisma/client").Merchant },
+ *   payerUser: (import("@prisma/client").User & { merchant: import("@prisma/client").Merchant }) | null,
  * }} tx
  * @returns {Record<string, unknown>}
  */
@@ -136,8 +136,8 @@ export async function notifyPaymentSuccess(txId) {
 
 /**
  * @param {import("@prisma/client").Transaction & {
- *   wallet: import("@prisma/client").Wallet & { merchant: import("@prisma/client").AdminUser },
- *   payerUser: (import("@prisma/client").User & { merchant: import("@prisma/client").AdminUser }) | null,
+ *   wallet: import("@prisma/client").Wallet & { merchant: import("@prisma/client").Merchant },
+ *   payerUser: (import("@prisma/client").User & { merchant: import("@prisma/client").Merchant }) | null,
  * }} tx
  * @param {{ trigger: "merchant_redeliver" | "admin_redeliver", actorAdminId?: string | null, actorMerchantEmail?: string | null }} audit
  */

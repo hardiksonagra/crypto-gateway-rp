@@ -15,13 +15,11 @@ import {
 } from "../../lib/network-rpc-rate-limit.js";
 import { postgresChainEnumHasSolana } from "../../lib/postgres-chain-enum-solana.js";
 import {
-  createReadOnlyTronWeb,
   tronFullNodeHostnameForLog,
+  tronscanApiHostnameForLog,
 } from "../../lib/tron-node-client.js";
-import {
-  pickUsdtTrc20Contract,
-  readTronUsdtBalanceAtomicForWallet,
-} from "../sweep/tron-usdt-sweep.js";
+import { readTronBalanceAtomicViaTronscan } from "../../lib/tronscan-account-balance.js";
+import { pickUsdtTrc20Contract } from "../sweep/tron-usdt-sweep.js";
 
 const EVM_ERC20_ABI = ["function balanceOf(address account) view returns (uint256)"];
 
@@ -74,7 +72,7 @@ export async function probeWalletOnChainBalance(w) {
   try {
     if (w.chain === Chain.TRON && cur === "USDT" && net === "TRC20") {
       const contract = pickUsdtTrc20Contract();
-      const atomic = await readTronUsdtBalanceAtomicForWallet(w, contract);
+      const atomic = await readTronBalanceAtomicViaTronscan(w.address, "USDT", contract);
       const human = formatAtomicAmountString(atomic, 6);
       return {
         display: `${human} USDT`,
@@ -84,10 +82,7 @@ export async function probeWalletOnChainBalance(w) {
     }
 
     if (w.chain === Chain.TRON && cur === "TRX" && net === "TRON") {
-      const tw = createReadOnlyTronWeb();
-      await acquireOutboundRpcSlot("TRON");
-      const sun = await tw.trx.getBalance(w.address);
-      const atomic = BigInt(Math.trunc(Number(sun) || 0));
+      const atomic = await readTronBalanceAtomicViaTronscan(w.address, "TRX");
       const human = formatAtomicAmountString(atomic, 6);
       return { display: `${human} TRX`, atomic: atomic.toString(), error: null };
     }
@@ -165,8 +160,9 @@ export async function probeWalletOnChainBalance(w) {
     };
     if (w.chain === Chain.TRON) {
       Object.assign(base, {
+        tronscan_api_host: tronscanApiHostnameForLog(),
         tron_full_node_host: tronFullNodeHostnameForLog(),
-        note: "same TronWeb fullHost+headers as tron tracker JSON-RPC probe / sweep",
+        note: "TRON admin balance refresh uses TronScan /api/account (TRONSCAN_API_KEY)",
       });
     }
     logger.error("wallet_balance_probe_failed", base);

@@ -31,7 +31,7 @@ function IconMoon() {
   );
 }
 
-export default function LoginPage() {
+export default function AdminLoginPage() {
   const nav = useNavigate();
   const location = useLocation();
   const resetOk = Boolean(location.state?.resetOk);
@@ -40,7 +40,6 @@ export default function LoginPage() {
 
   return (
     <div className="mesh-bg flex min-h-screen flex-col lg:flex-row">
-      {/* Theme toggle — fixed top-right */}
       <button
         type="button"
         onClick={(e) => toggleTheme(e)}
@@ -51,19 +50,16 @@ export default function LoginPage() {
         {isDark ? <IconSun /> : <IconMoon />}
       </button>
 
-      {/* Left branding panel */}
       <section
         className="relative flex min-h-[min(40vh,300px)] flex-col justify-between overflow-hidden px-6 py-10 sm:px-10 lg:min-h-0 lg:w-[45%] lg:max-w-lg lg:flex-none lg:py-14"
         style={{ borderRight: "1px solid var(--border)" }}
       >
-        {/* Glow blobs */}
         <div className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full blur-3xl"
              style={{ background: "rgba(90,111,255,0.08)" }} aria-hidden />
         <div className="pointer-events-none absolute -bottom-24 -left-16 h-64 w-64 rounded-full blur-3xl"
              style={{ background: "rgba(155,89,255,0.06)" }} aria-hidden />
 
         <div className="relative">
-          {/* Logo */}
           <div className="flex items-center gap-3">
             <div className="flex h-11 w-11 items-center justify-center rounded-xl text-white"
                  style={{ background: "linear-gradient(135deg,#5a6fff,#9b59ff)", boxShadow: "0 4px 16px rgba(90,111,255,0.4)" }}>
@@ -72,21 +68,20 @@ export default function LoginPage() {
             <div>
               <p className="font-display text-[10px] font-bold uppercase tracking-[0.22em]"
                  style={{ color: "var(--text-3)" }}>Crypto</p>
-              <p className="text-sm font-medium" style={{ color: "var(--text-2)" }}>Gateway</p>
+              <p className="text-sm font-medium" style={{ color: "var(--text-2)" }}>Gateway · Control</p>
             </div>
           </div>
 
           <h1 className="font-display mt-12 max-w-[20ch] text-4xl font-bold leading-[1.1] tracking-tight sm:text-5xl"
               style={{ color: "var(--text-1)" }}>
-            Your gateway dashboard.
+            Operator console.
           </h1>
           <p className="mt-5 max-w-sm text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
-            Merchant portal: users, wallets, transactions, API keys, and webhooks. Platform operators sign in at Control.
+            Full-platform access: merchants, chains, withdrawals, and audit. Use a platform admin account only.
           </p>
 
-          {/* Feature pills */}
           <div className="mt-8 flex flex-wrap gap-2">
-            {["Multi-chain", "Deposits & callbacks", "Live & sandbox", "API integration"].map((f) => (
+            {["All merchants", "System settings", "Sweep & ops", "Audit trail"].map((f) => (
               <span
                 key={f}
                 className="rounded-full px-3 py-1 text-xs font-medium"
@@ -100,7 +95,7 @@ export default function LoginPage() {
 
         <div className="relative mt-10 flex flex-wrap gap-6 pt-8 text-xs lg:mt-0"
              style={{ borderTop: "1px solid var(--border)" }}>
-          {[["Portal","Merchant"],["Ops","/control/login for admins"]].map(([label, val]) => (
+          {[["Surface","/control"],["Merchants","Merchant portal is /login"]].map(([label, val]) => (
             <div key={label}>
               <p className="font-mono text-[10px] uppercase tracking-wider" style={{ color: "var(--text-3)" }}>{label}</p>
               <p className="mt-1" style={{ color: "var(--text-2)" }}>{val}</p>
@@ -109,7 +104,6 @@ export default function LoginPage() {
         </div>
       </section>
 
-      {/* Right sign-in panel */}
       <section className="flex flex-1 items-stretch justify-center px-4 py-8 sm:px-8 sm:py-12 lg:items-center lg:py-16">
         <div
           className="w-full max-w-md rounded-2xl p-8 sm:p-10"
@@ -117,10 +111,10 @@ export default function LoginPage() {
         >
           <div className="mb-8">
             <h2 className="font-display text-2xl font-bold tracking-tight" style={{ color: "var(--text-1)" }}>
-              Merchant sign in
+              Admin sign in
             </h2>
             <p className="mt-1.5 text-sm" style={{ color: "var(--text-2)" }}>
-              Use your merchant gateway account. Operators use Control.
+              Platform operator credentials only (not a merchant account).
             </p>
           </div>
 
@@ -132,13 +126,13 @@ export default function LoginPage() {
             onSubmit={async (values, { setStatus, setSubmitting }) => {
               setStatus(undefined);
               try {
-                const r = await api("/api/v1/auth/login", {
+                const r = await api("/api/v1/auth/login/admin", {
                   method: "POST",
                   json: { email: values.email.trim().toLowerCase(), password: values.password },
                 });
                 clearImpersonationAdminToken();
                 setToken(r.token);
-                nav("/", { replace: true });
+                nav("/control", { replace: true });
               } catch (e) {
                 setStatus(String(e));
               } finally {
@@ -149,13 +143,13 @@ export default function LoginPage() {
             {({ isSubmitting, status }) => (
               <Form className="space-y-5">
                 <div>
-                  <label className="form-label" htmlFor="email">Email address</label>
-                  <Field id="email" name="email" type="email" className="form-input" autoComplete="username" placeholder="you@example.com" />
+                  <label className="form-label" htmlFor="admin-email">Email address</label>
+                  <Field id="admin-email" name="email" type="email" className="form-input" autoComplete="username" placeholder="you@example.com" />
                   <ErrorMessage name="email" component="p" className="mt-1 text-xs text-rose-400" />
                 </div>
                 <div>
-                  <label className="form-label" htmlFor="password">Password</label>
-                  <Field id="password" name="password" type="password" className="form-input" autoComplete="current-password" placeholder="••••••••" />
+                  <label className="form-label" htmlFor="admin-password">Password</label>
+                  <Field id="admin-password" name="password" type="password" className="form-input" autoComplete="current-password" placeholder="••••••••" />
                   <ErrorMessage name="password" component="p" className="mt-1 text-xs text-rose-400" />
                 </div>
 
@@ -179,11 +173,11 @@ export default function LoginPage() {
                 )}
 
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                  <Link to="/control/login" className="text-sm transition"
+                  <Link to="/login" className="text-sm transition"
                         style={{ color: "var(--text-3)" }}
                         onMouseEnter={(e) => { e.currentTarget.style.color = "var(--link-active-color)"; }}
                         onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-3)"; }}>
-                    Admin sign in
+                    Merchant sign in
                   </Link>
                   <Link to="/forgot-password" className="text-sm transition"
                         style={{ color: "var(--text-3)" }}

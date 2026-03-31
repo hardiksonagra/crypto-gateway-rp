@@ -1,10 +1,11 @@
 import { verifyAuthToken } from "../lib/auth-jwt.js";
 import { prisma } from "../lib/prisma.js";
+import { PORTAL_ROLE_ADMIN, PORTAL_ROLE_MERCHANT } from "../constants/portal-role.js";
 
 /**
- * Bearer JWT + live DB check: user must exist, not soft-deleted (`deleted_at`), and active.
+ * Bearer JWT + live DB check: account must exist, not soft-deleted (`deleted_at`), and active.
  *
- * @param {...import("@prisma/client").AdminRole} allowed Optional role allow-list (checked against DB role).
+ * @param {...string} allowed Optional role allow-list (`ADMIN` / `MERCHANT`) from the JWT.
  */
 export function requireAuth(...allowed) {
   return async (req, res, next) => {
@@ -24,36 +25,49 @@ export function requireAuth(...allowed) {
       return;
     }
 
-    let user;
+    const role = payload.role;
+    if (role !== PORTAL_ROLE_ADMIN && role !== PORTAL_ROLE_MERCHANT) {
+      res.status(401).json({ error: "invalid_token" });
+      return;
+    }
+
+    let account;
     try {
-      user = await prisma.adminUser.findUnique({
-        where: { id: payload.sub },
-        select: { isActive: true, role: true, deletedAt: true },
-      });
+      if (role === PORTAL_ROLE_ADMIN) {
+        account = await prisma.admin.findUnique({
+          where: { id: payload.sub },
+          select: { isActive: true, deletedAt: true },
+        });
+      } else {
+        account = await prisma.merchant.findUnique({
+          where: { id: payload.sub },
+          select: { isActive: true, deletedAt: true },
+        });
+      }
     } catch {
       res.status(500).json({ error: "internal error" });
       return;
     }
 
-    if (!user) {
+    if (!account) {
       res.status(401).json({ error: "invalid_token" });
       return;
     }
-    if (!user.isActive) {
+    if (!account.isActive) {
       res.status(401).json({
         error: "account_deactivated",
         message: "This account is inactive. You have been signed out.",
       });
       return;
     }
-    if (user.deletedAt) {
+    if (account.deletedAt) {
       res.status(401).json({
         error: "account_removed",
         message: "This account has been removed. You have been signed out.",
       });
       return;
     }
-    if (allowed.length > 0 && !allowed.includes(user.role)) {
+    if (allowed.length > 0 && !allowed.includes(role)) {
       res.status(403).json({ error: "forbidden" });
       return;
     }
