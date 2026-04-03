@@ -1,3 +1,4 @@
+import { randomBytes } from "crypto";
 import { Chain } from "@prisma/client";
 import { env } from "crypto-payment-gateway/src/config/env.js";
 import { re } from "crypto-payment-gateway/src/config/runtime-env.js";
@@ -40,6 +41,7 @@ function isWalletAssignmentTableMissingError(e) {
  *   currency: string,
  *   network: string,
  * }} p
+ * @returns {Promise<{ wallet: import("@prisma/client").Wallet; assignmentSource: "existing_session" | "pool_pick" | "new_wallet"; depositSessionKey: string }>}
  */
 export async function assignPooledWalletForDeposit(tx, p) {
   const { merchantId, environment, userId, chain, currency, network } = p;
@@ -127,6 +129,7 @@ export async function assignPooledWalletForDeposit(tx, p) {
     }
   }
 
+  const depositSessionKey = randomBytes(24).toString("hex");
   try {
     await tx.walletAssignmentEvent.create({
       data: {
@@ -135,13 +138,14 @@ export async function assignPooledWalletForDeposit(tx, p) {
         merchantId,
         environment,
         source,
+        depositSessionKey,
       },
     });
   } catch (e) {
     if (!isWalletAssignmentTableMissingError(e)) throw e;
   }
 
-  return wallet;
+  return { wallet, assignmentSource: source, depositSessionKey };
 }
 
 /**

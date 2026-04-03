@@ -83,10 +83,28 @@ router.get("/api/v1/gateway/payment-session/:token/poll", async (req, res) => {
       res.status(410).json({ error: "payment_link_invalid_or_expired" });
       return;
     }
-    const successRow = await prisma.transaction.findFirst({
-      where: { walletId: wid, status: TxStatus.success },
-      select: { id: true },
-    });
+    let successRow = null;
+    if (v.depositSessionKey) {
+      successRow = await prisma.transaction.findFirst({
+        where: {
+          walletId: wid,
+          status: TxStatus.success,
+          depositSessionKey: v.depositSessionKey,
+        },
+        select: { id: true },
+      });
+    } else {
+      const since =
+        v.linkIssuedAt != null ? new Date(v.linkIssuedAt * 1000) : null;
+      successRow = await prisma.transaction.findFirst({
+        where: {
+          walletId: wid,
+          status: TxStatus.success,
+          ...(since ? { updatedAt: { gte: since } } : {}),
+        },
+        select: { id: true },
+      });
+    }
     res.json({ has_successful_deposit: Boolean(successRow) });
   } catch (e) {
     logger.error("gateway payment-session poll failed", { err: String(e) });
@@ -275,43 +293,76 @@ router.post("/api/v1/gateway/deposit-address", async (req, res) => {
       }
     }
 
-    const { user, wallet, createdNewUser } = await prisma.$transaction(
-      async (tx) => {
-        let u = await tx.user.findUnique({
-          where: {
-            merchantId_externalUserId_environment: {
-              merchantId: merchant.id,
-              externalUserId,
-              environment: gwEnv,
-            },
+    let u = await prisma.user.findUnique({
+      where: {
+        merchantId_externalUserId_environment: {
+          merchantId: merchant.id,
+          externalUserId,
+          environment: gwEnv,
+        },
+      },
+    });
+    let createdNewUser = false;
+    if (!u) {
+      u = await prisma.user.create({
+        data: {
+          merchantId: merchant.id,
+          externalUserId,
+          environment: gwEnv,
+        },
+      });
+      createdNewUser = true;
+    }
+
+    if (String(merchant.callbackUrl ?? "").trim()) {
+      const blocking = await prisma.transaction.findFirst({
+        where: {
+          status: TxStatus.success,
+          callbackDeliveredAt: null,
+          payerUserId: u.id,
+          wallet: { merchantId: merchant.id, environment: gwEnv },
+        },
+        select: { id: true },
+      });
+      if (blocking) {
+        auditGatewayApi(req, {
+          action: "deposit_address",
+          merchantId: merchant.id,
+          actorType: "gateway_api_key",
+          summary: "deposit-address 409 — callback_pending",
+          metadata: {
+            request_in: redactGatewayBody(body),
+            http_status: 409,
+            external_user_id: externalUserId,
           },
         });
-        let created = false;
-        if (!u) {
-          u = await tx.user.create({
-            data: {
-              merchantId: merchant.id,
-              externalUserId,
-              environment: gwEnv,
-            },
-          });
-          created = true;
-        }
-        const w = await assignPooledWalletForDeposit(tx, {
-          merchantId: merchant.id,
-          environment: gwEnv,
-          userId: u.id,
-          chain: rail.chain,
-          currency: rail.currency,
-          network: rail.network,
+        res.status(409).json({
+          error: "callback_pending",
+          message:
+            "A successful payment webhook is still pending delivery; retry after your callback endpoint accepts the prior payment.success event.",
         });
-        return { user: u, wallet: w, createdNewUser: created };
-      },
-    );
+        return;
+      }
+    }
+
+    const { wallet, depositSessionKey } = await prisma.$transaction(async (tx) => {
+      const assigned = await assignPooledWalletForDeposit(tx, {
+        merchantId: merchant.id,
+        environment: gwEnv,
+        userId: u.id,
+        chain: rail.chain,
+        currency: rail.currency,
+        network: rail.network,
+      });
+      return {
+        wallet: assigned.wallet,
+        depositSessionKey: assigned.depositSessionKey,
+      };
+    });
     const responseOut = {
       status: 200,
       wallet_id: wallet.id,
-      user_id: user.id,
+      user_id: u.id,
       merchant_id: merchant.id,
       created_new_user: createdNewUser,
       gateway_environment: gwEnv,
@@ -324,7 +375,7 @@ router.post("/api/v1/gateway/deposit-address", async (req, res) => {
       action: "deposit_address",
       merchantId: merchant.id,
       actorType: "gateway_api_key",
-      summary: `deposit-address 200 · ext=${externalUserId} · ${wallet.chain} ${wallet.currency}/${wallet.network} · new_user=${createdNewUser}`,
+      summary: `deposit-address 200 · ext=${externalUserId} · ${wallet.chain} ${wallet.currency}/${wallet.network} · new_user=${createdNewUser} · user=${u.id}`,
       metadata: {
         request_in: redactGatewayBody(body),
         response_out: {
@@ -334,7 +385,11 @@ router.post("/api/v1/gateway/deposit-address", async (req, res) => {
         occurred_at_iso: new Date().toISOString(),
       },
     });
-    const payToken = createPaymentLinkToken(String(wallet.id), redirectUrl);
+    const payToken = createPaymentLinkToken(
+      String(wallet.id),
+      redirectUrl,
+      depositSessionKey,
+    );
     const payBase = paymentPageBaseUrl();
     res.status(200).json({
       address: wallet.address,
@@ -342,7 +397,7 @@ router.post("/api/v1/gateway/deposit-address", async (req, res) => {
       currency: wallet.currency,
       network: wallet.network,
       wallet_id: wallet.id,
-      user_id: user.id,
+      user_id: u.id,
       merchant_id: merchant.id,
       created_new_user: createdNewUser,
       gateway_environment: gwEnv,
@@ -564,7 +619,7 @@ router.post("/api/v1/gateway/create-wallet", async (req, res) => {
       return;
     }
 
-    const wallet = await prisma.$transaction(async (tx) => {
+    const assigned = await prisma.$transaction(async (tx) => {
       const uid = await resolveUserScopedInternalId(
         userId,
         merchant.id,
@@ -585,7 +640,7 @@ router.post("/api/v1/gateway/create-wallet", async (req, res) => {
         network: rail.network,
       });
     });
-    if (!wallet) {
+    if (!assigned) {
       auditGatewayApi(req, {
         action: "create_wallet",
         merchantId: merchant.id,
@@ -600,6 +655,7 @@ router.post("/api/v1/gateway/create-wallet", async (req, res) => {
       res.status(404).json({ error: "user not found" });
       return;
     }
+    const wallet = assigned.wallet;
     auditGatewayApi(req, {
       action: "create_wallet",
       merchantId: merchant.id,

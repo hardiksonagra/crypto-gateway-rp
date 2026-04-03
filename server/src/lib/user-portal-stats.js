@@ -112,6 +112,7 @@ export async function loadUserAssignmentHistory(userId, limit) {
       id: e.id,
       at: e.createdAt.toISOString(),
       source: e.source,
+      deposit_session_key: e.depositSessionKey ?? null,
       wallet_id: e.walletId,
       wallet_address: e.wallet.address,
       chain: e.wallet.chain,
