@@ -140,7 +140,11 @@ export async function resolveWalletInternalId(rawWalletId) {
  * @param {unknown} txOpaque
  */
 export async function resolveTransactionInternalId(txOpaque) {
-  if (typeof txOpaque === "number" && Number.isInteger(txOpaque) && txOpaque >= 1) {
+  if (
+    typeof txOpaque === "number" &&
+    Number.isInteger(txOpaque) &&
+    txOpaque >= 1
+  ) {
     const row = await prisma.transaction.findUnique({
       where: { id: txOpaque },
       select: { id: true },

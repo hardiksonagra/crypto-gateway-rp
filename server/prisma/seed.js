@@ -12,7 +12,8 @@ function sha256Hex(s) {
 async function main() {
   const adminEmail = process.env.SEED_ADMIN_EMAIL ?? "admin@gateway.local";
   const adminPass = process.env.SEED_ADMIN_PASSWORD ?? "Admin#ChangeMe1";
-  const merchEmail = process.env.SEED_MERCHANT_EMAIL ?? "merchant@gateway.local";
+  const merchEmail =
+    process.env.SEED_MERCHANT_EMAIL ?? "merchant@gateway.local";
   const merchPass = process.env.SEED_MERCHANT_PASSWORD ?? "Merchant#Demo1";
 
   const adminHash = await bcrypt.hash(adminPass, 10);
@@ -80,7 +81,10 @@ async function main() {
     });
   }
 
-  console.log("Seed OK. Merchant gateway API key (dev, live + sandbox):", apiSecret);
+  console.log(
+    "Seed OK. Merchant gateway API key (dev, live + sandbox):",
+    apiSecret,
+  );
 }
 
 main()

@@ -92,7 +92,14 @@ function rowFromAddress(row) {
 }
 
 function rowTxId(row) {
-  return String(row.transaction_id ?? row.hash ?? row.txID ?? "").trim();
+  return String(
+    row.transaction_id ??
+      row.transactionHash ??
+      row.tx_hash ??
+      row.hash ??
+      row.txID ??
+      "",
+  ).trim();
 }
 
 function rowTrxAmountSun(row) {
@@ -265,7 +272,8 @@ async function ingestTrc20ViaTronscan(base, address, targets, chain, trc20Map) {
     return;
   }
 
-  const url = `${base}/api/token_trc20/transfers?limit=50&start=0&contract_address=${encodeURIComponent(usdtContract)}&relatedAddress=${encodeURIComponent(address)}&confirm=true`;
+  // Omit `confirm` — TronScan returns empty `token_transfers` for `relatedAddress` when `confirm=true`.
+  const url = `${base}/api/token_trc20/transfers?limit=50&start=0&contract_address=${encodeURIComponent(usdtContract)}&relatedAddress=${encodeURIComponent(address)}`;
   let data = {};
   try {
     await acquireOutboundRpcSlot("TRON");

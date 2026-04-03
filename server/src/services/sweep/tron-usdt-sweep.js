@@ -118,12 +118,16 @@ export async function estimateTrxSunRequiredForTrc20Transfer(
   try {
     await acquireOutboundRpcSlot("TRON");
     const res = await tw.trx.getAccountResources(ownerBase58);
-    const freeNetLimit = chainParamBigInt(res?.freeNetLimit ?? res?.FreeNetLimit) ?? 600n;
-    const freeNetUsed = chainParamBigInt(res?.freeNetUsed ?? res?.FreeNetUsed) ?? 0n;
+    const freeNetLimit =
+      chainParamBigInt(res?.freeNetLimit ?? res?.FreeNetLimit) ?? 600n;
+    const freeNetUsed =
+      chainParamBigInt(res?.freeNetUsed ?? res?.FreeNetUsed) ?? 0n;
     const netLimit = chainParamBigInt(res?.NetLimit ?? res?.netLimit) ?? 0n;
     const netUsed = chainParamBigInt(res?.NetUsed ?? res?.netUsed) ?? 0n;
-    const energyLimit = chainParamBigInt(res?.EnergyLimit ?? res?.energyLimit) ?? 0n;
-    const energyUsed = chainParamBigInt(res?.EnergyUsed ?? res?.energyUsed) ?? 0n;
+    const energyLimit =
+      chainParamBigInt(res?.EnergyLimit ?? res?.energyLimit) ?? 0n;
+    const energyUsed =
+      chainParamBigInt(res?.EnergyUsed ?? res?.energyUsed) ?? 0n;
     freeBwLeft = freeNetLimit > freeNetUsed ? freeNetLimit - freeNetUsed : 0n;
     stakeBwLeft = netLimit > netUsed ? netLimit - netUsed : 0n;
     energyLeft = energyLimit > energyUsed ? energyLimit - energyUsed : 0n;
@@ -162,7 +166,8 @@ export async function estimateTrxSunRequiredForTrc20Transfer(
       : 0n;
   const bandwidthBurnSun = bwBurnPoints * bandwidthPriceSun;
 
-  const energyShortfall = energyRequired > energyLeft ? energyRequired - energyLeft : 0n;
+  const energyShortfall =
+    energyRequired > energyLeft ? energyRequired - energyLeft : 0n;
   const energyBurnSun = energyShortfall * energyPriceSun;
 
   return bandwidthBurnSun + energyBurnSun + TRON_SWEEP_TRX_SAFETY_BUFFER_SUN;
@@ -193,7 +198,8 @@ export function pickUsdtTrc20Contract() {
  */
 function rawBalanceToBigInt(raw) {
   if (typeof raw === "bigint") return raw;
-  if (typeof raw === "number" && Number.isFinite(raw)) return BigInt(Math.trunc(raw));
+  if (typeof raw === "number" && Number.isFinite(raw))
+    return BigInt(Math.trunc(raw));
   if (raw && typeof raw === "object" && "_hex" in raw) {
     const h = /** @type {{ _hex: string }} */ (raw)._hex;
     return BigInt(h);
@@ -285,11 +291,14 @@ export async function sweepTronUsdtOne(walletId) {
   const fromHex = tronUtils.address.toHex(wallet.address);
   const derivedHex = tw.defaultAddress?.hex;
   if (typeof derivedHex !== "string") {
-    logger.error("tron sweep: TronWeb defaultAddress.hex missing", { walletId });
+    logger.error("tron sweep: TronWeb defaultAddress.hex missing", {
+      walletId,
+    });
     return {
       ok: false,
       error: "TRONWEB_ADDRESS_NOT_READY",
-      detail: "TronWeb did not set defaultAddress.hex after loading the wallet key",
+      detail:
+        "TronWeb did not set defaultAddress.hex after loading the wallet key",
     };
   }
   if (derivedHex.toLowerCase() !== fromHex.toLowerCase()) {
@@ -336,7 +345,9 @@ export async function sweepTronUsdtAll() {
           status: "skipped",
           reason: r.reason,
           ...(r.from_address ? { from_address: r.from_address } : {}),
-          ...(r.balance_atomic != null ? { balance_atomic: String(r.balance_atomic) } : {}),
+          ...(r.balance_atomic != null
+            ? { balance_atomic: String(r.balance_atomic) }
+            : {}),
           ...(r.detail ? { detail: r.detail } : {}),
         });
       } else {
@@ -459,7 +470,10 @@ export async function sweepTronUsdtTransferFullBalanceFromDepositWallet(
       shouldPollResponse: true,
     });
   } catch (e) {
-    logger.error("tron sweep transfer failed", { walletId: wallet.id, err: String(e) });
+    logger.error("tron sweep transfer failed", {
+      walletId: wallet.id,
+      err: String(e),
+    });
     return { ok: false, error: "TRANSFER_FAILED", detail: String(e) };
   }
 

@@ -31,9 +31,7 @@ import {
   merchantBalanceForAsset,
 } from "../services/merchant-balance.js";
 import { buildAllPendingPreviews } from "../services/settlement-batch.js";
-import {
-  proofPathForFileName,
-} from "../lib/settlement-upload.js";
+import { proofPathForFileName } from "../lib/settlement-upload.js";
 import fs from "fs";
 import { re } from "../config/runtime-env.js";
 import { isEvmChain } from "../config/chains.js";
@@ -93,7 +91,8 @@ async function resolveMerchantPortalForLists(mid) {
       ok: false,
       status: 403,
       error: "sandbox_gateway_disabled",
-      message: "Sandbox is disabled for your account. Ask an admin to enable it.",
+      message:
+        "Sandbox is disabled for your account. Ask an admin to enable it.",
     };
   }
   if (environment === MerchantGatewayEnv.live && !synced.liveGatewayEnabled) {
@@ -368,9 +367,7 @@ router.get(
     }
     const limRaw = req.query.limit;
     const limit =
-      typeof limRaw === "string" && limRaw.trim()
-        ? parseInt(limRaw, 10)
-        : 200;
+      typeof limRaw === "string" && limRaw.trim() ? parseInt(limRaw, 10) : 200;
     const events = await loadUserAssignmentHistory(
       owns.id,
       Number.isFinite(limit) ? limit : 200,
@@ -379,7 +376,8 @@ router.get(
       user_id: owns.id,
       events,
       source_labels: {
-        existing_session: "Same rail wallet refreshed (deposit-address / create-wallet)",
+        existing_session:
+          "Same rail wallet refreshed (deposit-address / create-wallet)",
         pool_pick: "Picked from merchant pool",
         new_wallet: "New address generated",
       },
@@ -425,9 +423,7 @@ router.get(
     }
     const limRaw = req.query.limit;
     const limit =
-      typeof limRaw === "string" && limRaw.trim()
-        ? parseInt(limRaw, 10)
-        : 200;
+      typeof limRaw === "string" && limRaw.trim() ? parseInt(limRaw, 10) : 200;
     const data = await loadUserPayerDepositHistory(
       owns.id,
       Number.isFinite(limit) ? limit : 200,
@@ -495,8 +491,7 @@ router.get("/api/v1/merchant/wallets", async (req, res) => {
     wallets: rows.map((w) => {
       const txCount = w._count.transactions;
       const exp = w.scanExpiresAt;
-      const deposit_scan_active =
-        txCount > 0 || exp == null || exp > now;
+      const deposit_scan_active = txCount > 0 || exp == null || exp > now;
       const st = statsByWallet.get(w.id);
       return {
         id: w.id,
@@ -554,9 +549,7 @@ router.get(
     }
     const limRaw = req.query.limit;
     const limit =
-      typeof limRaw === "string" && limRaw.trim()
-        ? parseInt(limRaw, 10)
-        : 100;
+      typeof limRaw === "string" && limRaw.trim() ? parseInt(limRaw, 10) : 100;
     const data = await loadWalletDepositActivity(
       owns.id,
       Number.isFinite(limit) ? limit : 100,
@@ -578,14 +571,13 @@ router.post(
       return;
     }
     const walletId =
-      typeof req.params.walletId === "string"
-        ? req.params.walletId.trim()
-        : "";
+      typeof req.params.walletId === "string" ? req.params.walletId.trim() : "";
     if (!walletId) {
       res.status(400).json({ error: "wallet_id_required" });
       return;
     }
     const gate = await resolveMerchantPortalForLists(mid);
+
     if (!gate.ok) {
       res.status(gate.status).json({
         error: gate.error,
@@ -611,6 +603,7 @@ router.post(
       },
       select: { id: true },
     });
+
     if (!owns) {
       res.status(404).json({ error: "wallet_not_found" });
       return;
@@ -619,6 +612,7 @@ router.post(
       const row = await reactivateWalletDepositScan(walletId, {
         merchantId: mid,
       });
+
       res.json({
         ok: true,
         wallet_id: row.id,
@@ -752,7 +746,9 @@ router.get("/api/v1/merchant/transactions", async (req, res) => {
       log_index: t.logIndex,
       callback_delivered_at: t.callbackDeliveredAt,
       external_user_id:
-        t.payerUser?.externalUserId ?? t.wallet.assignedUser?.externalUserId ?? null,
+        t.payerUser?.externalUserId ??
+        t.wallet.assignedUser?.externalUserId ??
+        null,
       gateway_environment: t.wallet.environment,
       created_at: t.createdAt,
       updated_at: t.updatedAt,
@@ -805,8 +801,12 @@ router.post(
     res.status(502).json({
       error: result.code,
       ...(result.message ? { message: result.message } : {}),
-      ...(result.httpStatus != null ? { upstream_status: result.httpStatus } : {}),
-      ...(result.bodySnippet ? { upstream_body_snippet: result.bodySnippet } : {}),
+      ...(result.httpStatus != null
+        ? { upstream_status: result.httpStatus }
+        : {}),
+      ...(result.bodySnippet
+        ? { upstream_body_snippet: result.bodySnippet }
+        : {}),
     });
   },
 );
@@ -915,12 +915,10 @@ router.post("/api/v1/merchant/withdrawals", async (req, res) => {
 
   const available = await merchantBalanceForAsset(mid, chain, expectedNative);
   if (available < amount) {
-    res
-      .status(400)
-      .json({
-        error: "insufficient_balance",
-        available_raw: available.toString(),
-      });
+    res.status(400).json({
+      error: "insufficient_balance",
+      available_raw: available.toString(),
+    });
     return;
   }
 
@@ -1075,7 +1073,11 @@ router.patch("/api/v1/merchant/settings", async (req, res) => {
               ? body.default_network
               : existing.defaultNetwork,
         };
-    const picked = pickMerchantDefaultPair(pairBody, nextChains, constraintKeys);
+    const picked = pickMerchantDefaultPair(
+      pairBody,
+      nextChains,
+      constraintKeys,
+    );
     if ("error" in picked && picked.error) {
       res.status(400).json({ error: picked.error });
       return;
