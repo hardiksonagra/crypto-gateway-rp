@@ -53,6 +53,7 @@ export function buildAdminBreadcrumbs(pathname, extras) {
     activity: { label: "Activity log", to: "/control/activity" },
     settings: { label: "System settings", to: "/control/settings" },
     profile: { label: "Profile", to: "/control/profile" },
+    "decode-gateway-data": { label: "Decode gateway data", to: "/control/decode-gateway-data" },
   };
 
   const key = rest[0];

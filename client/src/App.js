@@ -16,6 +16,7 @@ import AdminWallets from "./pages/admin/AdminWallets";
 import AdminTransactions from "./pages/admin/Transactions";
 import AdminActivityLog from "./pages/admin/ActivityLog";
 import AdminSystemSettings from "./pages/admin/SystemSettings";
+import DecodeGatewayData from "./pages/admin/DecodeGatewayData";
 import AdminUnifiedSweep from "./pages/admin/UnifiedSweep";
 import AdminSettlements from "./pages/admin/Settlements";
 import MerchantDashboard from "./pages/merchant/Dashboard";
@@ -100,6 +101,7 @@ export default function App() {
         <Route path="activity" element={<AdminActivityLog />} />
         <Route path="settings" element={<AdminSystemSettings />} />
         <Route path="profile" element={<Profile />} />
+        <Route path="decode-gateway-data" element={<DecodeGatewayData />} />
       </Route>
       <Route path="/admin" element={<Navigate to="/control" replace />} />
       <Route path="/admin/*" element={<RedirectAdminToControl />} />

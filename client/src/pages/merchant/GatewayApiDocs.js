@@ -322,6 +322,13 @@ export default function GatewayApiDocs() {
         <p className="mt-3 text-xs font-medium text-white/45">
           Build <span className="font-mono">X-Token</span> (choose language)
         </p>
+        <p className="mt-2 text-xs text-white/45">
+          <span className="font-medium text-white/55">PHP:</span> use{" "}
+          <span className="font-mono">JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES</span>{" "}
+          on every <span className="font-mono">json_encode</span> in your canonical serializer and when
+          encoding the POST body — otherwise strings with URLs (e.g.{" "}
+          <span className="font-mono">redirect_url</span>) will not match the server’s canonical JSON.
+        </p>
         <XTokenMultiLangCodeBlock />
       </div>
 

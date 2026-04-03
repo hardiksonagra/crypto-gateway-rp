@@ -2,7 +2,7 @@
 
 Share your **HTTPS base URL** (e.g. `https://payments.example.com`) with integrators. All paths below are **relative** to that base.
 
-**Merchants** using the portal and integrating their backend should also read **[MERCHANT_API_INTEGRATION.md](./MERCHANT_API_INTEGRATION.md)** (JWT login vs gateway auth: `X-Token` or legacy `api_key`, settings, rails).
+**Merchants** using the portal and integrating their backend should also read **[MERCHANT_API_INTEGRATION.md](./MERCHANT_API_INTEGRATION.md)** (JWT login vs gateway auth: `X-Token` or legacy `api_key`, settings, rails). §3.1 adds **PHP `json_encode` + `JSON_UNESCAPED_SLASHES`**, **`Content-Type: application/json`**, and matching the wire body to the canonical string for `X-Token`.
 
 ---
 

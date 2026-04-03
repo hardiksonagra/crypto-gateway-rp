@@ -1,6 +1,7 @@
 /**
  * Reference implementations for gateway X-Token (canonical JSON + AES-256-GCM + SHA-256 key).
  * Must match server: `server/src/lib/gateway-x-token.js`
+ * PHP: every json_encode in canonical JSON must include JSON_UNESCAPED_SLASHES (see MERCHANT_API_INTEGRATION.md §3.1).
  *
  * @typedef {{ id: string, label: string, code: string }} XTokenSnippet
  */
@@ -93,16 +94,17 @@ def build_x_token(body_obj: dict, merchant_api_secret: str) -> str:
     label: "PHP",
     code: `<?php
 // PHP 8.1+ (array_is_list). OpenSSL ext required.
+// Use JSON_UNESCAPED_SLASHES on every json_encode: PHP escapes "/" by default; Node JSON.stringify does not (URLs in bodies).
 
-function canonical_json_stringify($v): string {
+function canonical_json_stringify($v) {
     if ($v === null) return "null";
     if (is_bool($v)) return $v ? "true" : "false";
-    if (is_int($v)) return json_encode($v, JSON_UNESCAPED_UNICODE);
+    if (is_int($v)) return json_encode($v, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     if (is_float($v)) {
         if (is_nan($v) || is_infinite($v)) throw new Exception("non-finite number");
-        return json_encode($v, JSON_UNESCAPED_UNICODE);
+        return json_encode($v, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     }
-    if (is_string($v)) return json_encode($v, JSON_UNESCAPED_UNICODE);
+    if (is_string($v)) return json_encode($v, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     if (is_array($v)) {
         if (array_is_list($v)) {
             $parts = array_map("canonical_json_stringify", $v);
@@ -111,14 +113,14 @@ function canonical_json_stringify($v): string {
         ksort($v);
         $parts = [];
         foreach ($v as $k => $val) {
-            $parts[] = json_encode((string)$k, JSON_UNESCAPED_UNICODE) . ":" . canonical_json_stringify($val);
+            $parts[] = json_encode((string)$k, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) . ":" . canonical_json_stringify($val);
         }
         return "{" . implode(",", $parts) . "}";
     }
     throw new Exception("unsupported type");
 }
 
-function build_x_token(array $body, string $merchantSecret): string {
+function build_x_token(array $body, string $merchantSecret) {
     $plain = canonical_json_stringify($body);
     $key = hash("sha256", $merchantSecret, true);
     $iv = random_bytes(12);

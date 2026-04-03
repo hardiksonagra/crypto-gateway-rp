@@ -106,6 +106,10 @@ For **POST** routes, send the **same JSON body as before but omit `api_key`**, a
 
 **Canonical JSON:** at every object level, sort keys **lexicographically**; serialize with no extra whitespace (standard `JSON`-style primitives). Arrays keep element order. The string you encrypt must be **exactly** this canonical form of the body the server will parse (after `Content-Type: application/json` decoding).
 
+**Match JavaScript `JSON.stringify`:** The gateway compares your decrypted plaintext to **`JSON.stringify`-compatible output** (Node’s canonical serializer). In **PHP**, `json_encode()` escapes `/` as `\/` by default; JavaScript does **not**. Use **`JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES`** on **every** `json_encode` in your canonical serializer **and** when encoding the raw POST body, or requests with URLs (e.g. `redirect_url`) fail with `invalid_x_token`. Python’s `json.dumps`, Go’s `json.Marshal`, Ruby’s `JSON.generate`, etc. already align with this for typical strings; when in doubt, compare your canonical string to the same object in Node.
+
+**POST body:** Send the JSON body with header **`Content-Type: application/json`**. The wire body must deserialize to the same values you used to build the canonical string for `X-Token`.
+
 **Key material:** derive a 32-byte AES key as **SHA-256** (binary digest) of the merchant API secret string (UTF-8). Use **AES-256-GCM** with a random 12-byte IV per request; append the 16-byte GCM auth tag; wire format is **base64**( `IV || tag || ciphertext` ) (12 + 16 + ciphertext length).
 
 The server decrypts `X-Token` with your stored gateway secret and checks that the plaintext **equals** the canonical JSON of the received body. If not, the call fails with `invalid_x_token` (tampering or wrong secret). Do **not** send `api_key` in the body when using `X-Token` on **POST** routes (you would get `ambiguous_gateway_auth`).
