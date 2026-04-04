@@ -10,7 +10,10 @@ import {
   workerRailMetricsEnabled,
 } from "../tracker/deposit-rail-metrics.js";
 import { releaseWalletAfterDepositSuccess } from "../wallet/wallet-service.js";
-import { depositSessionKeyForNewWalletTransaction } from "../../lib/deposit-session-key.js";
+import {
+  depositSessionKeyForNewWalletTransaction,
+  referenceTransactionIdForNewWalletTransaction,
+} from "../../lib/deposit-session-key.js";
 import { resolveWalletInternalId } from "../../lib/entity-internal-id.js";
 
 /**
@@ -55,11 +58,17 @@ export async function upsertIncomingTransaction(input) {
   }
 
   let depositSessionKeyForCreate = null;
+  let referenceTransactionIdForCreate = null;
   if (!hadRowBefore) {
     depositSessionKeyForCreate = await depositSessionKeyForNewWalletTransaction(
       walletInternalId,
       payerUserIdForCreate,
     );
+    referenceTransactionIdForCreate =
+      await referenceTransactionIdForNewWalletTransaction(
+        walletInternalId,
+        payerUserIdForCreate,
+      );
   }
 
   const row = await prisma.transaction.upsert({
@@ -70,6 +79,7 @@ export async function upsertIncomingTransaction(input) {
       walletId: walletInternalId,
       payerUserId: payerUserIdForCreate,
       depositSessionKey: depositSessionKeyForCreate ?? undefined,
+      referenceTransactionId: referenceTransactionIdForCreate ?? undefined,
       txHash: input.txHash,
       fromAddress: input.fromAddress,
       toAddress: input.toAddress,

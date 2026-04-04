@@ -249,6 +249,7 @@ router.get("/api/v1/merchant/dashboard", async (req, res) => {
     stats: { end_users: users, transactions: txs },
     recent_transactions: recent.map((t) => ({
       id: t.id,
+      transaction_id: t.referenceTransactionId ?? null,
       tx_hash: t.txHash,
       chain: t.chain,
       status: t.status,
@@ -663,6 +664,10 @@ router.get("/api/v1/merchant/transactions", async (req, res) => {
     typeof req.query.external_user_id === "string"
       ? req.query.external_user_id.trim()
       : "";
+  const qTxRef =
+    typeof req.query.transaction_id === "string"
+      ? req.query.transaction_id.trim()
+      : "";
 
   const where = {
     wallet: {
@@ -701,6 +706,14 @@ router.get("/api/v1/merchant/transactions", async (req, res) => {
     ...(chain && CHAIN_SET.has(chain) ? { chain } : {}),
     ...(status && Object.values(TxStatus).includes(status) ? { status } : {}),
     ...(token ? { tokenSymbol: { equals: token, mode: "insensitive" } } : {}),
+    ...(qTxRef
+      ? {
+          referenceTransactionId: {
+            contains: qTxRef,
+            mode: "insensitive",
+          },
+        }
+      : {}),
   };
 
   const [total, rows] = await Promise.all([
@@ -728,6 +741,7 @@ router.get("/api/v1/merchant/transactions", async (req, res) => {
     environment,
     transactions: rows.map((t) => ({
       id: t.id,
+      transaction_id: t.referenceTransactionId ?? null,
       tx_hash: t.txHash,
       chain: t.chain,
       status: t.status,

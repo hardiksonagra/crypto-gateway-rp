@@ -33,6 +33,7 @@ export default function AdminTransactions() {
   const [applied, setApplied] = useState({
     merchant_id: "",
     external_user_id: "",
+    transaction_id: "",
     chain: "",
     status: "",
     token_symbol: "",
@@ -47,6 +48,7 @@ export default function AdminTransactions() {
       applied.pageSize,
       applied.merchant_id,
       applied.external_user_id,
+      applied.transaction_id,
       applied.chain,
       applied.status,
       applied.token_symbol,
@@ -57,6 +59,7 @@ export default function AdminTransactions() {
       const p = new URLSearchParams({ page: String(page), pageSize: String(applied.pageSize) });
       if (applied.merchant_id.trim()) p.set("merchant_id", applied.merchant_id.trim());
       if (applied.external_user_id.trim()) p.set("external_user_id", applied.external_user_id.trim());
+      if (applied.transaction_id.trim()) p.set("transaction_id", applied.transaction_id.trim());
       if (applied.chain) p.set("chain", applied.chain);
       if (applied.status) p.set("status", applied.status);
       if (applied.token_symbol.trim()) p.set("token_symbol", applied.token_symbol.trim());
@@ -91,6 +94,7 @@ export default function AdminTransactions() {
   const hasActiveFilters = Boolean(
     applied.merchant_id.trim() ||
       applied.external_user_id.trim() ||
+      applied.transaction_id.trim() ||
       applied.chain ||
       applied.status ||
       applied.token_symbol.trim() ||
@@ -104,6 +108,7 @@ export default function AdminTransactions() {
     setApplied({
       merchant_id: "",
       external_user_id: "",
+      transaction_id: "",
       chain: "",
       status: "",
       token_symbol: "",
@@ -185,6 +190,25 @@ export default function AdminTransactions() {
                 className={listFilterChipCloseClass}
                 onClick={() => patchApplied({ external_user_id: "" })}
                 aria-label="Remove external user filter"
+              >
+                ×
+              </button>
+            </span>
+          ) : null}
+          {applied.transaction_id.trim() ? (
+            <span className="filter-chip max-w-full">
+              <span className="filter-chip-label">Reference ID</span>
+              <span
+                className="max-w-[min(240px,45vw)] truncate font-mono text-[10px]"
+                title={applied.transaction_id}
+              >
+                {applied.transaction_id}
+              </span>
+              <button
+                type="button"
+                className={listFilterChipCloseClass}
+                onClick={() => patchApplied({ transaction_id: "" })}
+                aria-label="Remove reference transaction filter"
               >
                 ×
               </button>
@@ -272,6 +296,7 @@ export default function AdminTransactions() {
             initialValues={{
               merchant_id: applied.merchant_id,
               external_user_id: applied.external_user_id,
+              transaction_id: applied.transaction_id,
               chain: applied.chain,
               status: applied.status,
               token_symbol: applied.token_symbol,
@@ -285,6 +310,7 @@ export default function AdminTransactions() {
                 ...a,
                 merchant_id: vals.merchant_id,
                 external_user_id: vals.external_user_id,
+                transaction_id: vals.transaction_id,
                 chain: vals.chain,
                 status: vals.status,
                 token_symbol: vals.token_symbol,
@@ -323,6 +349,22 @@ export default function AdminTransactions() {
                       />
                       <ErrorMessage
                         name="external_user_id"
+                        component="p"
+                        className="mt-1 text-xs text-rose-400"
+                      />
+                    </div>
+                    <div>
+                      <label className={listFilterLabelClass} htmlFor="adm-tx-ref-id">
+                        Reference / order ID
+                      </label>
+                      <Field
+                        id="adm-tx-ref-id"
+                        name="transaction_id"
+                        className={listFilterInputClass}
+                        placeholder="Gateway transaction_id (partial match)"
+                      />
+                      <ErrorMessage
+                        name="transaction_id"
                         component="p"
                         className="mt-1 text-xs text-rose-400"
                       />
@@ -387,6 +429,7 @@ export default function AdminTransactions() {
                         values: {
                           merchant_id: "",
                           external_user_id: "",
+                          transaction_id: "",
                           chain: "",
                           status: "",
                           token_symbol: "",
@@ -409,10 +452,11 @@ export default function AdminTransactions() {
 
       <div className="mt-10 space-y-4">
         <div className="data-table-surface">
-          <table className="data-table min-w-[960px]">
+          <table className="data-table min-w-[1040px]">
             <thead>
               <tr>
                 <th>Transaction ID</th>
+                <th>Reference ID</th>
                 <th>When</th>
                 <th>Merchant</th>
                 <th>User</th>
@@ -425,14 +469,14 @@ export default function AdminTransactions() {
             <tbody>
               {res.isLoading ? (
                 <tr>
-                  <td colSpan={8} className="!py-8">
+                  <td colSpan={9} className="!py-8">
                     <BrandLoader variant="inline" title="" subtitle="Loading…" />
                   </td>
                 </tr>
               ) : null}
               {showEmpty ? (
                 <tr>
-                  <td colSpan={8} className="!py-12 text-center text-sm text-white/45">
+                  <td colSpan={9} className="!py-12 text-center text-sm text-white/45">
                     No record found.
                   </td>
                 </tr>
@@ -448,10 +492,16 @@ export default function AdminTransactions() {
                           setDetailTx(t);
                         }}
                         className="max-w-full truncate text-left font-mono text-xs text-sky-300/95 underline decoration-sky-500/40 underline-offset-2 transition hover:text-sky-200 hover:decoration-sky-300/70"
-                        title={t.id}
+                        title={String(t.id)}
                       >
-                        {t.id.length > 18 ? `${t.id.slice(0, 10)}…${t.id.slice(-6)}` : t.id}
+                        {(() => {
+                          const sid = String(t.id);
+                          return sid.length > 18 ? `${sid.slice(0, 10)}…${sid.slice(-6)}` : sid;
+                        })()}
                       </button>
+                    </td>
+                    <td className="max-w-[140px] truncate font-mono text-[10px] text-white/55" title={t.transaction_id ?? ""}>
+                      {t.transaction_id ?? "—"}
                     </td>
                     <td className="text-xs text-white/45">{formatLocalDateTime(t.created_at)}</td>
                     <td className="max-w-[130px] truncate text-xs" title={t.merchant?.email ?? ""}>

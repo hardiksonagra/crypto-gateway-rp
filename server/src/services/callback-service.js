@@ -27,6 +27,7 @@ export function buildPaymentSuccessWebhookBody(tx) {
   const merchant = u?.merchant ?? tx.wallet.merchant;
   return {
     transaction_id: tx.id,
+    merchant_transaction_id: tx.referenceTransactionId ?? null,
     wallet_id: tx.walletId,
     tx_hash: tx.txHash,
     amount: tx.amount,

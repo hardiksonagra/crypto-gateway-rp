@@ -1279,6 +1279,10 @@ router.get("/api/v1/admin/transactions", async (req, res) => {
     typeof req.query.external_user_id === "string"
       ? req.query.external_user_id.trim()
       : "";
+  const qTxRef =
+    typeof req.query.transaction_id === "string"
+      ? req.query.transaction_id.trim()
+      : "";
 
   const txListMerch = merchantId
     ? merchantWhereFromRouteParam(merchantId)
@@ -1335,6 +1339,14 @@ router.get("/api/v1/admin/transactions", async (req, res) => {
     ...(chain && CHAINS.has(chain) ? { chain } : {}),
     ...(status && Object.values(TxStatus).includes(status) ? { status } : {}),
     ...(token ? { tokenSymbol: { equals: token, mode: "insensitive" } } : {}),
+    ...(qTxRef
+      ? {
+          referenceTransactionId: {
+            contains: qTxRef,
+            mode: Prisma.QueryMode.insensitive,
+          },
+        }
+      : {}),
   };
 
   const [total, rows] = await Promise.all([
@@ -1370,6 +1382,7 @@ router.get("/api/v1/admin/transactions", async (req, res) => {
       const merch = t.wallet.merchant;
       return {
         id: t.id,
+        transaction_id: t.referenceTransactionId ?? null,
         tx_hash: t.txHash,
         chain: t.chain,
         status: t.status,

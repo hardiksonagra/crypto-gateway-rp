@@ -38,6 +38,23 @@ const router = Router();
 /** @type {ReadonlySet<string>} */
 const CHAIN_QUERY_VALUES = new Set(Object.values(Chain));
 
+const MAX_GATEWAY_TRANSACTION_REF_LEN = 256;
+
+/**
+ * Optional merchant checkout / order id (`transaction_id` in gateway JSON).
+ * @param {unknown} raw
+ * @returns {{ ok: true, value: string | null } | { ok: false, error: string }}
+ */
+function parseOptionalGatewayTransactionId(raw) {
+  if (raw == null || raw === "") return { ok: true, value: null };
+  const s = String(raw).trim();
+  if (!s) return { ok: true, value: null };
+  if (s.length > MAX_GATEWAY_TRANSACTION_REF_LEN) {
+    return { ok: false, error: "transaction_id_too_long" };
+  }
+  return { ok: true, value: s };
+}
+
 function paymentPageBaseUrl() {
   const raw = re.paymentPagePublicUrl.trim() || re.appPublicUrl;
   return String(raw).replace(/\/+$/, "");
@@ -193,6 +210,18 @@ router.post("/api/v1/gateway/deposit-address", async (req, res) => {
         metadata: { request_in: redactGatewayBody(body), http_status: 400 },
       });
       res.status(400).json({ error: "external_user_id is required" });
+      return;
+    }
+    const txRefParsed = parseOptionalGatewayTransactionId(body.transaction_id);
+    if (!txRefParsed.ok) {
+      auditGatewayApi(req, {
+        action: "deposit_address",
+        merchantId: merchant.id,
+        actorType: "gateway_api_key",
+        summary: `deposit-address 400 — ${txRefParsed.error}`,
+        metadata: { request_in: redactGatewayBody(body), http_status: 400 },
+      });
+      res.status(400).json({ error: txRefParsed.error });
       return;
     }
     const gate = assertMerchantGatewayKeyAllowed(merchant, keyType);
@@ -353,6 +382,7 @@ router.post("/api/v1/gateway/deposit-address", async (req, res) => {
         chain: rail.chain,
         currency: rail.currency,
         network: rail.network,
+        referenceTransactionId: txRefParsed.value,
       });
       return {
         wallet: assigned.wallet,
@@ -569,6 +599,21 @@ router.post("/api/v1/gateway/create-wallet", async (req, res) => {
       return;
     }
 
+    const createWalletTxRef = parseOptionalGatewayTransactionId(
+      body.transaction_id,
+    );
+    if (!createWalletTxRef.ok) {
+      auditGatewayApi(req, {
+        action: "create_wallet",
+        merchantId: merchant.id,
+        actorType: "gateway_api_key",
+        summary: `create-wallet 400 — ${createWalletTxRef.error}`,
+        metadata: { request_in: redactGatewayBody(body), http_status: 400 },
+      });
+      res.status(400).json({ error: createWalletTxRef.error });
+      return;
+    }
+
     const rail = resolveDepositRail(currency, network);
     if (!rail) {
       auditGatewayApi(req, {
@@ -638,6 +683,7 @@ router.post("/api/v1/gateway/create-wallet", async (req, res) => {
         chain: rail.chain,
         currency: rail.currency,
         network: rail.network,
+        referenceTransactionId: createWalletTxRef.value,
       });
     });
     if (!assigned) {
@@ -770,6 +816,7 @@ router.get("/api/v1/gateway/transactions", async (req, res) => {
   res.json({
     transactions: txs.map((t) => ({
       id: t.id,
+      transaction_id: t.referenceTransactionId ?? null,
       tx_hash: t.txHash,
       from_address: t.fromAddress,
       to_address: t.toAddress,

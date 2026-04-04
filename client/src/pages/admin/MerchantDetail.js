@@ -71,6 +71,7 @@ export default function MerchantDetail() {
     status: "",
     token_symbol: "",
     address: "",
+    transaction_id: "",
     pageSize: DEFAULT_PAGE_SIZE,
   });
 
@@ -113,6 +114,7 @@ export default function MerchantDetail() {
       txApplied.status,
       txApplied.token_symbol,
       txApplied.address,
+      txApplied.transaction_id,
     ],
     enabled: txsEnabled,
     queryFn: () => {
@@ -125,6 +127,7 @@ export default function MerchantDetail() {
       if (txApplied.status) p.set("status", txApplied.status);
       if (txApplied.token_symbol.trim()) p.set("token_symbol", txApplied.token_symbol.trim());
       if (txApplied.address.trim()) p.set("address", txApplied.address.trim());
+      if (txApplied.transaction_id.trim()) p.set("transaction_id", txApplied.transaction_id.trim());
       return api(`/api/v1/admin/transactions?${p}`);
     },
   });
@@ -220,8 +223,13 @@ export default function MerchantDetail() {
   const usersTotal = usersQ.data?.total ?? 0;
 
   const txHasFilters =
-    Boolean(txApplied.chain || txApplied.status || txApplied.token_symbol.trim() || txApplied.address.trim()) ||
-    txApplied.pageSize !== DEFAULT_PAGE_SIZE;
+    Boolean(
+      txApplied.chain ||
+        txApplied.status ||
+        txApplied.token_symbol.trim() ||
+        txApplied.address.trim() ||
+        txApplied.transaction_id.trim(),
+    ) || txApplied.pageSize !== DEFAULT_PAGE_SIZE;
   const txCanReset = txPage > 1 || txHasFilters;
 
   const walHasFilters =
@@ -448,6 +456,7 @@ export default function MerchantDetail() {
                 status: "",
                 token_symbol: "",
                 address: "",
+                transaction_id: "",
                 pageSize: DEFAULT_PAGE_SIZE,
               });
               setTxPage(1);
@@ -532,6 +541,28 @@ export default function MerchantDetail() {
                 </button>
               </span>
             ) : null}
+            {txApplied.transaction_id.trim() ? (
+              <span className="filter-chip max-w-full">
+                <span className="filter-chip-label">Reference ID</span>
+                <span
+                  className="max-w-[min(240px,50vw)] truncate font-mono text-[10px]"
+                  title={txApplied.transaction_id}
+                >
+                  {txApplied.transaction_id}
+                </span>
+                <button
+                  type="button"
+                  className={listFilterChipCloseClass}
+                  onClick={() => {
+                    setTxApplied((a) => ({ ...a, transaction_id: "" }));
+                    setTxPage(1);
+                  }}
+                  aria-label="Remove reference transaction filter"
+                >
+                  ×
+                </button>
+              </span>
+            ) : null}
             {txApplied.pageSize !== DEFAULT_PAGE_SIZE ? (
               <span className="filter-chip">
                 <span className="filter-chip-label">Page size</span>
@@ -561,6 +592,7 @@ export default function MerchantDetail() {
                 status: txApplied.status,
                 token_symbol: txApplied.token_symbol,
                 address: txApplied.address,
+                transaction_id: txApplied.transaction_id,
               }}
               validationSchema={merchantDetailTransactionsFilterSchema}
               validateOnBlur
@@ -572,6 +604,7 @@ export default function MerchantDetail() {
                   status: vals.status,
                   token_symbol: vals.token_symbol,
                   address: vals.address,
+                  transaction_id: vals.transaction_id,
                 }));
                 setTxPage(1);
                 setTxDrawer(false);
@@ -650,6 +683,22 @@ export default function MerchantDetail() {
                           className="mt-1 text-xs text-rose-400"
                         />
                       </div>
+                      <div>
+                        <label className={listFilterLabelClass} htmlFor="md-tx-ref-id">
+                          Reference / order ID
+                        </label>
+                        <Field
+                          id="md-tx-ref-id"
+                          name="transaction_id"
+                          className={listFilterInputClass}
+                          placeholder="Gateway transaction_id (partial)"
+                        />
+                        <ErrorMessage
+                          name="transaction_id"
+                          component="p"
+                          className="mt-1 text-xs text-rose-400"
+                        />
+                      </div>
                     </div>
                   </div>
                   <div className="flex shrink-0 gap-3 border-t border-white/10 px-5 py-4">
@@ -659,7 +708,15 @@ export default function MerchantDetail() {
                     <button
                       type="button"
                       onClick={() =>
-                        resetForm({ values: { chain: "", status: "", token_symbol: "", address: "" } })
+                        resetForm({
+                          values: {
+                            chain: "",
+                            status: "",
+                            token_symbol: "",
+                            address: "",
+                            transaction_id: "",
+                          },
+                        })
                       }
                       className={listFilterSecondaryButtonClass}
                     >
@@ -676,10 +733,11 @@ export default function MerchantDetail() {
 
         <div className="mt-6 space-y-4">
           <div className="data-table-surface">
-            <table className="data-table min-w-[820px]">
+            <table className="data-table min-w-[920px]">
               <thead>
                 <tr>
                   <th>Time</th>
+                  <th>Reference ID</th>
                   <th>Chain</th>
                   <th>Token</th>
                   <th>Amount</th>
@@ -691,14 +749,14 @@ export default function MerchantDetail() {
               <tbody>
                 {txsQ.isLoading ? (
                   <tr>
-                    <td colSpan={7} className="!py-8">
+                    <td colSpan={8} className="!py-8">
                       <BrandLoader variant="inline" title="" subtitle="Loading…" />
                     </td>
                   </tr>
                 ) : null}
                 {!txsQ.isLoading && txs.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="!py-12 text-center text-sm text-white/45">
+                    <td colSpan={8} className="!py-12 text-center text-sm text-white/45">
                       No record found.
                     </td>
                   </tr>
@@ -707,6 +765,9 @@ export default function MerchantDetail() {
                   txs.map((t) => (
                     <tr key={t.id}>
                       <td className="text-xs text-white/45">{formatLocalDateTime(t.created_at)}</td>
+                      <td className="max-w-[120px] truncate font-mono text-[10px] text-white/55" title={t.transaction_id ?? ""}>
+                        {t.transaction_id ?? "—"}
+                      </td>
                       <td>{t.chain}</td>
                       <td>{t.token_symbol}</td>
                       <td className="font-mono text-xs">

@@ -43,6 +43,7 @@ function DetailRow(label, value) {
  * @property {string} updated_at
  * @property {string} [merchant_id]
  * @property {string} [merchant_email]
+ * @property {string | null} [transaction_id]
  */
 
 /**
@@ -100,6 +101,7 @@ export default function TransactionDetailModal({
         </div>
         <div className="max-h-[min(52vh,420px)] overflow-y-auto px-6 py-2">
           <dl>
+            {DetailRow("Reference / order ID", t.transaction_id)}
             {DetailRow("Tx hash", t.tx_hash)}
             {DetailRow("Status", t.status)}
             {DetailRow("Chain", t.chain)}

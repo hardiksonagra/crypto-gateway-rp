@@ -195,6 +195,7 @@ export const adminPanelAuditLogsFilterSchema = yup.object({
 export const adminTransactionsFilterSchema = yup.object({
   merchant_id: yup.string(),
   external_user_id: yup.string(),
+  transaction_id: yup.string(),
   chain: chainFilterField,
   status: yup.string().oneOf(["", "pending", "success", "failed"]),
   token_symbol: yup.string(),
@@ -207,6 +208,7 @@ export const merchantDetailTransactionsFilterSchema = yup.object({
   status: yup.string().oneOf(["", "pending", "success", "failed"]),
   token_symbol: yup.string(),
   address: yup.string(),
+  transaction_id: yup.string(),
 });
 
 /** Filters for wallets on merchant detail (merchant id is fixed in the page). */
@@ -250,6 +252,7 @@ export const merchantTransactionsFilterSchema = yup.object({
   status: yup.string().oneOf(["", "pending", "success", "failed"]),
   token_symbol: yup.string(),
   external_user_id: yup.string(),
+  transaction_id: yup.string(),
 });
 
 export const loginSchema = yup.object({

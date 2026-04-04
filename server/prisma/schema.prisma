@@ -203,6 +203,8 @@ model WalletAssignmentEvent {
   source      String   @map("source") @db.VarChar(24)
   /// Random hex key for this checkout; copied to `Transaction.depositSessionKey` when a deposit row is created.
   depositSessionKey String? @map("deposit_session_key") @db.VarChar(64)
+  /// Merchant checkout / order id from gateway body; copied to `Transaction.transaction_id` on new deposit rows.
+  referenceTransactionId String? @map("reference_transaction_id") @db.VarChar(256)
   createdAt   DateTime @default(now()) @map("created_at")
 
   wallet   Wallet    @relation(fields: [walletId], references: [id], onDelete: Cascade)
@@ -237,6 +239,8 @@ model Transaction {
   callbackLastAttemptAt DateTime? @map("callback_last_attempt_at")
   /// Matches `WalletAssignmentEvent.depositSessionKey` for the checkout session (payment link poll / redirect).
   depositSessionKey   String?   @map("deposit_session_key") @db.VarChar(64)
+  /// Merchant-provided id (gateway `transaction_id`); list/filter in portals.
+  referenceTransactionId String? @map("transaction_id") @db.VarChar(256)
   createdAt           DateTime  @default(now()) @map("created_at")
   updatedAt           DateTime  @updatedAt @map("updated_at")
   /// When set, this deposit was included in a batch settlement payout.
@@ -253,6 +257,7 @@ model Transaction {
   /// List txs per wallet (portal, gateway) ordered by time.
   @@index([walletId, createdAt(sort: Desc)])
   @@index([walletId, depositSessionKey])
+  @@index([referenceTransactionId])
   @@map("transactions")
 }
 

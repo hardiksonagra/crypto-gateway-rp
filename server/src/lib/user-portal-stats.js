@@ -165,6 +165,7 @@ export async function loadUserPayerDepositHistory(userId, limit) {
 
   const events = rows.map((t) => ({
     id: t.id,
+    transaction_id: t.referenceTransactionId ?? null,
     at: t.createdAt.toISOString(),
     status: t.status,
     tx_hash: t.txHash,

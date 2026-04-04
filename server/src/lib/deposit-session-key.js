@@ -28,3 +28,32 @@ export async function depositSessionKeyForNewWalletTransaction(
   const k = ev?.depositSessionKey;
   return typeof k === "string" && k.length > 0 ? k : null;
 }
+
+/**
+ * Latest assignment event merchant reference for this wallet + payer (new transaction rows).
+ *
+ * @param {number} walletInternalId
+ * @param {number | null} payerUserId
+ * @returns {Promise<string | null>}
+ */
+export async function referenceTransactionIdForNewWalletTransaction(
+  walletInternalId,
+  payerUserId,
+) {
+  let uid = payerUserId;
+  if (uid == null) {
+    const w = await prisma.wallet.findUnique({
+      where: { id: walletInternalId },
+      select: { assignedUserId: true },
+    });
+    uid = w?.assignedUserId ?? null;
+  }
+  if (uid == null) return null;
+  const ev = await prisma.walletAssignmentEvent.findFirst({
+    where: { walletId: walletInternalId, userId: uid },
+    orderBy: { id: "desc" },
+    select: { referenceTransactionId: true },
+  });
+  const k = ev?.referenceTransactionId;
+  return typeof k === "string" && k.length > 0 ? k : null;
+}

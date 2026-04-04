@@ -40,11 +40,15 @@ function isWalletAssignmentTableMissingError(e) {
  *   chain: import("@prisma/client").Chain,
  *   currency: string,
  *   network: string,
+ *   referenceTransactionId?: string | null,
  * }} p
  * @returns {Promise<{ wallet: import("@prisma/client").Wallet; assignmentSource: "existing_session" | "pool_pick" | "new_wallet"; depositSessionKey: string }>}
  */
 export async function assignPooledWalletForDeposit(tx, p) {
   const { merchantId, environment, userId, chain, currency, network } = p;
+  const refTxRaw =
+    p.referenceTransactionId != null ? String(p.referenceTransactionId).trim() : "";
+  const referenceTransactionId = refTxRaw ? refTxRaw.slice(0, 256) : null;
 
   const holdUntil =
     re.walletAssignmentHoldMinutes > 0
@@ -139,6 +143,7 @@ export async function assignPooledWalletForDeposit(tx, p) {
         environment,
         source,
         depositSessionKey,
+        referenceTransactionId: referenceTransactionId ?? undefined,
       },
     });
   } catch (e) {

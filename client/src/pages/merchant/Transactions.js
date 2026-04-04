@@ -33,6 +33,7 @@ export default function MerchantTransactions() {
     status: "",
     token_symbol: "",
     external_user_id: "",
+    transaction_id: "",
     pageSize: DEFAULT_PAGE_SIZE,
   });
 
@@ -58,6 +59,7 @@ export default function MerchantTransactions() {
       applied.status,
       applied.token_symbol,
       applied.external_user_id,
+      applied.transaction_id,
       portalEnvironmentKey,
     ],
     queryFn: () => {
@@ -69,6 +71,7 @@ export default function MerchantTransactions() {
       if (applied.status) p.set("status", applied.status);
       if (applied.token_symbol.trim()) p.set("token_symbol", applied.token_symbol.trim());
       if (applied.external_user_id.trim()) p.set("external_user_id", applied.external_user_id.trim());
+      if (applied.transaction_id.trim()) p.set("transaction_id", applied.transaction_id.trim());
       return api(`/api/v1/merchant/transactions?${p}`);
     },
     enabled: envQueryEnabled,
@@ -101,7 +104,8 @@ export default function MerchantTransactions() {
     applied.chain ||
       applied.status ||
       applied.token_symbol.trim() ||
-      applied.external_user_id.trim(),
+      applied.external_user_id.trim() ||
+      applied.transaction_id.trim(),
   );
   const hasNonDefaultPageSize = applied.pageSize !== DEFAULT_PAGE_SIZE;
   const hasFilterChips = hasActiveFilters || hasNonDefaultPageSize;
@@ -113,6 +117,7 @@ export default function MerchantTransactions() {
       status: "",
       token_symbol: "",
       external_user_id: "",
+      transaction_id: "",
       pageSize: DEFAULT_PAGE_SIZE,
     });
     setPage(1);
@@ -250,6 +255,22 @@ export default function MerchantTransactions() {
               </button>
             </span>
           ) : null}
+          {applied.transaction_id.trim() ? (
+            <span className="filter-chip max-w-full">
+              <span className="filter-chip-label">Reference ID</span>
+              <span className="max-w-[min(240px,50vw)] truncate font-mono text-[10px]" title={applied.transaction_id}>
+                {applied.transaction_id}
+              </span>
+              <button
+                type="button"
+                className={listFilterChipCloseClass}
+                onClick={() => patchApplied({ transaction_id: "" })}
+                aria-label="Remove reference transaction filter"
+              >
+                ×
+              </button>
+            </span>
+          ) : null}
           {hasNonDefaultPageSize ? (
             <span className="filter-chip">
               <span className="filter-chip-label">Page size</span>
@@ -276,6 +297,7 @@ export default function MerchantTransactions() {
               status: applied.status,
               token_symbol: applied.token_symbol,
               external_user_id: applied.external_user_id,
+              transaction_id: applied.transaction_id,
             }}
             validationSchema={merchantTransactionsFilterSchema}
             validateOnBlur
@@ -287,6 +309,7 @@ export default function MerchantTransactions() {
                 status: vals.status,
                 token_symbol: vals.token_symbol,
                 external_user_id: vals.external_user_id,
+                transaction_id: vals.transaction_id,
               }));
               setPage(1);
               setDrawerOpen(false);
@@ -344,6 +367,18 @@ export default function MerchantTransactions() {
                       />
                       <ErrorMessage name="external_user_id" component="p" className="mt-1 text-xs text-rose-400" />
                     </div>
+                    <div>
+                      <label className={listFilterLabelClass} htmlFor="m-tx-ref">
+                        Reference / order ID
+                      </label>
+                      <Field
+                        id="m-tx-ref"
+                        name="transaction_id"
+                        className={listFilterInputClass}
+                        placeholder="Gateway transaction_id (partial)"
+                      />
+                      <ErrorMessage name="transaction_id" component="p" className="mt-1 text-xs text-rose-400" />
+                    </div>
                   </div>
                 </div>
                 <div className="flex shrink-0 gap-3 border-t border-white/10 px-5 py-4">
@@ -354,7 +389,13 @@ export default function MerchantTransactions() {
                     type="button"
                     onClick={() =>
                       resetForm({
-                        values: { chain: "", status: "", token_symbol: "", external_user_id: "" },
+                        values: {
+                          chain: "",
+                          status: "",
+                          token_symbol: "",
+                          external_user_id: "",
+                          transaction_id: "",
+                        },
                       })
                     }
                     className={listFilterSecondaryButtonClass}
@@ -372,10 +413,11 @@ export default function MerchantTransactions() {
 
       <div className="mt-10 space-y-4">
         <div className="data-table-surface">
-          <table className="data-table min-w-[860px]">
+          <table className="data-table min-w-[960px]">
             <thead>
               <tr>
                 <th>Transaction ID</th>
+                <th>Reference ID</th>
                 <th>When</th>
                 <th>User</th>
                 <th>Chain</th>
@@ -387,14 +429,14 @@ export default function MerchantTransactions() {
             <tbody>
               {res.isLoading ? (
                 <tr>
-                  <td colSpan={7} className="!py-8">
+                  <td colSpan={8} className="!py-8">
                     <BrandLoader variant="inline" title="" subtitle="Loading…" />
                   </td>
                 </tr>
               ) : null}
               {showEmpty ? (
                 <tr>
-                  <td colSpan={7} className="!py-12 text-center text-sm text-white/45">
+                  <td colSpan={8} className="!py-12 text-center text-sm text-white/45">
                     No record found.
                   </td>
                 </tr>
@@ -410,10 +452,16 @@ export default function MerchantTransactions() {
                           setDetailTx(t);
                         }}
                         className="max-w-full truncate text-left font-mono text-xs text-sky-300/95 underline decoration-sky-500/40 underline-offset-2 transition hover:text-sky-200 hover:decoration-sky-300/70"
-                        title={t.id}
+                        title={String(t.id)}
                       >
-                        {t.id.length > 18 ? `${t.id.slice(0, 10)}…${t.id.slice(-6)}` : t.id}
+                        {(() => {
+                          const sid = String(t.id);
+                          return sid.length > 18 ? `${sid.slice(0, 10)}…${sid.slice(-6)}` : sid;
+                        })()}
                       </button>
+                    </td>
+                    <td className="max-w-[130px] truncate font-mono text-[10px] text-white/55" title={t.transaction_id ?? ""}>
+                      {t.transaction_id ?? "—"}
                     </td>
                     <td className="text-xs text-white/45">{formatLocalDateTime(t.created_at)}</td>
                     <td className="max-w-[120px] truncate font-mono text-xs">{t.external_user_id}</td>
