@@ -9,6 +9,7 @@ import {
   nativeDecimalsForChain,
   nativeSymbolForChain,
 } from "crypto-payment-gateway/src/services/native-symbols.js";
+import { pickSingleDepositWallet } from "crypto-payment-gateway/src/lib/deposit-scan-dedupe.js";
 import {
   loadWalletsForChain,
   normalizeMatchAddress,
@@ -143,11 +144,18 @@ export async function scanTonChain(options = {}) {
           const jettonTargets = group.filter(
             (w) => w.currency === sym && w.network === "TON",
           );
-          for (const w of jettonTargets) {
+          const jw = pickSingleDepositWallet(jettonTargets, {
+            chain,
+            tx_hash: txHash,
+            kind: "ton_jetton",
+            log_index: ai,
+            token: sym,
+          });
+          if (jw) {
             await upsertIncomingTransaction({
-              walletId: w.id,
-              currency: w.currency,
-              network: w.network,
+              walletId: jw.id,
+              currency: jw.currency,
+              network: jw.network,
               txHash,
               fromAddress: jt.sender?.address ?? "",
               toAddress: address,
@@ -172,11 +180,17 @@ export async function scanTonChain(options = {}) {
           const nativeTargets = group.filter(
             (w) => w.currency === "TON" && w.network === "TON",
           );
-          for (const w of nativeTargets) {
+          const nw = pickSingleDepositWallet(nativeTargets, {
+            chain,
+            tx_hash: txHash,
+            kind: "ton_native",
+            log_index: ai,
+          });
+          if (nw) {
             await upsertIncomingTransaction({
-              walletId: w.id,
-              currency: w.currency,
-              network: w.network,
+              walletId: nw.id,
+              currency: nw.currency,
+              network: nw.network,
               txHash,
               fromAddress: tt.sender?.address ?? "",
               toAddress: address,

@@ -14,6 +14,7 @@ import {
   nativeDecimalsForChain,
   nativeSymbolForChain,
 } from "crypto-payment-gateway/src/services/native-symbols.js";
+import { pickSingleDepositWallet } from "crypto-payment-gateway/src/lib/deposit-scan-dedupe.js";
 import {
   loadWalletsForChain,
   upsertIncomingTransaction,
@@ -236,23 +237,28 @@ async function ingestTrxViaTronscan(base, address, targets, chain) {
     if (!tronAddrEq(to, address)) continue;
     if (!rowLooksLikeTrx(row)) continue;
 
-    for (const w of targets) {
-      await upsertIncomingTransaction({
-        walletId: w.id,
-        currency: w.currency,
-        network: w.network,
-        txHash: txid,
-        fromAddress: from,
-        toAddress: address,
-        amount: String(Math.trunc(sun)),
-        tokenSymbol: nativeSymbolForChain(chain),
-        tokenDecimals: nativeDecimalsForChain(chain),
-        chain,
-        confirmations: confirmationsForChain(chain),
-        blockNumber: null,
-        logIndex: -1,
-      });
-    }
+    const w = pickSingleDepositWallet(targets, {
+      chain,
+      tx_hash: txid,
+      kind: "tron_trx",
+      deposit_address: address,
+    });
+    if (!w) continue;
+    await upsertIncomingTransaction({
+      walletId: w.id,
+      currency: w.currency,
+      network: w.network,
+      txHash: txid,
+      fromAddress: from,
+      toAddress: address,
+      amount: String(Math.trunc(sun)),
+      tokenSymbol: nativeSymbolForChain(chain),
+      tokenDecimals: nativeDecimalsForChain(chain),
+      chain,
+      confirmations: confirmationsForChain(chain),
+      blockNumber: null,
+      logIndex: -1,
+    });
   }
 }
 
@@ -336,23 +342,28 @@ async function ingestTrc20ViaTronscan(base, address, targets, chain, trc20Map) {
     if (!cfg) continue;
     if (String(cfg.symbol).toUpperCase() !== "USDT") continue;
 
-    for (const w of targets) {
-      await upsertIncomingTransaction({
-        walletId: w.id,
-        currency: w.currency,
-        network: w.network,
-        txHash: txid,
-        fromAddress: from,
-        toAddress: address,
-        amount: String(val),
-        tokenSymbol: cfg.symbol,
-        tokenDecimals:
-          row.token_info?.decimals ?? row.tokenInfo?.decimals ?? cfg.decimals,
-        chain,
-        confirmations: confirmationsForChain(chain),
-        blockNumber: null,
-        logIndex: -1,
-      });
-    }
+    const w = pickSingleDepositWallet(targets, {
+      chain,
+      tx_hash: txid,
+      kind: "tron_trc20_usdt",
+      deposit_address: address,
+    });
+    if (!w) continue;
+    await upsertIncomingTransaction({
+      walletId: w.id,
+      currency: w.currency,
+      network: w.network,
+      txHash: txid,
+      fromAddress: from,
+      toAddress: address,
+      amount: String(val),
+      tokenSymbol: cfg.symbol,
+      tokenDecimals:
+        row.token_info?.decimals ?? row.tokenInfo?.decimals ?? cfg.decimals,
+      chain,
+      confirmations: confirmationsForChain(chain),
+      blockNumber: null,
+      logIndex: -1,
+    });
   }
 }

@@ -6,6 +6,7 @@ import {
   nativeDecimalsForChain,
   nativeSymbolForChain,
 } from "crypto-payment-gateway/src/services/native-symbols.js";
+import { pickSingleDepositWallet } from "crypto-payment-gateway/src/lib/deposit-scan-dedupe.js";
 import {
   loadWalletsForChain,
   upsertIncomingTransaction,
@@ -27,6 +28,14 @@ export async function scanBtcChain(options = {}) {
     [...new Set(targets.map((w) => w.address))],
   );
 
+  /** @type {Map<string, typeof targets>} */
+  const byAddress = new Map();
+  for (const w of targets) {
+    const a = w.address;
+    if (!byAddress.has(a)) byAddress.set(a, []);
+    byAddress.get(a).push(w);
+  }
+
   const base = re.btcExplorerApiBase.replace(/\/$/, "");
   let tip = 0;
   try {
@@ -38,8 +47,14 @@ export async function scanBtcChain(options = {}) {
     return;
   }
 
-  for (const w of targets) {
-    const { id: walletId, address } = w;
+  for (const [address, group] of byAddress) {
+    const w = pickSingleDepositWallet(group, {
+      chain,
+      kind: "btc",
+      deposit_address: address,
+    });
+    if (!w) continue;
+    const walletId = w.id;
     let txs = [];
     try {
       await acquireOutboundRpcSlot("BTC");

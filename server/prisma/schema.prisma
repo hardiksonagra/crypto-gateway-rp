@@ -249,7 +249,8 @@ model Transaction {
 
   wallet Wallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
 
-  @@unique([txHash, chain, walletId, tokenSymbol, logIndex], name: "tx_dedupe")
+  /// One row per on-chain event: same `tx_hash` cannot repeat for the same `chain` + `log_index` (TRON uses -1).
+  @@unique([chain, txHash, logIndex], name: "tx_chain_log_unique")
   @@index([toAddress, chain])
   @@index([status])
   @@index([payerUserId])

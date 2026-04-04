@@ -26,6 +26,9 @@ import {
 
 const DEFAULT_PAGE_SIZE = DEFAULT_LIST_PAGE_SIZE;
 
+/** Set to `true` when merchants should see “Restart scan” on the wallets table again. */
+const MERCHANT_RESTART_DEPOSIT_SCAN_ENABLED = false;
+
 export default function MerchantWallets() {
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
@@ -374,7 +377,7 @@ export default function MerchantWallets() {
                           >
                             Activity
                           </button>
-                          {canRestart ? (
+                          {MERCHANT_RESTART_DEPOSIT_SCAN_ENABLED && canRestart ? (
                             <button
                               type="button"
                               disabled={reactivateScan.isPending}
@@ -393,7 +396,7 @@ export default function MerchantWallets() {
           </table>
         </div>
 
-        {reactivateScan.isError ? (
+        {MERCHANT_RESTART_DEPOSIT_SCAN_ENABLED && reactivateScan.isError ? (
           <p className="text-sm text-rose-300/90">
             {String(reactivateScan.error)}
           </p>

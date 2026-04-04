@@ -1,6 +1,18 @@
+/**
+ * **Sole write path for deposit rows** (`transactions` table): `upsertIncomingTransaction`.
+ *
+ * Callers: blockchain worker tick, deposit full-scan cron, sandbox simulate — all use this.
+ * Merchant/admin “reset scan” only sets `deposit_scan_single_tick_requested`; the worker then runs
+ * the same trackers below. No other code may `create`/`upsert` transactions.
+ *
+ * Duplicates: DB unique `tx_chain_log_unique` on `(chain, tx_hash, log_index)` plus upsert on that key
+ * (TRON uses `log_index = -1` → one row per on-chain tx id on TRON).
+ */
 import { Chain, MerchantGatewayEnv, TxStatus } from "@prisma/client";
 import { Address } from "@ton/core";
+import { utils } from "tronweb";
 import { prisma } from "../../lib/prisma.js";
+import { logger } from "../../lib/logger.js";
 import { confirmationsForChain } from "../../config/chains.js";
 import { SCANNER_STATE_ROWS_BY_CHAIN } from "../../config/payment-rails.js";
 import { notifyPaymentSuccess } from "../callback-service.js";
@@ -34,18 +46,48 @@ export async function upsertIncomingTransaction(input) {
     throw new Error("wallet_not_found_for_upsert");
   }
 
-  const dedupe = {
-    txHash: input.txHash,
+  const eventKey = {
     chain: input.chain,
-    walletId: walletInternalId,
-    tokenSymbol: input.tokenSymbol,
+    txHash: input.txHash,
     logIndex: input.logIndex,
   };
 
   const prior = await prisma.transaction.findUnique({
-    where: { tx_dedupe: dedupe },
-    select: { id: true, status: true, callbackDeliveredAt: true },
+    where: { tx_chain_log_unique: eventKey },
+    select: {
+      id: true,
+      walletId: true,
+      toAddress: true,
+      status: true,
+      callbackDeliveredAt: true,
+    },
   });
+
+  if (
+    prior &&
+    !sameOnChainRecipient(input.chain, prior.toAddress, input.toAddress)
+  ) {
+    logger.error("transaction_recipient_mismatch_same_tx_log", {
+      event: "transaction_recipient_mismatch_same_tx_log",
+      ...eventKey,
+      stored_to: prior.toAddress,
+      incoming_to: input.toAddress,
+    });
+    return;
+  }
+
+  if (prior && prior.walletId !== walletInternalId) {
+    logger.warn("transaction_dedupe_ignored_wallet", {
+      event: "transaction_dedupe_ignored_wallet",
+      tx_hash: input.txHash,
+      chain: input.chain,
+      token_symbol: input.tokenSymbol,
+      log_index: input.logIndex,
+      canonical_wallet_id: prior.walletId,
+      ignored_wallet_id: walletInternalId,
+    });
+  }
+
   const hadRowBefore = Boolean(prior);
 
   let payerUserIdForCreate = input.payerUserId ?? null;
@@ -72,9 +114,7 @@ export async function upsertIncomingTransaction(input) {
   }
 
   const row = await prisma.transaction.upsert({
-    where: {
-      tx_dedupe: dedupe,
-    },
+    where: { tx_chain_log_unique: eventKey },
     create: {
       walletId: walletInternalId,
       payerUserId: payerUserIdForCreate,
@@ -113,7 +153,7 @@ export async function upsertIncomingTransaction(input) {
     nextStatus === TxStatus.success &&
     (!prior || prior.status !== TxStatus.success);
   if (becameSuccess) {
-    await releaseWalletAfterDepositSuccess(walletInternalId);
+    await releaseWalletAfterDepositSuccess(row.walletId);
   }
 
   if (nextStatus === TxStatus.success && !row.callbackDeliveredAt) {
@@ -123,7 +163,7 @@ export async function upsertIncomingTransaction(input) {
 
 /**
  * @param {import("@prisma/client").Chain} chain
- * @returns {Promise<Array<{ id: string, address: string, currency: string, network: string }>>}
+ * @returns {Promise<Array<{ id: number, address: string, currency: string, network: string, merchantId: number }>>}
  */
 export async function loadWalletsForChain(chain) {
   return prisma.wallet.findMany({
@@ -132,7 +172,13 @@ export async function loadWalletsForChain(chain) {
       environment: MerchantGatewayEnv.live,
       ...liveWorkerWalletScanFilter(),
     },
-    select: { id: true, address: true, currency: true, network: true },
+    select: {
+      id: true,
+      address: true,
+      currency: true,
+      network: true,
+      merchantId: true,
+    },
   });
 }
 
@@ -143,7 +189,13 @@ export async function loadWalletsForChain(chain) {
 export async function loadAllLiveWalletsForChain(chain) {
   return prisma.wallet.findMany({
     where: { chain, environment: MerchantGatewayEnv.live },
-    select: { id: true, address: true, currency: true, network: true },
+    select: {
+      id: true,
+      address: true,
+      currency: true,
+      network: true,
+      merchantId: true,
+    },
   });
 }
 
@@ -159,6 +211,25 @@ export function normalizeMatchAddress(chain, address) {
     }
   }
   return address.toLowerCase();
+}
+
+/**
+ * Same chain “to” for deposit matching (TRON base58 vs hex, EVM case, TON raw).
+ * @param {import("@prisma/client").Chain} chain
+ * @param {string} a
+ * @param {string} b
+ */
+export function sameOnChainRecipient(chain, a, b) {
+  const s = String(a ?? "");
+  const t = String(b ?? "");
+  if (chain === Chain.TRON) {
+    try {
+      return utils.address.toHex(s) === utils.address.toHex(t);
+    } catch {
+      return s === t;
+    }
+  }
+  return normalizeMatchAddress(chain, s) === normalizeMatchAddress(chain, t);
 }
 
 /**

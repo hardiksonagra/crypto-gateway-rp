@@ -18,6 +18,7 @@ import {
   nativeDecimalsForChain,
   nativeSymbolForChain,
 } from "crypto-payment-gateway/src/services/native-symbols.js";
+import { pickSingleDepositWallet } from "crypto-payment-gateway/src/lib/deposit-scan-dedupe.js";
 import {
   advanceScanner,
   getOrInitScannerBlock,
@@ -111,24 +112,31 @@ export async function scanEvmChain(chain, options = {}) {
       if (val <= 0n) continue;
 
       const sym = nativeSymbolForChain(chain);
-      for (const w of group) {
-        if (!walletAcceptsEvmNative(chain, w)) continue;
-        await upsertIncomingTransaction({
-          walletId: w.id,
-          currency: w.currency,
-          network: w.network,
-          txHash: tx.hash,
-          fromAddress: tx.from ?? "",
-          toAddress: w.address,
-          amount: val.toString(),
-          tokenSymbol: sym,
-          tokenDecimals: nativeDecimalsForChain(chain),
-          chain,
-          confirmations: Number(tip - b + 1n),
-          blockNumber: b,
-          logIndex: -1,
-        });
-      }
+      const nativeMatches = group.filter((w) =>
+        walletAcceptsEvmNative(chain, w),
+      );
+      const w = pickSingleDepositWallet(nativeMatches, {
+        chain,
+        tx_hash: tx.hash,
+        block: b.toString(),
+        kind: "evm_native",
+      });
+      if (!w) continue;
+      await upsertIncomingTransaction({
+        walletId: w.id,
+        currency: w.currency,
+        network: w.network,
+        txHash: tx.hash,
+        fromAddress: tx.from ?? "",
+        toAddress: w.address,
+        amount: val.toString(),
+        tokenSymbol: sym,
+        tokenDecimals: nativeDecimalsForChain(chain),
+        chain,
+        confirmations: Number(tip - b + 1n),
+        blockNumber: b,
+        logIndex: -1,
+      });
     }
 
     let logs = [];
@@ -161,24 +169,33 @@ export async function scanEvmChain(chain, options = {}) {
       const amount = parsed.args.value;
       const tokenSym = String(meta.symbol).toUpperCase();
 
-      for (const w of group) {
-        if (!walletAcceptsEvmErc20(chain, w, tokenSym)) continue;
-        await upsertIncomingTransaction({
-          walletId: w.id,
-          currency: w.currency,
-          network: w.network,
-          txHash: log.transactionHash,
-          fromAddress: String(parsed.args.from),
-          toAddress: w.address,
-          amount: amount.toString(),
-          tokenSymbol: meta.symbol,
-          tokenDecimals: meta.decimals,
-          chain,
-          confirmations: Number(tip - b + 1n),
-          blockNumber: b,
-          logIndex: log.index,
-        });
-      }
+      const erc20Matches = group.filter((w) =>
+        walletAcceptsEvmErc20(chain, w, tokenSym),
+      );
+      const w = pickSingleDepositWallet(erc20Matches, {
+        chain,
+        tx_hash: log.transactionHash,
+        log_index: log.index,
+        block: b.toString(),
+        kind: "evm_erc20",
+        token: tokenSym,
+      });
+      if (!w) continue;
+      await upsertIncomingTransaction({
+        walletId: w.id,
+        currency: w.currency,
+        network: w.network,
+        txHash: log.transactionHash,
+        fromAddress: String(parsed.args.from),
+        toAddress: w.address,
+        amount: amount.toString(),
+        tokenSymbol: meta.symbol,
+        tokenDecimals: meta.decimals,
+        chain,
+        confirmations: Number(tip - b + 1n),
+        blockNumber: b,
+        logIndex: log.index,
+      });
     }
 
     await advanceScanner(chain, b);
