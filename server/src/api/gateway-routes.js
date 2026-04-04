@@ -339,7 +339,7 @@ router.post("/api/v1/gateway/deposit-address", async (req, res) => {
         res.status(409).json({
           error: "callback_pending",
           message:
-            "A successful payment webhook is still pending delivery; retry after your callback endpoint accepts the prior payment.success event.",
+            "A successful payment’s payment.success webhook was not delivered (2xx). The gateway retries automatically up to 5 times, at most once per minute. After that, fix your callback URL/handler and resend from the merchant portal (transaction detail).",
         });
         return;
       }

@@ -1,4 +1,5 @@
 import axios from "axios";
+import { TxStatus } from "@prisma/client";
 import { formatAtomicAmountString } from "../lib/format-atomic-amount.js";
 import { prisma } from "../lib/prisma.js";
 import { logger } from "../lib/logger.js";
@@ -7,6 +8,12 @@ import {
   resolveTransactionInternalId,
   transactionWhereFromRouteParam,
 } from "../lib/entity-internal-id.js";
+
+/** Max automatic `payment.success` POST attempts per transaction (first try when tx becomes success counts as one). */
+export const MAX_AUTO_CALLBACK_ATTEMPTS = 5;
+
+/** Minimum milliseconds between automatic webhook attempts after a failed try. */
+export const CALLBACK_RETRY_MIN_INTERVAL_MS = 60_000;
 
 /**
  * @param {import("@prisma/client").Transaction & {
@@ -96,6 +103,29 @@ export async function notifyPaymentSuccess(txId) {
       httpStatus: null,
       responseSnippet: "skipped: callback_url not configured",
       trigger: "skipped",
+    });
+    return;
+  }
+
+  const throttleSince = new Date(Date.now() - CALLBACK_RETRY_MIN_INTERVAL_MS);
+  const claimed = await prisma.transaction.updateMany({
+    where: {
+      id: tid,
+      status: TxStatus.success,
+      callbackDeliveredAt: null,
+      callbackAttemptCount: { lt: MAX_AUTO_CALLBACK_ATTEMPTS },
+      OR: [{ callbackAttemptCount: 0 }, { callbackLastAttemptAt: { lte: throttleSince } }],
+    },
+    data: {
+      callbackAttemptCount: { increment: 1 },
+      callbackLastAttemptAt: new Date(),
+    },
+  });
+  if (claimed.count === 0) {
+    logger.debug("callback skip: delivered elsewhere, max auto attempts, or retry interval", {
+      txId,
+      maxAttempts: MAX_AUTO_CALLBACK_ATTEMPTS,
+      minIntervalMs: CALLBACK_RETRY_MIN_INTERVAL_MS,
     });
     return;
   }
