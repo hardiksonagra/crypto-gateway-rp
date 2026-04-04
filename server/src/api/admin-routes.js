@@ -44,6 +44,7 @@ import {
 } from "../lib/merchant-default-pair.js";
 import { redeliverPaymentSuccessWebhookAdmin } from "../services/callback-service.js";
 import { refreshAllWalletCachedBalances } from "../services/wallet/wallet-balance-probe.js";
+import { listWalletsUniqueByOnChainIdentity } from "../lib/admin-wallets-unique-address-list.js";
 import {
   aggregateWalletTxStats,
   loadWalletDepositActivity,
@@ -1456,6 +1457,10 @@ router.get("/api/v1/admin/wallets", async (req, res) => {
   const network =
     typeof req.query.network === "string" ? req.query.network.trim() : "";
   const q = typeof req.query.q === "string" ? req.query.q.trim() : "";
+  const environmentQ =
+    typeof req.query.environment === "string"
+      ? req.query.environment.trim().toLowerCase()
+      : "";
   const from =
     typeof req.query.created_from === "string"
       ? new Date(req.query.created_from)
@@ -1523,31 +1528,74 @@ router.get("/api/v1/admin/wallets", async (req, res) => {
       ? { network: { equals: network, mode: "insensitive" } }
       : {}),
     ...(hasCreatedAt ? { createdAt: createdAtCond } : {}),
+    ...(environmentQ === "live" || environmentQ === "sandbox"
+      ? {
+          environment:
+            environmentQ === "live"
+              ? MerchantGatewayEnv.live
+              : MerchantGatewayEnv.sandbox,
+        }
+      : {}),
   };
 
-  const [total, rows] = await Promise.all([
-    prisma.wallet.count({ where }),
-    prisma.wallet.findMany({
-      where,
-      orderBy: { createdAt: "desc" },
-      skip,
-      take,
-      include: {
-        _count: { select: { transactions: true } },
-        merchant: { select: { id: true, email: true, displayName: true } },
-        assignedUser: { select: { id: true, externalUserId: true } },
-      },
-    }),
-  ]);
-
-  const statsByWallet = await aggregateWalletTxStats(rows.map((w) => w.id));
+  const uniqueAddressRaw = req.query.unique_address;
+  const uniqueAddress =
+    uniqueAddressRaw === "1" ||
+    String(uniqueAddressRaw ?? "").toLowerCase() === "true";
 
   const now = new Date();
   const ttlMin = walletScanTtlMinutes();
+
+  const walletInclude = {
+    _count: { select: { transactions: true } },
+    merchant: { select: { id: true, email: true, displayName: true } },
+    assignedUser: { select: { id: true, externalUserId: true } },
+  };
+
+  let total;
+  /** @type {any[]} */
+  let rows;
+  /** @type {Map<number, number> | null} */
+  let rowCountById = null;
+
+  if (uniqueAddress) {
+    const paged = await listWalletsUniqueByOnChainIdentity(where, skip, take);
+    total = paged.total;
+    rowCountById = paged.rowCountById;
+    if (paged.representativeIds.length === 0) {
+      rows = [];
+    } else {
+      const found = await prisma.wallet.findMany({
+        where: { id: { in: paged.representativeIds } },
+        include: walletInclude,
+      });
+      const byId = new Map(found.map((w) => [w.id, w]));
+      rows = paged.representativeIds
+        .map((id) => byId.get(id))
+        .filter((w) => w != null);
+    }
+  } else {
+    const [t, r] = await Promise.all([
+      prisma.wallet.count({ where }),
+      prisma.wallet.findMany({
+        where,
+        orderBy: { createdAt: "desc" },
+        skip,
+        take,
+        include: walletInclude,
+      }),
+    ]);
+    total = t;
+    rows = r;
+  }
+
+  const statsByWallet = await aggregateWalletTxStats(rows.map((w) => w.id));
+
   res.json({
     page,
     pageSize,
     total,
+    unique_address: uniqueAddress,
     deposit_scan_ttl_minutes: ttlMin,
     wallets: rows.map((w) => {
       const txCount = w._count.transactions;
@@ -1571,11 +1619,14 @@ router.get("/api/v1/admin/wallets", async (req, res) => {
         transaction_count: txCount,
         distinct_payer_users: st?.distinct_payers ?? 0,
         success_deposit_count: st?.success_tx ?? 0,
+        success_received_display: st?.success_received_display ?? null,
         deposit_scan_active,
         cached_balance_display: w.cachedBalanceDisplay ?? null,
         cached_balance_atomic: w.cachedBalanceAtomic ?? null,
         cached_balance_error: w.cachedBalanceError ?? null,
         cached_balance_updated_at: w.cachedBalanceUpdatedAt?.toISOString() ?? null,
+        gateway_wallet_row_count:
+          rowCountById?.get(w.id) ?? 1,
       };
     }),
   });

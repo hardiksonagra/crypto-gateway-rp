@@ -46,7 +46,8 @@ export function buildAdminBreadcrumbs(pathname, extras) {
 
   const tailMap = {
     users: { label: "Users", to: "/control/users" },
-    wallets: { label: "Wallets", to: "/control/wallets" },
+    wallets: { label: "All wallets", to: "/control/wallets" },
+    "wallet-details": { label: "Wallet details", to: "/control/wallet-details" },
     transactions: { label: "Transactions", to: "/control/transactions" },
     settlements: { label: "Settlements", to: "/control/settlements" },
     sweep: { label: "Sweep", to: "/control/sweep" },

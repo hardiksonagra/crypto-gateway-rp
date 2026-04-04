@@ -33,8 +33,8 @@ const HUB_LINKS = [
   },
   {
     to: "/control/wallets",
-    label: "Wallets",
-    desc: "Deposit addresses",
+    label: "All wallets",
+    desc: "Balances list",
     icon: (
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden>
         <rect x="2" y="6" width="20" height="14" rx="2" />
@@ -129,7 +129,7 @@ const CARDS_META = [
   },
   {
     key: "wallets_in_env",
-    label: "Wallets",
+    label: "All wallets",
     sublabel: "Deposit rails",
     scope: "env",
     darkBg: "rgba(14,165,233,0.07)",

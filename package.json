@@ -3,6 +3,7 @@
   "private": true,
   "workspaces": ["server", "client", "cron"],
   "scripts": {
+    "postinstall": "npm run prisma:generate -w server",
     "dev": "npm run dev -w server",
     "dev:server": "npm run dev -w server",
     "dev:client": "npm run dev -w client",

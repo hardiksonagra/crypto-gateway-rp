@@ -13,6 +13,7 @@ import MerchantEdit from "./pages/admin/MerchantEdit";
 import MerchantDetail from "./pages/admin/MerchantDetail";
 import AdminUsers from "./pages/admin/Users";
 import AdminWallets from "./pages/admin/AdminWallets";
+import AdminWalletDetails from "./pages/admin/AdminWalletDetails";
 import AdminTransactions from "./pages/admin/Transactions";
 import AdminActivityLog from "./pages/admin/ActivityLog";
 import AdminSystemSettings from "./pages/admin/SystemSettings";
@@ -90,6 +91,7 @@ export default function App() {
         <Route path="merchants" element={<AdminMerchants />} />
         <Route path="users" element={<AdminUsers />} />
         <Route path="wallets" element={<AdminWallets />} />
+        <Route path="wallet-details" element={<AdminWalletDetails />} />
         <Route path="transactions" element={<AdminTransactions />} />
         <Route path="withdrawals" element={<Navigate to="/control" replace />} />
         <Route path="settlements/new" element={<Navigate to="/control/settlements" replace />} />
