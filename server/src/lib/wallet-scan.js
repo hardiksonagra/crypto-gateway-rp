@@ -21,9 +21,11 @@ export function nextScanExpiresAt() {
 
 /**
  * Prisma `where` fragment: live worker hot path (each poll). Does **not** look at `transactions`.
- * - `scan_expires_at` still in the future (assign / session window).
+ * - `scan_expires_at` still in the future — payment-page countdown / primary scan window (`WALLET_SCAN_TTL_MINUTES`).
+ * - Assigned wallet whose **pooled hold** has not expired — keep scanning until `WALLET_ASSIGNMENT_HOLD_MINUTES`
+ *   ends even after scan TTL (e.g. UI 10m, hold 30m).
  * - `deposit_scan_single_tick_requested` (merchant/admin rescan, one tick per chain).
- * After TTL: only `DEPOSIT_FULL_SCAN_INTERVAL_HOURS` maintenance pass + optional rescan.
+ * If none match: `DEPOSIT_FULL_SCAN_INTERVAL_HOURS` full-scan pass + optional rescan.
  */
 export function liveWorkerWalletScanFilter() {
   const now = new Date();
@@ -31,6 +33,12 @@ export function liveWorkerWalletScanFilter() {
     OR: [
       { scanExpiresAt: { gt: now } },
       { depositScanSingleTickRequested: true },
+      {
+        AND: [
+          { assignedUserId: { not: null } },
+          { holdExpiresAt: { gt: now } },
+        ],
+      },
     ],
   };
 }
