@@ -21,7 +21,8 @@ export function nextScanExpiresAt() {
 
 /**
  * Prisma `where` fragment: live worker hot path (each poll). Does **not** look at `transactions`.
- * - `scan_expires_at` still in the future — payment-page countdown / primary scan window (`WALLET_SCAN_TTL_MINUTES`).
+ * - `assigned_user_id` set and `scan_expires_at` still in the future — checkout scan window (`WALLET_SCAN_TTL_MINUTES`).
+ *   (Unassigned pool rows must not be polled on TTL alone; cleared on payment success / expired hold.)
  * - Assigned wallet whose **pooled hold** has not expired — keep scanning until `WALLET_ASSIGNMENT_HOLD_MINUTES`
  *   ends even after scan TTL (e.g. UI 10m, hold 30m).
  * - `deposit_scan_single_tick_requested` (merchant/admin rescan, one tick per chain).
@@ -31,7 +32,12 @@ export function liveWorkerWalletScanFilter() {
   const now = new Date();
   return {
     OR: [
-      { scanExpiresAt: { gt: now } },
+      {
+        AND: [
+          { assignedUserId: { not: null } },
+          { scanExpiresAt: { gt: now } },
+        ],
+      },
       { depositScanSingleTickRequested: true },
       {
         AND: [

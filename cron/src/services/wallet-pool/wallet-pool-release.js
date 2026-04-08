@@ -3,6 +3,7 @@ import { resolveWalletInternalId } from "crypto-payment-gateway/src/lib/entity-i
 
 /**
  * Return a wallet to the merchant pool after a successful on-chain deposit (`payer_user_id` stays on `transactions`).
+ * Clears assign/hold/scan so the worker hot path skips this address until the next `assignPooledWalletForDeposit`.
  * Called from `transaction-upsert` (cron scanner or API sandbox), not on a timer.
  *
  * @param {string | number} walletId
@@ -18,6 +19,8 @@ export async function releaseWalletAfterDepositSuccess(walletId) {
     data: {
       assignedUserId: null,
       holdExpiresAt: null,
+      scanExpiresAt: null,
+      depositScanSingleTickRequested: false,
     },
   });
 }
@@ -37,6 +40,8 @@ export async function releaseExpiredPoolHolds() {
     data: {
       assignedUserId: null,
       holdExpiresAt: null,
+      scanExpiresAt: null,
+      depositScanSingleTickRequested: false,
     },
   });
   return r.count;
