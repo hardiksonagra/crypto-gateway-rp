@@ -1,5 +1,6 @@
 import { randomBytes } from "crypto";
 import { Chain } from "@prisma/client";
+import { generateGatewayReferenceTransactionId } from "crypto-payment-gateway/src/lib/gateway-reference-transaction-id.js";
 import { env } from "crypto-payment-gateway/src/config/env.js";
 import { re } from "crypto-payment-gateway/src/config/runtime-env.js";
 import { EVM_CHAINS, isEvmChain } from "crypto-payment-gateway/src/config/chains.js";
@@ -48,7 +49,10 @@ export async function assignPooledWalletForDeposit(tx, p) {
   const { merchantId, environment, userId, chain, currency, network } = p;
   const refTxRaw =
     p.referenceTransactionId != null ? String(p.referenceTransactionId).trim() : "";
-  const referenceTransactionId = refTxRaw ? refTxRaw.slice(0, 256) : null;
+  /** Always set: merchant `transaction_id` or gateway-generated 64-char hex (fits VARCHAR(256)). */
+  const referenceTransactionId = refTxRaw
+    ? refTxRaw.slice(0, 256)
+    : generateGatewayReferenceTransactionId();
 
   const holdUntil =
     re.walletAssignmentHoldMinutes > 0
@@ -143,7 +147,7 @@ export async function assignPooledWalletForDeposit(tx, p) {
         environment,
         source,
         depositSessionKey,
-        referenceTransactionId: referenceTransactionId ?? undefined,
+        referenceTransactionId,
       },
     });
   } catch (e) {

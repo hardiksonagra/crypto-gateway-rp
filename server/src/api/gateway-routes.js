@@ -32,6 +32,7 @@ import {
   resolveUserScopedInternalId,
   resolveWalletInternalId,
 } from "../lib/entity-internal-id.js";
+import { MAX_AUTO_CALLBACK_ATTEMPTS } from "../services/callback-service.js";
 
 const router = Router();
 
@@ -348,6 +349,8 @@ router.post("/api/v1/gateway/deposit-address", async (req, res) => {
         where: {
           status: TxStatus.success,
           callbackDeliveredAt: null,
+          /** After max auto attempts, allow new deposit addresses; merchant can fix webhook and resend later. */
+          callbackAttemptCount: { lt: MAX_AUTO_CALLBACK_ATTEMPTS },
           payerUserId: u.id,
           wallet: { merchantId: merchant.id, environment: gwEnv },
         },
@@ -367,8 +370,7 @@ router.post("/api/v1/gateway/deposit-address", async (req, res) => {
         });
         res.status(409).json({
           error: "callback_pending",
-          message:
-            "A successful payment’s payment.success webhook was not delivered (2xx). The gateway retries automatically up to 5 times, at most once per minute. After that, fix your callback URL/handler and resend from the merchant portal (transaction detail).",
+          message: `A successful payment’s payment.success webhook was not delivered (2xx). New deposit addresses are blocked until delivery succeeds or automatic retries finish (up to ${MAX_AUTO_CALLBACK_ATTEMPTS} attempts, at most one per minute). After retries are exhausted, you may request a new address; fix your callback URL/handler and resend from the merchant portal (transaction detail) for the affected payment.`,
         });
         return;
       }

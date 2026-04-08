@@ -26,6 +26,7 @@ import {
   depositSessionKeyForNewWalletTransaction,
   referenceTransactionIdForNewWalletTransaction,
 } from "../../lib/deposit-session-key.js";
+import { generateGatewayReferenceTransactionId } from "../../lib/gateway-reference-transaction-id.js";
 import { resolveWalletInternalId } from "../../lib/entity-internal-id.js";
 
 /**
@@ -111,6 +112,9 @@ export async function upsertIncomingTransaction(input) {
         walletInternalId,
         payerUserIdForCreate,
       );
+    if (!referenceTransactionIdForCreate) {
+      referenceTransactionIdForCreate = generateGatewayReferenceTransactionId();
+    }
   }
 
   const row = await prisma.transaction.upsert({
