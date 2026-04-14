@@ -11,6 +11,14 @@ logger.info("blockchain deposit / transaction tracker started (worker process)",
   tron_deposit_scan: "tronscan",
   deposit_scanner_tron_only: re.depositScannerTronOnly,
   tronscan_key_configured: Boolean(re.tronscanApiKey?.trim()),
+  etherscan_key_configured: Boolean(re.etherscanApiKey?.trim()),
+  etherscan_api_host: (() => {
+    try {
+      return new URL(re.etherscanApiBase.replace(/\/$/, "")).hostname;
+    } catch {
+      return "invalid";
+    }
+  })(),
   tronscan_host: (() => {
     try {
       return new URL(re.tronscanApiBase.replace(/\/$/, "")).hostname;

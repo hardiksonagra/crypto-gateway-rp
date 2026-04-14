@@ -1,4 +1,5 @@
 import { re } from "../config/runtime-env.js";
+import { isChainLiveForPlatform } from "./chain-enable.js";
 import {
   depositRailKey,
   normalizeAssetPart,
@@ -10,9 +11,10 @@ import {
 /**
  * @param {unknown} raw
  * @param {import("@prisma/client").Chain[]} defaultChains
+ * @param {{ ignoreGatewayTronUsdtOnly?: boolean }} [opts]
  * @returns {{ keys: string[] } | { error: string }}
  */
-export function parseSupportedDepositRailsInput(raw, defaultChains) {
+export function parseSupportedDepositRailsInput(raw, defaultChains, opts) {
   if (!Array.isArray(raw)) {
     return { error: "supported_deposit_rails must be an array" };
   }
@@ -20,7 +22,7 @@ export function parseSupportedDepositRailsInput(raw, defaultChains) {
     return { error: "supported_deposit_rails must include at least one rail" };
   }
   let list = raw.map((x) => String(x ?? "").trim()).filter(Boolean);
-  if (re.gatewayTronUsdtOnly) {
+  if (re.gatewayTronUsdtOnly && opts?.ignoreGatewayTronUsdtOnly !== true) {
     list = list.filter((item) => {
       const { currency, network } = parseDepositRailKeyString(item);
       return currency === "USDT" && network === "TRC20";
@@ -36,6 +38,11 @@ export function parseSupportedDepositRailsInput(raw, defaultChains) {
     const rail = resolveDepositRail(currency, network);
     if (!rail) {
       return { error: "invalid currency / network in supported_deposit_rails" };
+    }
+    if (!isChainLiveForPlatform(re.chainEnabledRecord, rail.chain)) {
+      return {
+        error: `supported_deposit_rails includes ${rail.currency}/${rail.network} but chain ${rail.chain} is disabled (admin → Supported chains)`,
+      };
     }
     if (!defaultChains.includes(rail.chain)) {
       return { error: "each supported rail must use a chain listed in default_chains" };
@@ -74,6 +81,11 @@ export function pickMerchantDefaultPair(body, defaultChains, constraintKeys) {
   const rail = resolveDepositRail(c, n);
   if (!rail)
     return { error: "invalid default_currency / default_network pair" };
+  if (!isChainLiveForPlatform(re.chainEnabledRecord, rail.chain)) {
+    return {
+      error: "default pair uses a chain disabled for this deployment (admin → Supported chains)",
+    };
+  }
   if (!defaultChains.includes(rail.chain)) {
     return { error: "default pair must use a chain listed in default_chains" };
   }

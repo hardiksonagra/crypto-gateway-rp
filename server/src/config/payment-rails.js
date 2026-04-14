@@ -1,5 +1,6 @@
 import { Chain } from "@prisma/client";
 import { re } from "./runtime-env.js";
+import { isChainLiveForPlatform } from "../lib/chain-enable.js";
 import { nativeSymbolForChain } from "../services/native-symbols.js";
 
 /**
@@ -168,15 +169,21 @@ export function merchantChainAllowsRail(merchant, rail) {
  * @returns {Array<{ currency: string, network: string, chain: Chain }>}
  */
 function finalizeMerchantGatewayPairs(pairs) {
-  if (!re.gatewayTronUsdtOnly) return pairs;
-  const only = pairs.filter(
+  const filtered = pairs.filter((p) =>
+    isChainLiveForPlatform(re.chainEnabledRecord, p.chain),
+  );
+  if (!re.gatewayTronUsdtOnly) return filtered;
+  const only = filtered.filter(
     (p) =>
       p.currency === "USDT" &&
       p.network === "TRC20" &&
       p.chain === Chain.TRON,
   );
   if (only.length > 0) return only;
-  return [{ currency: "USDT", network: "TRC20", chain: Chain.TRON }];
+  if (isChainLiveForPlatform(re.chainEnabledRecord, Chain.TRON)) {
+    return [{ currency: "USDT", network: "TRC20", chain: Chain.TRON }];
+  }
+  return [];
 }
 
 /**

@@ -1,5 +1,6 @@
 import { Chain } from "@prisma/client";
 import { re } from "../config/runtime-env.js";
+import { isChainLiveForPlatform } from "./chain-enable.js";
 
 const CHAINS = new Set(Object.values(Chain));
 
@@ -14,7 +15,7 @@ const PRODUCT_CHAINS = new Set([
 
 /**
  * @param {unknown} raw
- * @param {{ minOne: boolean }} opts
+ * @param {{ minOne: boolean, ignoreGatewayTronUsdtOnly?: boolean }} opts
  * @returns {{ chains: Chain[] } | { error: string }}
  */
 export function parseDefaultChainsArray(raw, opts) {
@@ -34,10 +35,19 @@ export function parseDefaultChainsArray(raw, opts) {
         "only TRON, SOLANA, ETH, BNB, TON are supported (matches gateway rails)",
     };
   }
-  if (re.gatewayTronUsdtOnly && !uniq.every((c) => c === Chain.TRON)) {
+  const tronOnlyBlock =
+    re.gatewayTronUsdtOnly && opts?.ignoreGatewayTronUsdtOnly !== true;
+  if (tronOnlyBlock && !uniq.every((c) => c === Chain.TRON)) {
     return {
       error: "only the TRON chain is enabled for deposits (USDT TRC20)",
     };
+  }
+  for (const c of uniq) {
+    if (!isChainLiveForPlatform(re.chainEnabledRecord, c)) {
+      return {
+        error: `chain ${c} is disabled for this deployment (admin → Supported chains)`,
+      };
+    }
   }
   return { chains: uniq };
 }

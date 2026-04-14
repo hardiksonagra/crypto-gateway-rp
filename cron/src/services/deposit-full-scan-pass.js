@@ -3,6 +3,7 @@ import { SCANNED_EVM_CHAINS } from "crypto-payment-gateway/src/config/chains.js"
 import { re } from "crypto-payment-gateway/src/config/runtime-env.js";
 import { logger } from "crypto-payment-gateway/src/lib/logger.js";
 import { loadAllLiveWalletsForChain } from "crypto-payment-gateway/src/services/payment/transaction-upsert.js";
+import { isChainLiveForPlatform } from "crypto-payment-gateway/src/lib/chain-enable.js";
 import { scanBtcChain } from "./tracker/btc-tracker.js";
 import { scanEvmChain } from "./tracker/evm-tracker.js";
 import { scanTonChain } from "./tracker/ton-tracker.js";
@@ -17,6 +18,7 @@ export async function runFullDepositScanPass() {
 
   if (!re.depositScannerTronOnly) {
     for (const chain of SCANNED_EVM_CHAINS) {
+      if (!isChainLiveForPlatform(re.chainEnabledRecord, chain)) continue;
       const wallets = await loadAllLiveWalletsForChain(chain);
       counts.evm += wallets.length;
       try {
@@ -31,25 +33,31 @@ export async function runFullDepositScanPass() {
   }
 
   try {
-    const tronW = await loadAllLiveWalletsForChain(Chain.TRON);
-    counts.tron = tronW.length;
-    await scanTronChain({ wallets: tronW });
+    if (isChainLiveForPlatform(re.chainEnabledRecord, Chain.TRON)) {
+      const tronW = await loadAllLiveWalletsForChain(Chain.TRON);
+      counts.tron = tronW.length;
+      await scanTronChain({ wallets: tronW });
+    }
   } catch (e) {
     logger.error("deposit_full_scan_tron_failed", { err: String(e) });
   }
 
   if (!re.depositScannerTronOnly) {
     try {
-      const tonW = await loadAllLiveWalletsForChain(Chain.TON);
-      counts.ton = tonW.length;
-      await scanTonChain({ wallets: tonW });
+      if (isChainLiveForPlatform(re.chainEnabledRecord, Chain.TON)) {
+        const tonW = await loadAllLiveWalletsForChain(Chain.TON);
+        counts.ton = tonW.length;
+        await scanTonChain({ wallets: tonW });
+      }
     } catch (e) {
       logger.error("deposit_full_scan_ton_failed", { err: String(e) });
     }
     try {
-      const btcW = await loadAllLiveWalletsForChain(Chain.BTC);
-      counts.btc = btcW.length;
-      await scanBtcChain({ wallets: btcW });
+      if (isChainLiveForPlatform(re.chainEnabledRecord, Chain.BTC)) {
+        const btcW = await loadAllLiveWalletsForChain(Chain.BTC);
+        counts.btc = btcW.length;
+        await scanBtcChain({ wallets: btcW });
+      }
     } catch (e) {
       logger.error("deposit_full_scan_btc_failed", { err: String(e) });
     }

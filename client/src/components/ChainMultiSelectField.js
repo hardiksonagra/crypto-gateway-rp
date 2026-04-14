@@ -7,15 +7,27 @@ import { MERCHANT_SETTINGS_CHAIN_VALUES } from "../admin/depositRailOptions.js";
  * @param {object} props
  * @param {string} props.name
  * @param {string} [props.description]
+ * @param {string[]} [props.allowedChainValues] When set, only these chips (platform-enabled subset).
  */
-export default function ChainMultiSelectField({ name, description }) {
+export default function ChainMultiSelectField({ name, description, allowedChainValues }) {
+  const options =
+    Array.isArray(allowedChainValues) && allowedChainValues.length > 0
+      ? allowedChainValues
+      : MERCHANT_SETTINGS_CHAIN_VALUES;
+
   return (
     <Field name={name}>
       {({ field, form, meta }) => (
         <div>
           {description ? <p className="mb-2 text-xs text-white/45">{description}</p> : null}
+          {options.length === 0 ? (
+            <p className="text-xs text-amber-200/80">
+              No chains are enabled for merchants. An operator must turn on at least one chain in Admin → Supported
+              chains.
+            </p>
+          ) : null}
           <div className="flex flex-wrap gap-2">
-            {MERCHANT_SETTINGS_CHAIN_VALUES.map((c) => {
+            {options.map((c) => {
               const selected = Array.isArray(field.value) && field.value.includes(c);
               return (
                 <label

@@ -28,7 +28,15 @@ import { re } from "../config/runtime-env.js";
 import {
   applyAppSettingsPatch,
   buildAppSettingsAdminList,
+  loadAppSettingsFromDatabase,
 } from "../lib/app-settings-runtime.js";
+import {
+  ADMIN_CHAIN_TOGGLE_ORDER,
+  CHAIN_ADMIN_META,
+  isChainLiveForPlatform,
+  listMerchantSelectableChainsForAdmin,
+  serializeChainEnabledFromAdminInput,
+} from "../lib/chain-enable.js";
 import {
   merchantWhereFromRouteParam,
   merchantSettlementWhereFromRouteParam,
@@ -42,6 +50,7 @@ import {
   parseSupportedDepositRailsInput,
   pickMerchantDefaultPair,
 } from "../lib/merchant-default-pair.js";
+import { pruneMerchantsAfterSupportedChainsChange } from "../lib/prune-merchants-after-supported-chains-change.js";
 import { redeliverPaymentSuccessWebhookAdmin } from "../services/callback-service.js";
 import { refreshAllWalletCachedBalances } from "../services/wallet/wallet-balance-probe.js";
 import { listWalletsUniqueByOnChainIdentity } from "../lib/admin-wallets-unique-address-list.js";
@@ -588,6 +597,7 @@ router.post("/api/v1/admin/merchants", async (req, res) => {
   }
   const parsedChains = parseDefaultChainsArray(body.default_chains, {
     minOne: true,
+    ignoreGatewayTronUsdtOnly: true,
   });
   if ("error" in parsedChains && parsedChains.error) {
     res.status(400).json({ error: parsedChains.error });
@@ -599,6 +609,7 @@ router.post("/api/v1/admin/merchants", async (req, res) => {
     const pr = parseSupportedDepositRailsInput(
       body.supported_deposit_rails,
       parsedChains.chains,
+      { ignoreGatewayTronUsdtOnly: true },
     );
     if ("error" in pr) {
       res.status(400).json({ error: pr.error });
@@ -756,6 +767,7 @@ router.patch("/api/v1/admin/merchants/:id", async (req, res) => {
   if (body.default_chains !== undefined) {
     const parsedChains = parseDefaultChainsArray(body.default_chains, {
       minOne: true,
+      ignoreGatewayTronUsdtOnly: true,
     });
     if ("error" in parsedChains) {
       res.status(400).json({ error: parsedChains.error });
@@ -770,6 +782,7 @@ router.patch("/api/v1/admin/merchants/:id", async (req, res) => {
     const pr = parseSupportedDepositRailsInput(
       body.supported_deposit_rails,
       nextChains,
+      { ignoreGatewayTronUsdtOnly: true },
     );
     if ("error" in pr) {
       res.status(400).json({ error: pr.error });
@@ -1013,6 +1026,7 @@ router.get("/api/v1/admin/merchants/:id", async (req, res) => {
     settlement_period_days: row.settlementPeriodDays,
     end_users_live: endUsersLive,
     end_users_sandbox: endUsersSandbox,
+    platform_enabled_chains: listMerchantSelectableChainsForAdmin(re.chainEnabledRecord),
   });
 });
 
@@ -2413,6 +2427,47 @@ router.get("/api/v1/admin/settlements/:id/proof", async (req, res) => {
     return;
   }
   res.sendFile(full);
+});
+
+router.get("/api/v1/admin/supported-chains", (_req, res) => {
+  const rec = re.chainEnabledRecord;
+  const chains = ADMIN_CHAIN_TOGGLE_ORDER.map((chain) => {
+    const meta = CHAIN_ADMIN_META[chain] ?? { label: chain, hint: "" };
+    return {
+      chain,
+      label: meta.label,
+      hint: meta.hint,
+      active: isChainLiveForPlatform(rec, chain),
+    };
+  });
+  res.json({ chains });
+});
+
+router.put("/api/v1/admin/supported-chains", async (req, res) => {
+  try {
+    const value = serializeChainEnabledFromAdminInput(req.body ?? {});
+    await prisma.appSetting.upsert({
+      where: { key: "CHAIN_ENABLED" },
+      create: { key: "CHAIN_ENABLED", value },
+      update: { value },
+    });
+    await loadAppSettingsFromDatabase();
+    const prune = await pruneMerchantsAfterSupportedChainsChange();
+    logger.info("supported-chains update: pruned merchants", prune);
+    const rec = re.chainEnabledRecord;
+    const chains = ADMIN_CHAIN_TOGGLE_ORDER.map((chain) => {
+      const meta = CHAIN_ADMIN_META[chain] ?? { label: chain, hint: "" };
+      return {
+        chain,
+        label: meta.label,
+        hint: meta.hint,
+        active: isChainLiveForPlatform(rec, chain),
+      };
+    });
+    res.json({ ok: true, chains, merchants_pruned: prune });
+  } catch (e) {
+    res.status(400).json({ error: "invalid_body", message: String(e) });
+  }
 });
 
 router.get("/api/v1/admin/system-settings", (_req, res) => {

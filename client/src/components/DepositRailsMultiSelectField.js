@@ -7,16 +7,20 @@ import { depositRailsForChains } from "../admin/depositRailOptions.js";
  * @param {object} props
  * @param {string} props.name
  * @param {string} [props.chainsFieldName]
+ * @param {string[]} [props.platformEnabledChains] Intersect rails with platform-enabled chains only.
+ * @param {boolean} [props.useFullProductCatalog] Admin merchant forms: full rail list even when VITE narrows the merchant portal.
  */
 export default function DepositRailsMultiSelectField({
   name,
   chainsFieldName = "default_chains",
+  platformEnabledChains,
+  useFullProductCatalog = false,
 }) {
   const { values } = useFormikContext();
   const chains = Array.isArray(values[chainsFieldName])
     ? values[chainsFieldName]
     : [];
-  const options = depositRailsForChains(chains);
+  const options = depositRailsForChains(chains, platformEnabledChains, useFullProductCatalog);
 
   return (
     <Field name={name}>

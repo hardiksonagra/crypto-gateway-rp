@@ -1,3 +1,4 @@
+import { Chain } from "@prisma/client";
 import { ethers } from "ethers";
 import {
   chainToRpcUrl,
@@ -9,6 +10,7 @@ import {
   walletAcceptsEvmErc20,
   walletAcceptsEvmNative,
 } from "crypto-payment-gateway/src/config/payment-rails.js";
+import { re } from "crypto-payment-gateway/src/config/runtime-env.js";
 import { logger } from "crypto-payment-gateway/src/lib/logger.js";
 import {
   acquireOutboundRpcSlot,
@@ -35,6 +37,104 @@ const erc20Iface = new ethers.Interface([
 
 function chainConfigKey(chain) {
   return chain;
+}
+
+/**
+ * Etherscan API v2 `chainid` for deposit scanner (ETH + BNB only).
+ * @param {import("@prisma/client").Chain} chain
+ * @returns {number | null}
+ */
+function etherscanChainId(chain) {
+  if (chain === Chain.ETH) return 1;
+  if (chain === Chain.BNB) return 56;
+  return null;
+}
+
+/**
+ * @param {Record<string, unknown>} row Etherscan `getLogs` row
+ * @returns {{ address: string, topics: string[], data: string, transactionHash: string, index: number }}
+ */
+function etherscanRowToLogLike(row) {
+  const topics = Array.isArray(row.topics)
+    ? row.topics.map((t) => String(t))
+    : [];
+  const rawIdx = row.logIndex;
+  let index = 0;
+  if (typeof rawIdx === "number" && Number.isFinite(rawIdx)) {
+    index = rawIdx;
+  } else if (typeof rawIdx === "string") {
+    const t = rawIdx.trim();
+    if (t.startsWith("0x")) index = Number.parseInt(t, 16);
+    else index = Number.parseInt(t, 10);
+    if (!Number.isFinite(index)) index = 0;
+  }
+  return {
+    address: String(row.address ?? ""),
+    topics,
+    data: String(row.data ?? "0x"),
+    transactionHash: String(row.transactionHash ?? ""),
+    index,
+  };
+}
+
+/**
+ * Paginated Etherscan `module=logs&action=getLogs` for a single block (Transfer topic0 only).
+ *
+ * @param {import("@prisma/client").Chain} chain
+ * @param {bigint} blockNum
+ * @param {string} topic0
+ * @param {string} budgetKey
+ * @returns {Promise<Array<{ address: string, topics: string[], data: string, transactionHash: string, index: number }>>}
+ */
+async function fetchTransferLogsViaEtherscan(chain, blockNum, topic0, budgetKey) {
+  const apiKey = re.etherscanApiKey?.trim();
+  const chainId = etherscanChainId(chain);
+  if (!apiKey || chainId == null) return [];
+
+  const base = re.etherscanApiBase.replace(/\/$/, "");
+  const blockStr = blockNum.toString();
+  const out = [];
+  const offset = 1000;
+  const maxPages = 50;
+
+  for (let page = 1; page <= maxPages; page += 1) {
+    await acquireOutboundRpcSlot(budgetKey);
+    const u = new URL(base.includes("://") ? base : `https://${base}`);
+    u.searchParams.set("chainid", String(chainId));
+    u.searchParams.set("module", "logs");
+    u.searchParams.set("action", "getLogs");
+    u.searchParams.set("fromBlock", blockStr);
+    u.searchParams.set("toBlock", blockStr);
+    u.searchParams.set("topic0", topic0);
+    u.searchParams.set("page", String(page));
+    u.searchParams.set("offset", String(offset));
+    u.searchParams.set("apikey", apiKey);
+
+    const res = await fetch(u.toString(), { method: "GET" });
+    if (!res.ok) {
+      throw new Error(`etherscan_http_${res.status}`);
+    }
+    /** @type {{ status?: string, message?: string, result?: unknown }} */
+    const j = await res.json();
+    if (j.status === "0") {
+      const msg = String(j.message ?? "").toLowerCase();
+      if (msg.includes("no records") || msg.includes("no transactions")) {
+        break;
+      }
+      const errPart =
+        typeof j.result === "string" ? j.result : JSON.stringify(j.result);
+      throw new Error(`etherscan_${j.message ?? "error"}:${errPart}`);
+    }
+    const batch = Array.isArray(j.result) ? j.result : [];
+    for (const row of batch) {
+      if (row && typeof row === "object") {
+        out.push(etherscanRowToLogLike(/** @type {Record<string, unknown>} */ (row)));
+      }
+    }
+    if (batch.length < offset) break;
+  }
+
+  return out;
 }
 
 /**
@@ -149,6 +249,29 @@ export async function scanEvmChain(chain, options = {}) {
       });
     } catch (e) {
       logger.warn("evm getLogs failed", { chain, block: b.toString(), err: String(e) });
+      if (re.etherscanApiKey?.trim()) {
+        try {
+          logs = await fetchTransferLogsViaEtherscan(
+            chain,
+            b,
+            transferTopic,
+            budgetKey,
+          );
+          if (logs.length > 0) {
+            logger.info("evm_get_logs_etherscan_fallback", {
+              chain,
+              block: b.toString(),
+              log_count: logs.length,
+            });
+          }
+        } catch (e2) {
+          logger.warn("evm_get_logs_etherscan_fallback_failed", {
+            chain,
+            block: b.toString(),
+            err: String(e2),
+          });
+        }
+      }
     }
 
     for (const log of logs) {

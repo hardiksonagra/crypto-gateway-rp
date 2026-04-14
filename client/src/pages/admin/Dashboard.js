@@ -88,6 +88,18 @@ const HUB_LINKS = [
     ),
   },
   {
+    to: "/control/supported-chains",
+    label: "Chains",
+    desc: "Enable / disable networks",
+    icon: (
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden>
+        <ellipse cx="12" cy="5" rx="9" ry="3" />
+        <path d="M3 5v6c0 1.7 4 3 9 3s9-1.3 9-3V5" />
+        <path d="M3 11v6c0 1.7 4 3 9 3s9-1.3 9-3v-6" />
+      </svg>
+    ),
+  },
+  {
     to: "/control/settings",
     label: "Settings",
     desc: "System config",

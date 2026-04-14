@@ -2,7 +2,7 @@
  * Admin-editable settings: DB row overrides process env when present.
  * Bootstrap secrets (DATABASE_URL, MNEMONIC, JWT_SECRET, ENCRYPTION_KEY, funder private key) stay env-only.
  *
- * @typedef {{ key: string, label: string, category: string, type: "string" | "int" | "bool" | "bool_tron_gateway" | "bigint" | "usdt6" | "json" | "comma_origins", sensitive?: boolean }} AppSettingDef
+ * @typedef {{ key: string, label: string, category: string, type: "string" | "int" | "bool" | "bool_tron_gateway" | "bigint" | "usdt6" | "json" | "comma_origins", sensitive?: boolean, hideFromAdminList?: boolean }} AppSettingDef
  */
 
 /** @type {AppSettingDef[]} */
@@ -158,6 +158,14 @@ export const APP_SETTING_DEFINITIONS = [
     category: "Scanner / worker",
     type: "bool",
   },
+  {
+    key: "CHAIN_ENABLED",
+    label:
+      "Per-chain on/off for deposits, gateway rails, and scanners (edit in Admin → Supported chains)",
+    category: "Supported chains",
+    type: "json",
+    hideFromAdminList: true,
+  },
 
   {
     key: "RPC_ETH",
@@ -225,6 +233,21 @@ export const APP_SETTING_DEFINITIONS = [
     key: "TRON_API_KEY",
     label: "TRON API key (e.g. TronGrid)",
     category: "TRON",
+    type: "string",
+    sensitive: true,
+  },
+
+  {
+    key: "ETHERSCAN_API_BASE",
+    label: "Etherscan API v2 base URL (ERC20 deposit scan — getLogs fallback)",
+    category: "ERC20 · Etherscan",
+    type: "string",
+  },
+  {
+    key: "ETHERSCAN_API_KEY",
+    label:
+      "Etherscan API key (https://etherscan.io/apidashboard — same Admin/.env + DB override pattern as TronScan)",
+    category: "ERC20 · Etherscan",
     type: "string",
     sensitive: true,
   },

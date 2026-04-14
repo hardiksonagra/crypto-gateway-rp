@@ -53,6 +53,7 @@ export function buildAdminBreadcrumbs(pathname, extras) {
     sweep: { label: "Sweep", to: "/control/sweep" },
     activity: { label: "Activity log", to: "/control/activity" },
     settings: { label: "System settings", to: "/control/settings" },
+    "supported-chains": { label: "Supported chains", to: "/control/supported-chains" },
     profile: { label: "Profile", to: "/control/profile" },
     "decode-gateway-data": { label: "Decode gateway data", to: "/control/decode-gateway-data" },
   };

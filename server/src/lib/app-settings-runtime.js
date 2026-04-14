@@ -5,6 +5,8 @@ import {
   APP_SETTING_DEF_BY_KEY,
   APP_SETTING_DEFINITIONS,
 } from "./app-settings-registry.js";
+import { normalizeChainEnabledStoredObject } from "./chain-enable.js";
+import { pruneMerchantsAfterSupportedChainsChange } from "./prune-merchants-after-supported-chains-change.js";
 
 /** @type {Map<string, string>} */
 let cacheMap = new Map();
@@ -269,6 +271,10 @@ function envFallbackString(key) {
       return env.rpcArbitrum;
     case "RPC_OPTIMISM":
       return env.rpcOptimism;
+    case "ETHERSCAN_API_BASE":
+      return env.etherscanApiBase ?? "";
+    case "ETHERSCAN_API_KEY":
+      return env.etherscanApiKey ?? "";
     case "TRON_FULL_NODE":
       return env.tronFullNode;
     case "TRONSCAN_API_BASE":
@@ -333,6 +339,8 @@ function envFallbackString(key) {
       const raw = process.env.TON_JETTON_CONTRACTS?.trim();
       return raw && raw.length > 0 ? raw : "{}";
     }
+    case "CHAIN_ENABLED":
+      return env.chainEnabledJson ?? "{}";
     default:
       return "";
   }
@@ -386,6 +394,11 @@ function validateStoredValue(key, stored) {
       if (p === null || typeof p !== "object" || Array.isArray(p)) {
         throw new Error(`${key}: JSON must be an object`);
       }
+      if (key === "CHAIN_ENABLED") {
+        return normalizeChainEnabledStoredObject(
+          /** @type {Record<string, unknown>} */ (p),
+        );
+      }
       return JSON.stringify(p);
     }
     case "comma_origins":
@@ -425,6 +438,7 @@ export async function upsertAppSettingsFromCurrentEnv() {
   /** @type {{ key: string, value: string }[]} */
   const ops = [];
   for (const def of APP_SETTING_DEFINITIONS) {
+    if (def.hideFromAdminList) continue;
     const raw = envFallbackString(def.key);
     if (!shouldWriteEnvValueToAppSettings(def, raw)) continue;
     try {
@@ -463,7 +477,9 @@ export async function upsertAppSettingsFromCurrentEnv() {
 
   await loadAppSettingsFromDatabase();
 
-  const skipped = APP_SETTING_DEFINITIONS.length - ops.length;
+  const considered = APP_SETTING_DEFINITIONS.filter((d) => !d.hideFromAdminList)
+    .length;
+  const skipped = considered - ops.length;
   return { upserted: ops.length, skipped };
 }
 
@@ -471,7 +487,7 @@ export async function upsertAppSettingsFromCurrentEnv() {
  * Admin GET payload.
  */
 export function buildAppSettingsAdminList() {
-  return APP_SETTING_DEFINITIONS.map((def) => {
+  return APP_SETTING_DEFINITIONS.filter((d) => !d.hideFromAdminList).map((def) => {
     const envVal = envFallbackString(def.key);
     const dbVal = hasDbOverride(def.key) ? rawDbValue(def.key) : null;
     const effective = hasDbOverride(def.key) ? String(dbVal ?? "") : envVal;
@@ -605,4 +621,10 @@ export async function applyAppSettingsPatch(patch) {
   }
 
   await loadAppSettingsFromDatabase();
+
+  const chainEnabledTouched = ops.some((o) => o.key === "CHAIN_ENABLED");
+  if (chainEnabledTouched) {
+    const prune = await pruneMerchantsAfterSupportedChainsChange();
+    logger.info("app_settings CHAIN_ENABLED patch: pruned merchants", prune);
+  }
 }

@@ -10,6 +10,7 @@ import {
   getResolvedInt,
   getResolvedString,
 } from "../lib/app-settings-runtime.js";
+import { parseChainEnabledRecord } from "../lib/chain-enable.js";
 
 function splitOrigins(raw) {
   return raw
@@ -137,6 +138,15 @@ export const re = {
     );
   },
 
+  /**
+   * Parsed `CHAIN_ENABLED` map (false = disabled). Empty object means all chains on.
+   * @returns {Record<string, boolean>}
+   */
+  get chainEnabledRecord() {
+    const raw = getResolvedString("CHAIN_ENABLED", () => env.chainEnabledJson ?? "{}");
+    return parseChainEnabledRecord(raw);
+  },
+
   get rpcEth() {
     return getResolvedString("RPC_ETH", () => env.rpcEth);
   },
@@ -155,6 +165,17 @@ export const re = {
 
   get rpcOptimism() {
     return getResolvedString("RPC_OPTIMISM", () => env.rpcOptimism);
+  },
+
+  get etherscanApiBase() {
+    return getResolvedString("ETHERSCAN_API_BASE", () => env.etherscanApiBase).replace(
+      /\/$/,
+      "",
+    );
+  },
+
+  get etherscanApiKey() {
+    return getResolvedString("ETHERSCAN_API_KEY", () => env.etherscanApiKey ?? "");
   },
 
   get tronFullNode() {

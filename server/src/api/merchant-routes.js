@@ -1033,6 +1033,7 @@ router.patch("/api/v1/merchant/settings", async (req, res) => {
   if (body.default_chains !== undefined) {
     const parsedChains = parseDefaultChainsArray(body.default_chains, {
       minOne: true,
+      ignoreGatewayTronUsdtOnly: true,
     });
     if ("error" in parsedChains) {
       res.status(400).json({ error: parsedChains.error });
@@ -1047,6 +1048,7 @@ router.patch("/api/v1/merchant/settings", async (req, res) => {
     const pr = parseSupportedDepositRailsInput(
       body.supported_deposit_rails,
       nextChains,
+      { ignoreGatewayTronUsdtOnly: true },
     );
     if ("error" in pr) {
       res.status(400).json({ error: pr.error });
@@ -1054,8 +1056,10 @@ router.patch("/api/v1/merchant/settings", async (req, res) => {
     }
     data.supportedDepositRails = pr.keys;
     nextSupported = pr.keys;
-  } else if (nextSupported.length > 0 && !re.gatewayTronUsdtOnly) {
-    const v = parseSupportedDepositRailsInput(nextSupported, nextChains);
+  } else if (nextSupported.length > 0) {
+    const v = parseSupportedDepositRailsInput(nextSupported, nextChains, {
+      ignoreGatewayTronUsdtOnly: true,
+    });
     if ("error" in v) {
       res.status(400).json({ error: v.error });
       return;

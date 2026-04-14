@@ -20,6 +20,7 @@ import {
   normalizeAssetPart,
   resolveDepositRail,
 } from "../config/payment-rails.js";
+import { isChainLiveForPlatform } from "../lib/chain-enable.js";
 import {
   redactGatewayBody,
   requestClientIp,
@@ -300,6 +301,25 @@ router.post("/api/v1/gateway/deposit-address", async (req, res) => {
         },
       });
       res.status(403).json({ error: "rail_not_enabled_for_merchant" });
+      return;
+    }
+    if (!isChainLiveForPlatform(re.chainEnabledRecord, rail.chain)) {
+      auditGatewayApi(req, {
+        action: "deposit_address",
+        merchantId: merchant.id,
+        actorType: "gateway_api_key",
+        summary: "deposit-address 403 — chain_disabled_for_platform",
+        metadata: {
+          request_in: redactGatewayBody(body),
+          http_status: 403,
+          external_user_id: externalUserId,
+          chain: rail.chain,
+        },
+      });
+      res.status(403).json({
+        error: "chain_disabled_for_platform",
+        message: `Chain ${rail.chain} is disabled by the operator (admin → Supported chains).`,
+      });
       return;
     }
 
@@ -663,6 +683,25 @@ router.post("/api/v1/gateway/create-wallet", async (req, res) => {
         },
       });
       res.status(403).json({ error: "rail_not_enabled_for_merchant" });
+      return;
+    }
+    if (!isChainLiveForPlatform(re.chainEnabledRecord, rail.chain)) {
+      auditGatewayApi(req, {
+        action: "create_wallet",
+        merchantId: merchant.id,
+        actorType: "gateway_api_key",
+        summary: "create-wallet 403 — chain_disabled_for_platform",
+        metadata: {
+          request_in: redactGatewayBody(body),
+          http_status: 403,
+          user_id: userId,
+          chain: rail.chain,
+        },
+      });
+      res.status(403).json({
+        error: "chain_disabled_for_platform",
+        message: `Chain ${rail.chain} is disabled by the operator (admin → Supported chains).`,
+      });
       return;
     }
 

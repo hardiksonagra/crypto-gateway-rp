@@ -16,8 +16,14 @@ import { scanTronChain } from "./tron-tracker.js";
 import { scanTonChain } from "./ton-tracker.js";
 import { maybeSweepTick } from "crypto-payment-gateway/src/services/sweep-service.js";
 import { retryStuckSuccessCallbacks } from "crypto-payment-gateway/src/services/callback-retry.js";
+import { isChainLiveForPlatform } from "crypto-payment-gateway/src/lib/chain-enable.js";
 
 let timer = null;
+
+/** @param {import("@prisma/client").Chain} c */
+function chainScanEnabled(c) {
+  return isChainLiveForPlatform(re.chainEnabledRecord, c);
+}
 
 /**
  * After a successful chain tick, drop one-shot scan flags for live wallets on that chain only.
@@ -53,6 +59,7 @@ async function runTick() {
   try {
     if (!re.depositScannerTronOnly) {
       for (const chain of SCANNED_EVM_CHAINS) {
+        if (!chainScanEnabled(chain)) continue;
         try {
           await scanEvmChain(chain);
           await clearDepositSingleTickForChain(chain);
@@ -62,6 +69,7 @@ async function runTick() {
       }
     } else {
       for (const chain of SCANNED_EVM_CHAINS) {
+        if (!chainScanEnabled(chain)) continue;
         try {
           const w = await loadWalletsForChain(chain);
           if (w.length === 0) continue;
@@ -73,8 +81,10 @@ async function runTick() {
       }
     }
     try {
-      await scanTronChain();
-      await clearDepositSingleTickForChain(Chain.TRON);
+      if (chainScanEnabled(Chain.TRON)) {
+        await scanTronChain();
+        await clearDepositSingleTickForChain(Chain.TRON);
+      }
     } catch (e) {
       logger.error("tron_scan_failed", {
         event: "tron_scan_failed",
@@ -84,32 +94,40 @@ async function runTick() {
     }
     if (!re.depositScannerTronOnly) {
       try {
-        await scanTonChain();
-        await clearDepositSingleTickForChain(Chain.TON);
-      } catch (e) {
-        logger.error("ton scan failed", { err: String(e) });
-      }
-      try {
-        await scanBtcChain();
-        await clearDepositSingleTickForChain(Chain.BTC);
-      } catch (e) {
-        logger.error("btc scan failed", { err: String(e) });
-      }
-    } else {
-      try {
-        const tonW = await loadWalletsForChain(Chain.TON);
-        if (tonW.length > 0) {
-          await scanTonChain({ wallets: tonW });
+        if (chainScanEnabled(Chain.TON)) {
+          await scanTonChain();
           await clearDepositSingleTickForChain(Chain.TON);
         }
       } catch (e) {
         logger.error("ton scan failed", { err: String(e) });
       }
       try {
-        const btcW = await loadWalletsForChain(Chain.BTC);
-        if (btcW.length > 0) {
-          await scanBtcChain({ wallets: btcW });
+        if (chainScanEnabled(Chain.BTC)) {
+          await scanBtcChain();
           await clearDepositSingleTickForChain(Chain.BTC);
+        }
+      } catch (e) {
+        logger.error("btc scan failed", { err: String(e) });
+      }
+    } else {
+      try {
+        if (chainScanEnabled(Chain.TON)) {
+          const tonW = await loadWalletsForChain(Chain.TON);
+          if (tonW.length > 0) {
+            await scanTonChain({ wallets: tonW });
+            await clearDepositSingleTickForChain(Chain.TON);
+          }
+        }
+      } catch (e) {
+        logger.error("ton scan failed", { err: String(e) });
+      }
+      try {
+        if (chainScanEnabled(Chain.BTC)) {
+          const btcW = await loadWalletsForChain(Chain.BTC);
+          if (btcW.length > 0) {
+            await scanBtcChain({ wallets: btcW });
+            await clearDepositSingleTickForChain(Chain.BTC);
+          }
         }
       } catch (e) {
         logger.error("btc scan failed", { err: String(e) });

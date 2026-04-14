@@ -135,11 +135,32 @@ export const env = {
     return v !== "false" && v !== "0";
   })(),
 
+  /**
+   * JSON map `Chain` → boolean (false disables that chain platform-wide). Prefer Admin → Supported chains.
+   * Empty `{}` or missing DB row = all chains enabled.
+   */
+  chainEnabledJson: optional("CHAIN_ENABLED", "{}"),
+
   rpcEth: required("RPC_ETH"),
   rpcBnb: required("RPC_BNB"),
   rpcPolygon: required("RPC_POLYGON"),
   rpcArbitrum: required("RPC_ARBITRUM"),
   rpcOptimism: required("RPC_OPTIMISM"),
+
+  /**
+   * Etherscan HTTP API v2 base (same pattern as `TRONSCAN_API_BASE`). Used when JSON-RPC `eth_getLogs` fails
+   * while scanning ERC20 `Transfer` logs on ETH/BNB. Docs: https://docs.etherscan.io/
+   */
+  etherscanApiBase: optional(
+    "ETHERSCAN_API_BASE",
+    "https://api.etherscan.io/v2/api",
+  ),
+  /**
+   * Etherscan API key (same pattern as `TRONSCAN_API_KEY`): optional in .env if you store it in Admin → System settings
+   * (`app_settings.ETHERSCAN_API_KEY`); non-empty DB value overrides this env var after `loadAppSettingsFromDatabase`.
+   * Create a key at https://etherscan.io/apidashboard — one v2 key covers `chainid` 1 (ETH) and 56 (BNB) on the default base.
+   */
+  etherscanApiKey: optional("ETHERSCAN_API_KEY", ""),
 
   tronFullNode: optional("TRON_FULL_NODE", "https://api.trongrid.io"),
   /** TronScan HTTP API base (deposit tracker). Docs: https://docs.tronscan.org */

@@ -3,10 +3,14 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { api } from "../../api";
-import { merchantEditSchema } from "../../admin/merchantSchemas";
+import { buildMerchantEditSchema } from "../../admin/merchantSchemas";
 import ChainMultiSelectField from "../../components/ChainMultiSelectField";
 import DepositRailsMultiSelectField from "../../components/DepositRailsMultiSelectField";
-import { depositRailsForChains, railKeyFromParts } from "../../admin/depositRailOptions.js";
+import {
+  depositRailsForChains,
+  MERCHANT_PRODUCT_CHAIN_CODES,
+  railKeyFromParts,
+} from "../../admin/depositRailOptions.js";
 import { BrandLoader } from "../../components/BrandLoader.js";
 import { useBreadcrumbExtras } from "../../contexts/BreadcrumbExtrasContext.js";
 
@@ -86,21 +90,39 @@ export default function MerchantEdit() {
     );
   }
 
-  const chainList =
-    Array.isArray(m.default_chains) && m.default_chains.length > 0
-      ? m.default_chains
-      : ["TRON"];
-  const inferredRails = depositRailsForChains(chainList).map((o) => o.key);
+  const platform =
+    Array.isArray(m.platform_enabled_chains) && m.platform_enabled_chains.length > 0
+      ? m.platform_enabled_chains
+      : [...MERCHANT_PRODUCT_CHAIN_CODES];
+
+  let chainList =
+    Array.isArray(m.default_chains) && m.default_chains.length > 0 ? m.default_chains : ["TRON"];
+  chainList = chainList.filter((c) => platform.includes(c));
+  if (chainList.length === 0) {
+    chainList = platform.slice(0, 1);
+  }
+
+  const railOptions = depositRailsForChains(chainList, platform, true);
+  const allowedRailKeys = new Set(railOptions.map((o) => o.key));
+  const inferredRails = railOptions.map((o) => o.key);
+
+  let rails =
+    Array.isArray(m.supported_deposit_rails) && m.supported_deposit_rails.length > 0
+      ? m.supported_deposit_rails
+      : inferredRails.length > 0
+        ? inferredRails
+        : [railKeyFromParts(m.default_currency, m.default_network)];
+  rails = rails.filter((k) => allowedRailKeys.has(k));
+  if (rails.length === 0 && inferredRails.length > 0) {
+    rails = [inferredRails[0]];
+  }
+
+  const merchantEditSchema = buildMerchantEditSchema(platform);
 
   const initial = {
     display_name: m.display_name ?? "",
     default_chains: chainList,
-    supported_deposit_rails:
-      Array.isArray(m.supported_deposit_rails) && m.supported_deposit_rails.length > 0
-        ? m.supported_deposit_rails
-        : inferredRails.length > 0
-          ? inferredRails
-          : [railKeyFromParts(m.default_currency, m.default_network)],
+    supported_deposit_rails: rails,
     callback_url: m.callback_url ?? "",
     mdr_percent: m.mdr_percent ?? 0,
     settlement_rate_percent: m.settlement_rate_percent ?? 0,
@@ -131,7 +153,7 @@ export default function MerchantEdit() {
 
       <div className="glass mt-8 w-full rounded-2xl p-6 lg:p-8">
         <Formik
-          key={m.id}
+          key={`${m.id}-${platform.join(",")}`}
           initialValues={initial}
           validationSchema={merchantEditSchema}
           enableReinitialize
@@ -205,11 +227,16 @@ export default function MerchantEdit() {
               </div>
               <div className="lg:col-span-2">
                 <span className={label}>Supported chains</span>
-                <p className="mb-2 text-xs text-white/40">
-                  The gateway only issues addresses for rails whose underlying
-                  chain is selected here.
+                <p className="mb-2 rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-xs text-white/75">
+                  <span className="font-semibold text-white/90">Active chain list</span> (Admin → Supported chains):{" "}
+                  <span className="font-mono text-emerald-200/95">
+                    {platform.length ? platform.join(", ") : "—"}
+                  </span>
                 </p>
-                <ChainMultiSelectField name="default_chains" />
+                <p className="mb-2 text-xs text-white/40">
+                  Chips below are only those chains. Gateway uses rails whose chain is selected here.
+                </p>
+                <ChainMultiSelectField name="default_chains" allowedChainValues={platform} />
                 <ErrorMessage
                   name="default_chains"
                   component="p"
@@ -221,7 +248,11 @@ export default function MerchantEdit() {
                 <p className="mb-2 text-xs text-white/40">
                   Integrators may only use these rails (within the chains above).
                 </p>
-                <DepositRailsMultiSelectField name="supported_deposit_rails" />
+                <DepositRailsMultiSelectField
+                  name="supported_deposit_rails"
+                  platformEnabledChains={platform}
+                  useFullProductCatalog
+                />
                 <p className="mt-1 text-xs text-white/35">
                   When <span className="font-mono">currency</span> /{" "}
                   <span className="font-mono">network</span> are omitted on deposit-address, the{" "}

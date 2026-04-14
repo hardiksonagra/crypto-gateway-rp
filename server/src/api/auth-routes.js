@@ -12,12 +12,13 @@ import {
   ensureMerchantPortalEnvironmentConsistent,
 } from "../lib/merchant-gateway-env.js";
 import { logger } from "../lib/logger.js";
+import { re } from "../config/runtime-env.js";
+import { listMerchantSelectableChainsForAdmin } from "../lib/chain-enable.js";
 import {
   logAuthenticatedPortalMutation,
   redactPanelBody,
 } from "../services/panel-audit-log.js";
 import { sendPasswordResetEmail } from "../lib/mailer.js";
-import { re } from "../config/runtime-env.js";
 
 const router = Router();
 
@@ -236,6 +237,9 @@ router.get("/api/v1/auth/me", requireAuth(), async (req, res) => {
   if (synced) {
     out.portalEnvironment = synced.portalEnvironment;
   }
+  out.platform_enabled_chains = listMerchantSelectableChainsForAdmin(
+    re.chainEnabledRecord,
+  );
   res.json(out);
 });
 

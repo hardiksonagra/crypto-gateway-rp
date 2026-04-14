@@ -7,6 +7,7 @@ import { re } from "../../config/runtime-env.js";
 import { chainToRpcUrl, chainToStaticNetwork, isEvmChain } from "../../config/chains.js";
 import { walletAcceptsEvmErc20 } from "../../config/payment-rails.js";
 import { prisma } from "../../lib/prisma.js";
+import { isChainLiveForPlatform } from "../../lib/chain-enable.js";
 import { logger } from "../../lib/logger.js";
 import { formatAtomicAmountString } from "../../lib/format-atomic-amount.js";
 import {
@@ -68,6 +69,14 @@ function pickUsdtEvmContract(chain) {
 export async function probeWalletOnChainBalance(w) {
   const cur = String(w.currency ?? "").toUpperCase();
   const net = String(w.network ?? "").toUpperCase();
+
+  if (!isChainLiveForPlatform(re.chainEnabledRecord, w.chain)) {
+    return {
+      display: null,
+      atomic: null,
+      error: "chain_disabled_for_platform",
+    };
+  }
 
   try {
     if (w.chain === Chain.TRON && cur === "USDT" && net === "TRC20") {

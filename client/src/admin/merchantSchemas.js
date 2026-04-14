@@ -1,6 +1,6 @@
 import * as yup from "yup";
 import {
-  DEPOSIT_RAIL_KEYS,
+  ALL_DEPOSIT_RAIL_OPTIONS,
   DEPOSIT_RAIL_OPTIONS,
   MERCHANT_SETTINGS_CHAIN_VALUES,
 } from "./depositRailOptions.js";
@@ -8,27 +8,52 @@ import {
 /** All chains (filters, history). */
 export const CHAIN_VALUES = ["TRON", "SOLANA", "ETH", "BNB", "TON"];
 
-const defaultChainsField = yup
-  .array()
-  .of(yup.string().oneOf([...MERCHANT_SETTINGS_CHAIN_VALUES], "Invalid chain"))
-  .min(1, "Select at least one chain");
+/**
+ * @param {string[] | undefined | null} allowedChains
+ * @returns {string[]}
+ */
+function effectiveMerchantChainAllowList(allowedChains) {
+  if (Array.isArray(allowedChains) && allowedChains.length > 0) return allowedChains;
+  return [...MERCHANT_SETTINGS_CHAIN_VALUES];
+}
 
-const supportedDepositRailsField = yup
-  .array()
-  .of(yup.string().oneOf([...DEPOSIT_RAIL_KEYS], "Invalid currency / network"))
-  .min(1, "Select at least one currency / network")
-  .test(
-    "rail-chains",
-    "Each selected rail must match supported chains",
-    function railChains(rails) {
-      const chains = this.parent.default_chains;
-      if (!Array.isArray(rails) || !Array.isArray(chains)) return true;
-      return rails.every((key) => {
-        const opt = DEPOSIT_RAIL_OPTIONS.find((o) => o.key === key);
-        return Boolean(opt && chains.includes(opt.chain));
-      });
-    },
-  );
+/**
+ * @param {string[] | undefined | null} allowedChains
+ */
+function makeDefaultChainsSchema(allowedChains) {
+  const chains = effectiveMerchantChainAllowList(allowedChains);
+  return yup
+    .array()
+    .of(yup.string().oneOf([...chains], "Invalid chain"))
+    .min(1, "Select at least one chain");
+}
+
+/**
+ * @param {string[] | undefined | null} allowedChains
+ * @param {boolean} [fullProductRails] Admin merchant create/edit: validate against full gateway rail catalog (ERC20, BEP20, …).
+ */
+function makeSupportedDepositRailsSchema(allowedChains, fullProductRails = false) {
+  const chains = effectiveMerchantChainAllowList(allowedChains);
+  const source = fullProductRails ? ALL_DEPOSIT_RAIL_OPTIONS : DEPOSIT_RAIL_OPTIONS;
+  const railOpts = source.filter((o) => chains.includes(o.chain));
+  const railKeys = railOpts.map((o) => o.key);
+  return yup
+    .array()
+    .of(yup.string().oneOf([...railKeys], "Invalid currency / network"))
+    .min(1, "Select at least one currency / network")
+    .test(
+      "rail-chains",
+      "Each selected rail must match supported chains",
+      function railChains(rails) {
+        const dc = this.parent.default_chains;
+        if (!Array.isArray(rails) || !Array.isArray(dc)) return true;
+        return rails.every((key) => {
+          const opt = railOpts.find((o) => o.key === key);
+          return Boolean(opt && dc.includes(opt.chain));
+        });
+      },
+    );
+}
 
 const emptyToUndef = (v) => (v === "" || v === null ? undefined : v);
 
@@ -107,56 +132,69 @@ const settlementPeriodDaysField = yup
   .max(3650, "Max 3650 days")
   .required();
 
-export const merchantCreateSchema = yup.object({
-  email: yup
-    .string()
-    .trim()
-    .required("Email is required")
-    .email("Invalid email"),
-  password: yup
-    .string()
-    .transform((v) => emptyToUndef(v))
-    .optional()
-    .min(8, "Password must be at least 8 characters"),
-  display_name: yup
-    .string()
-    .trim()
-    .transform((v) => (v === "" ? undefined : v))
-    .optional(),
-  default_chains: defaultChainsField,
-  supported_deposit_rails: supportedDepositRailsField,
-  callback_url: optionalHttpsUrl,
-  mdr_percent: mdrPercentField,
-  settlement_rate_percent: settlementRatePercentField,
-  min_settlement_amount: minSettlementAmountField,
-  settlement_period_days: settlementPeriodDaysField,
-  live_gateway_enabled: yup.boolean().required(),
-  sandbox_gateway_enabled: yup.boolean().required(),
-});
+/**
+ * @param {string[] | undefined | null} allowedChains Platform-enabled merchant chains; omit to use full product list.
+ */
+export function buildMerchantCreateSchema(allowedChains) {
+  return yup.object({
+    email: yup
+      .string()
+      .trim()
+      .required("Email is required")
+      .email("Invalid email"),
+    password: yup
+      .string()
+      .transform((v) => emptyToUndef(v))
+      .optional()
+      .min(8, "Password must be at least 8 characters"),
+    display_name: yup
+      .string()
+      .trim()
+      .transform((v) => (v === "" ? undefined : v))
+      .optional(),
+    default_chains: makeDefaultChainsSchema(allowedChains),
+    supported_deposit_rails: makeSupportedDepositRailsSchema(allowedChains, true),
+    callback_url: optionalHttpsUrl,
+    mdr_percent: mdrPercentField,
+    settlement_rate_percent: settlementRatePercentField,
+    min_settlement_amount: minSettlementAmountField,
+    settlement_period_days: settlementPeriodDaysField,
+    live_gateway_enabled: yup.boolean().required(),
+    sandbox_gateway_enabled: yup.boolean().required(),
+  });
+}
 
-export const merchantEditSchema = yup.object({
-  display_name: yup
-    .string()
-    .trim()
-    .transform((v) => (v === "" ? null : v))
-    .nullable()
-    .optional(),
-  default_chains: defaultChainsField,
-  supported_deposit_rails: supportedDepositRailsField,
-  callback_url: optionalHttpsUrl.nullable(),
-  password: yup
-    .string()
-    .transform((v) => emptyToUndef(v))
-    .optional()
-    .min(8, "Password must be at least 8 characters"),
-  regenerate_api_key: yup.boolean().required(),
-  mdr_percent: mdrPercentField,
-  settlement_rate_percent: settlementRatePercentField,
-  min_settlement_amount: minSettlementAmountField,
-  settlement_period_days: settlementPeriodDaysField,
-  live_gateway_enabled: yup.boolean().required(),
-  sandbox_gateway_enabled: yup.boolean().required(),
-});
+/**
+ * @param {string[] | undefined | null} allowedChains
+ */
+export function buildMerchantEditSchema(allowedChains) {
+  return yup.object({
+    display_name: yup
+      .string()
+      .trim()
+      .transform((v) => (v === "" ? null : v))
+      .nullable()
+      .optional(),
+    default_chains: makeDefaultChainsSchema(allowedChains),
+    supported_deposit_rails: makeSupportedDepositRailsSchema(allowedChains, true),
+    callback_url: optionalHttpsUrl.nullable(),
+    password: yup
+      .string()
+      .transform((v) => emptyToUndef(v))
+      .optional()
+      .min(8, "Password must be at least 8 characters"),
+    regenerate_api_key: yup.boolean().required(),
+    mdr_percent: mdrPercentField,
+    settlement_rate_percent: settlementRatePercentField,
+    min_settlement_amount: minSettlementAmountField,
+    settlement_period_days: settlementPeriodDaysField,
+    live_gateway_enabled: yup.boolean().required(),
+    sandbox_gateway_enabled: yup.boolean().required(),
+  });
+}
+
+export const merchantCreateSchema = buildMerchantCreateSchema(undefined);
+export const merchantEditSchema = buildMerchantEditSchema(undefined);
 
 export const merchantFilterSchema = yup.object({
   search: yup.string(),
@@ -264,11 +302,19 @@ export const loginSchema = yup.object({
   password: yup.string().required("Password is required"),
 });
 
-export const merchantSettingsSchema = yup.object({
-  callback_url: optionalHttpsUrl.nullable(),
-  default_chains: defaultChainsField,
-  supported_deposit_rails: supportedDepositRailsField,
-});
+/**
+ * @param {string[] | undefined | null} allowedChains
+ * @param {boolean} [fullProductRails] Gateway & webhooks (merchant portal): full rail catalog vs VITE-narrowed portal list.
+ */
+export function buildMerchantSettingsSchema(allowedChains, fullProductRails = false) {
+  return yup.object({
+    callback_url: optionalHttpsUrl.nullable(),
+    default_chains: makeDefaultChainsSchema(allowedChains),
+    supported_deposit_rails: makeSupportedDepositRailsSchema(allowedChains, fullProductRails),
+  });
+}
+
+export const merchantSettingsSchema = buildMerchantSettingsSchema(undefined, false);
 
 /** Filter admin settlement list + pending batch preview (merchant login email). */
 export const adminSettlementsFilterSchema = yup.object({

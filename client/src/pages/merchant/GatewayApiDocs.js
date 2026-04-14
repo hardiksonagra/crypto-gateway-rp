@@ -100,11 +100,21 @@ function EndpointRow({ textToCopy, children, breakAll }) {
  * @returns {string[]}
  */
 function effectiveMerchantRailKeys(u) {
-  const chainList =
+  const platform =
+    Array.isArray(u.platform_enabled_chains) && u.platform_enabled_chains.length > 0
+      ? u.platform_enabled_chains
+      : null;
+  let chainList =
     Array.isArray(u.defaultChains) && u.defaultChains.length > 0
       ? u.defaultChains
       : ["TRON"];
-  const inferredRails = depositRailsForChains(chainList).map((o) => o.key);
+  if (platform) {
+    chainList = chainList.filter((c) => platform.includes(c));
+    if (chainList.length === 0 && platform.length) {
+      chainList = [platform[0]];
+    }
+  }
+  const inferredRails = depositRailsForChains(chainList, platform ?? undefined).map((o) => o.key);
   if (
     Array.isArray(u.supportedDepositRails) &&
     u.supportedDepositRails.length > 0

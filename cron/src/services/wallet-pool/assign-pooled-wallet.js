@@ -4,6 +4,7 @@ import { generateGatewayReferenceTransactionId } from "crypto-payment-gateway/sr
 import { env } from "crypto-payment-gateway/src/config/env.js";
 import { re } from "crypto-payment-gateway/src/config/runtime-env.js";
 import { EVM_CHAINS, isEvmChain } from "crypto-payment-gateway/src/config/chains.js";
+import { isChainLiveForPlatform } from "crypto-payment-gateway/src/lib/chain-enable.js";
 import { nextScanExpiresAt } from "crypto-payment-gateway/src/lib/wallet-scan.js";
 import { deriveEvmAddress } from "crypto-payment-gateway/src/services/wallet/evm-wallet.js";
 import { deriveTronAddress } from "crypto-payment-gateway/src/services/wallet/tron-wallet.js";
@@ -47,6 +48,9 @@ function isWalletAssignmentTableMissingError(e) {
  */
 export async function assignPooledWalletForDeposit(tx, p) {
   const { merchantId, environment, userId, chain, currency, network } = p;
+  if (!isChainLiveForPlatform(re.chainEnabledRecord, chain)) {
+    throw new Error("CHAIN_DISABLED_FOR_PLATFORM");
+  }
   const refTxRaw =
     p.referenceTransactionId != null ? String(p.referenceTransactionId).trim() : "";
   /** Always set: merchant `transaction_id` or gateway-generated 64-char hex (fits VARCHAR(256)). */

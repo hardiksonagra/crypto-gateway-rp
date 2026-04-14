@@ -30,13 +30,33 @@ export const MERCHANT_SETTINGS_CHAIN_VALUES = tronUsdtOnly
   : ["TRON", "SOLANA", "ETH", "BNB", "TON"];
 
 /**
- * @param {string[] | undefined} chains
- * @returns {typeof DEPOSIT_RAIL_OPTIONS}
+ * Gateway product chains (mirrors server `PRODUCT_CHAINS`). **Not** narrowed by VITE — use when intersecting
+ * Admin → Supported chains so ETH/ERC20 etc. still appear on admin merchant create/edit when enabled.
  */
-export function depositRailsForChains(chains) {
+export const MERCHANT_PRODUCT_CHAIN_CODES = [
+  "TRON",
+  "SOLANA",
+  "ETH",
+  "BNB",
+  "TON",
+];
+
+/**
+ * @param {string[] | undefined} chains Selected default chains
+ * @param {string[] | undefined} [platformChains] If set, only rails on these platform-enabled chains (admin Supported chains).
+ * @param {boolean} [useFullProductCatalog] Admin merchant forms: use full rail list (USDT ERC20, BEP20, …) even when VITE tron-only narrows the merchant portal.
+ * @returns {typeof ALL_DEPOSIT_RAIL_OPTIONS}
+ */
+export function depositRailsForChains(chains, platformChains, useFullProductCatalog = false) {
   if (!Array.isArray(chains) || chains.length === 0) return [];
   const set = new Set(chains);
-  return DEPOSIT_RAIL_OPTIONS.filter((o) => set.has(o.chain));
+  const source = useFullProductCatalog ? ALL_DEPOSIT_RAIL_OPTIONS : DEPOSIT_RAIL_OPTIONS;
+  let rails = source.filter((o) => set.has(o.chain));
+  if (Array.isArray(platformChains) && platformChains.length > 0) {
+    const ps = new Set(platformChains);
+    rails = rails.filter((o) => ps.has(o.chain));
+  }
+  return rails;
 }
 
 /**
@@ -53,6 +73,8 @@ export function railKeyFromParts(currency, network) {
     .toUpperCase();
   const k = `${c}|${n}`;
   if (DEPOSIT_RAIL_KEYS.includes(k)) return k;
+  const allKeys = ALL_DEPOSIT_RAIL_OPTIONS.map((o) => o.key);
+  if (allKeys.includes(k)) return k;
   return "USDT|TRC20";
 }
 

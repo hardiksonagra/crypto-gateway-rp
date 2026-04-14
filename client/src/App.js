@@ -17,6 +17,7 @@ import AdminWalletDetails from "./pages/admin/AdminWalletDetails";
 import AdminTransactions from "./pages/admin/Transactions";
 import AdminActivityLog from "./pages/admin/ActivityLog";
 import AdminSystemSettings from "./pages/admin/SystemSettings";
+import AdminSupportedChains from "./pages/admin/SupportedChains";
 import DecodeGatewayData from "./pages/admin/DecodeGatewayData";
 import AdminUnifiedSweep from "./pages/admin/UnifiedSweep";
 import AdminSettlements from "./pages/admin/Settlements";
@@ -101,6 +102,7 @@ export default function App() {
         <Route path="evm-usdt-sweep" element={<Navigate to="/control/sweep" replace />} />
         <Route path="solana-sweep" element={<Navigate to="/control/sweep" replace />} />
         <Route path="activity" element={<AdminActivityLog />} />
+        <Route path="supported-chains" element={<AdminSupportedChains />} />
         <Route path="settings" element={<AdminSystemSettings />} />
         <Route path="profile" element={<Profile />} />
         <Route path="decode-gateway-data" element={<DecodeGatewayData />} />
