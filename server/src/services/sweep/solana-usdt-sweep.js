@@ -263,7 +263,9 @@ export async function sweepSolanaUsdtAll() {
           status: "skipped",
           reason: r.reason,
           ...(r.from_address ? { from_address: r.from_address } : {}),
-          ...(r.balance_atomic != null ? { balance_atomic: String(r.balance_atomic) } : {}),
+          ...(r.balance_atomic != null
+            ? { balance_atomic: String(r.balance_atomic) }
+            : {}),
           ...(r.detail ? { detail: r.detail } : {}),
         });
       } else {

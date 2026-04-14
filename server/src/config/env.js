@@ -15,6 +15,27 @@ function required(name) {
   return v.trim();
 }
 
+/**
+ * BIP39 phrase: trim, strip BOM / zero-width chars, NBSP → space, collapse
+ * whitespace, lowercase. Prevents `invalid mnemonic word at index 0` when
+ * the first “word” is actually `\uFEFFabandon` from a UTF-8 BOM on the line.
+ * @returns {string}
+ */
+function loadNormalizedMnemonic() {
+  const raw = process.env.MNEMONIC;
+  if (!raw?.trim()) throw new Error("Missing required env: MNEMONIC");
+  return String(raw)
+    .trim()
+    .replace(/^\uFEFF/, "")
+    .replace(/\uFEFF/g, "")
+    .replace(/\u200B/g, "")
+    .replace(/\u00a0/g, " ")
+    .split(/\s+/)
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+}
+
 function optional(name, fallback = "") {
   return process.env[name]?.trim() ?? fallback;
 }
@@ -53,7 +74,7 @@ export const env = {
   port: intEnv("PORT", 3000),
   logLevel: optional("LOG_LEVEL", "info"),
   databaseUrl: required("DATABASE_URL"),
-  mnemonic: required("MNEMONIC"),
+  mnemonic: loadNormalizedMnemonic(),
   jwtSecret: required("JWT_SECRET"),
   clientOrigins: listEnv(
     "CLIENT_ORIGINS",
@@ -164,7 +185,10 @@ export const env = {
 
   tronFullNode: optional("TRON_FULL_NODE", "https://api.trongrid.io"),
   /** TronScan HTTP API base (deposit tracker). Docs: https://docs.tronscan.org */
-  tronscanApiBase: optional("TRONSCAN_API_BASE", "https://apilist.tronscanapi.com"),
+  tronscanApiBase: optional(
+    "TRONSCAN_API_BASE",
+    "https://apilist.tronscanapi.com",
+  ),
   /**
    * TronScan `TRON-PRO-API-KEY` (deposit worker). Optional in .env if you store it in Admin → System settings
    * (`app_settings.TRONSCAN_API_KEY`); non-empty DB value overrides this env var after `loadAppSettingsFromDatabase`.
@@ -231,7 +255,10 @@ export const env = {
   sweepTronAutoCronMinutes: intEnv("SWEEP_TRON_AUTO_CRON_MINUTES", 30),
 
   /** Solana JSON RPC (mainnet-beta by default). */
-  solanaRpcUrl: optional("SOLANA_RPC_URL", "https://api.mainnet-beta.solana.com"),
+  solanaRpcUrl: optional(
+    "SOLANA_RPC_URL",
+    "https://api.mainnet-beta.solana.com",
+  ),
   /** SPL USDT mint (mainnet default). */
   solanaUsdtMint: optional(
     "SOLANA_USDT_MINT",

@@ -61,7 +61,9 @@ export async function listTronTrxSweepTargets() {
   return {
     configured: Boolean(master),
     master_trx_address: master || null,
-    uses_tron_usdt_master_fallback: Boolean(!re.sweepMasterTrx?.trim() && master),
+    uses_tron_usdt_master_fallback: Boolean(
+      !re.sweepMasterTrx?.trim() && master,
+    ),
     wallets: wallets.map((w) => ({
       id: w.id,
       address: w.address,
@@ -134,7 +136,8 @@ export async function sweepTronTrxOne(walletId) {
     return {
       ok: false,
       error: "AMOUNT_TOO_LARGE",
-      detail: "TRX balance exceeds safe JavaScript integer for this transfer path",
+      detail:
+        "TRX balance exceeds safe JavaScript integer for this transfer path",
     };
   }
 
@@ -197,7 +200,9 @@ export async function sweepTronTrxAll() {
           status: "skipped",
           reason: r.reason,
           ...(r.from_address ? { from_address: r.from_address } : {}),
-          ...(r.balance_atomic != null ? { balance_atomic: String(r.balance_atomic) } : {}),
+          ...(r.balance_atomic != null
+            ? { balance_atomic: String(r.balance_atomic) }
+            : {}),
           ...(r.detail ? { detail: r.detail } : {}),
         });
       } else {

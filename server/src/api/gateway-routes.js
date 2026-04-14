@@ -2,6 +2,7 @@ import { Router } from "express";
 import { Chain, TxStatus } from "@prisma/client";
 import { formatAtomicAmountString } from "../lib/format-atomic-amount.js";
 import { prisma } from "../lib/prisma.js";
+import { env } from "../config/env.js";
 import { re } from "../config/runtime-env.js";
 import { assignPooledWalletForDeposit } from "../services/wallet/wallet-service.js";
 import { logger } from "../lib/logger.js";
@@ -18,6 +19,7 @@ import {
   listMerchantSupportedCurrencyPairs,
   merchantChainAllowsRail,
   normalizeAssetPart,
+  railNotEnabledForMerchantMessage,
   resolveDepositRail,
 } from "../config/payment-rails.js";
 import { isChainLiveForPlatform } from "../lib/chain-enable.js";
@@ -300,7 +302,10 @@ router.post("/api/v1/gateway/deposit-address", async (req, res) => {
           network,
         },
       });
-      res.status(403).json({ error: "rail_not_enabled_for_merchant" });
+      res.status(403).json({
+        error: "rail_not_enabled_for_merchant",
+        message: railNotEnabledForMerchantMessage(merchant, rail),
+      });
       return;
     }
     if (!isChainLiveForPlatform(re.chainEnabledRecord, rail.chain)) {
@@ -472,7 +477,11 @@ router.post("/api/v1/gateway/deposit-address", async (req, res) => {
         error: String(e).slice(0, 500),
       },
     });
-    res.status(500).json({ error: "internal error" });
+    res.status(500).json(
+      env.nodeEnv === "development"
+        ? { error: "internal error", message: String(e).slice(0, 500) }
+        : { error: "internal error" },
+    );
   }
 });
 
@@ -540,6 +549,7 @@ async function handleSupportedCurrency(req, res, authFn) {
           status: 200,
           pairs_count: pairs.length,
           gateway_environment: gwEnv,
+          gateway_tron_usdt_only: re.gatewayTronUsdtOnly,
           default_currency: defaultCurrencyOut,
           default_network: defaultNetworkOut,
         },
@@ -551,6 +561,7 @@ async function handleSupportedCurrency(req, res, authFn) {
       default_currency: defaultCurrencyOut,
       default_network: defaultNetworkOut,
       gateway_environment: gwEnv,
+      gateway_tron_usdt_only: re.gatewayTronUsdtOnly,
     });
   } catch (e) {
     logger.error("gateway supported-currency failed", { err: String(e) });
@@ -682,7 +693,10 @@ router.post("/api/v1/gateway/create-wallet", async (req, res) => {
           user_id: userId,
         },
       });
-      res.status(403).json({ error: "rail_not_enabled_for_merchant" });
+      res.status(403).json({
+        error: "rail_not_enabled_for_merchant",
+        message: railNotEnabledForMerchantMessage(merchant, rail),
+      });
       return;
     }
     if (!isChainLiveForPlatform(re.chainEnabledRecord, rail.chain)) {

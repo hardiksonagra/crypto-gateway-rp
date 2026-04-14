@@ -132,7 +132,11 @@ async function sendTrxTopUpFromFunder(toAddress, amountSun) {
  *
  * @param {{ id: string, address: string, derivationIndex: number }} wallet
  */
-export async function sweepTronUsdtOneWithAutoTopUp(wallet, master, contractAddr) {
+export async function sweepTronUsdtOneWithAutoTopUp(
+  wallet,
+  master,
+  contractAddr,
+) {
   const minAtomic = re.sweepTronUsdtMinAtomic;
 
   if (tronAddrEq(wallet.address, master)) {
@@ -150,7 +154,11 @@ export async function sweepTronUsdtOneWithAutoTopUp(wallet, master, contractAddr
       deposit_address: wallet.address,
       err: String(e),
     });
-    return { status: "failed", error: "USDT_BALANCE_READ_FAILED", detail: String(e) };
+    return {
+      status: "failed",
+      error: "USDT_BALANCE_READ_FAILED",
+      detail: String(e),
+    };
   }
 
   if (usdtAtomic < minAtomic) {
@@ -307,7 +315,12 @@ export async function runAutomatedTronUsdtSweepRound() {
       at: started,
       reason: "SWEEP_MASTER_TRON_NOT_SET",
     });
-    return { round_started_at: started, master: "", wallet_count: 0, results: [] };
+    return {
+      round_started_at: started,
+      master: "",
+      wallet_count: 0,
+      results: [],
+    };
   }
 
   let contractAddr;

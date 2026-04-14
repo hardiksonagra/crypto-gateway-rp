@@ -165,6 +165,24 @@ export function merchantChainAllowsRail(merchant, rail) {
 }
 
 /**
+ * Human-readable hint when {@link merchantChainAllowsRail} is false.
+ * @param {import("@prisma/client").Merchant} merchant
+ * @param {PaymentRail} rail
+ * @returns {string}
+ */
+export function railNotEnabledForMerchantMessage(merchant, rail) {
+  const pair = `${rail.currency}/${rail.network}`;
+  if (re.gatewayTronUsdtOnly) {
+    return `Only USDT on TRC20 is allowed while GATEWAY_TRON_USDT_ONLY is on (requested ${pair}). Set GATEWAY_TRON_USDT_ONLY to false or 0 in .env or Admin → System settings, then restart the API process.`;
+  }
+  const keys = merchant.supportedDepositRails ?? [];
+  if (keys.length > 0) {
+    return `${pair} is not in your saved supported deposit rails. Open Gateway & webhooks → Save the rails you need, or call GET /api/v1/gateway/supported-currency for the live list.`;
+  }
+  return `${pair} is not allowed: chain ${rail.chain} is missing from this merchant's default chains, or save explicit supported rails that include this pair.`;
+}
+
+/**
  * @param {Array<{ currency: string, network: string, chain: Chain }>} pairs
  * @returns {Array<{ currency: string, network: string, chain: Chain }>}
  */

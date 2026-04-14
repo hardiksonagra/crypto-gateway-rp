@@ -120,7 +120,7 @@ X-Merchant-Id: {merchant numeric id}
 X-Token: {see MERCHANT_API_INTEGRATION.md — encrypt canonical {"api_key":"<secret>"}}
 ```
 
-**200** — `pairs`, `default_currency`, `default_network`, `gateway_environment` (reflects resolved live/sandbox from the merchant **portal profile** unless you overrode with `gateway_environment`).
+**200** — `pairs`, `default_currency`, `default_network`, `gateway_environment`, `gateway_tron_usdt_only`. Each entry in `pairs` is `{ "currency", "network", "chain" }` (same rail columns as §4). If `gateway_tron_usdt_only` is true, only **USDT / TRC20** is listed and accepted, even when the merchant saved more rails in the portal.
 
 ---
 

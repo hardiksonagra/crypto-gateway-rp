@@ -37,14 +37,16 @@ export const re = {
   },
 
   get paymentPagePublicUrl() {
-    return getResolvedString("PAYMENT_PAGE_PUBLIC_URL", () =>
-      env.paymentPagePublicUrl,
+    return getResolvedString(
+      "PAYMENT_PAGE_PUBLIC_URL",
+      () => env.paymentPagePublicUrl,
     );
   },
 
   get passwordResetTtlMinutes() {
-    return getResolvedInt("PASSWORD_RESET_TTL_MINUTES", () =>
-      env.passwordResetTtlMinutes,
+    return getResolvedInt(
+      "PASSWORD_RESET_TTL_MINUTES",
+      () => env.passwordResetTtlMinutes,
     );
   },
 
@@ -89,7 +91,10 @@ export const re = {
   },
 
   get confirmationsSolana() {
-    return getResolvedInt("CONFIRMATIONS_SOLANA", () => env.confirmationsSolana);
+    return getResolvedInt(
+      "CONFIRMATIONS_SOLANA",
+      () => env.confirmationsSolana,
+    );
   },
 
   get workerPollMs() {
@@ -97,44 +102,51 @@ export const re = {
   },
 
   get walletScanTtlMinutes() {
-    return getResolvedInt("WALLET_SCAN_TTL_MINUTES", () =>
-      env.walletScanTtlMinutes,
+    return getResolvedInt(
+      "WALLET_SCAN_TTL_MINUTES",
+      () => env.walletScanTtlMinutes,
     );
   },
 
   get walletAssignmentHoldMinutes() {
-    return getResolvedInt("WALLET_ASSIGNMENT_HOLD_MINUTES", () =>
-      env.walletAssignmentHoldMinutes,
+    return getResolvedInt(
+      "WALLET_ASSIGNMENT_HOLD_MINUTES",
+      () => env.walletAssignmentHoldMinutes,
     );
   },
 
   get walletPoolHoldReleaseCronMinutes() {
-    return getResolvedInt("WALLET_POOL_HOLD_RELEASE_CRON_MINUTES", () =>
-      env.walletPoolHoldReleaseCronMinutes,
+    return getResolvedInt(
+      "WALLET_POOL_HOLD_RELEASE_CRON_MINUTES",
+      () => env.walletPoolHoldReleaseCronMinutes,
     );
   },
 
   get lateDepositRecheckHours() {
-    return getResolvedInt("LATE_DEPOSIT_RECHECK_HOURS", () =>
-      env.lateDepositRecheckHours,
+    return getResolvedInt(
+      "LATE_DEPOSIT_RECHECK_HOURS",
+      () => env.lateDepositRecheckHours,
     );
   },
 
   get depositFullScanIntervalHours() {
-    return getResolvedInt("DEPOSIT_FULL_SCAN_INTERVAL_HOURS", () =>
-      env.depositFullScanIntervalHours,
+    return getResolvedInt(
+      "DEPOSIT_FULL_SCAN_INTERVAL_HOURS",
+      () => env.depositFullScanIntervalHours,
     );
   },
 
   get workerLogRailCounts() {
-    return getResolvedString("WORKER_LOG_RAIL_COUNTS", () =>
-      env.workerLogRailCounts,
+    return getResolvedString(
+      "WORKER_LOG_RAIL_COUNTS",
+      () => env.workerLogRailCounts,
     );
   },
 
   get depositScannerTronOnly() {
-    return getResolvedBool("DEPOSIT_SCANNER_TRON_ONLY", () =>
-      env.depositScannerTronOnly,
+    return getResolvedBool(
+      "DEPOSIT_SCANNER_TRON_ONLY",
+      () => env.depositScannerTronOnly,
     );
   },
 
@@ -143,7 +155,10 @@ export const re = {
    * @returns {Record<string, boolean>}
    */
   get chainEnabledRecord() {
-    const raw = getResolvedString("CHAIN_ENABLED", () => env.chainEnabledJson ?? "{}");
+    const raw = getResolvedString(
+      "CHAIN_ENABLED",
+      () => env.chainEnabledJson ?? "{}",
+    );
     return parseChainEnabledRecord(raw);
   },
 
@@ -168,14 +183,17 @@ export const re = {
   },
 
   get etherscanApiBase() {
-    return getResolvedString("ETHERSCAN_API_BASE", () => env.etherscanApiBase).replace(
-      /\/$/,
-      "",
-    );
+    return getResolvedString(
+      "ETHERSCAN_API_BASE",
+      () => env.etherscanApiBase,
+    ).replace(/\/$/, "");
   },
 
   get etherscanApiKey() {
-    return getResolvedString("ETHERSCAN_API_KEY", () => env.etherscanApiKey ?? "");
+    return getResolvedString(
+      "ETHERSCAN_API_KEY",
+      () => env.etherscanApiKey ?? "",
+    );
   },
 
   get tronFullNode() {
@@ -183,14 +201,17 @@ export const re = {
   },
 
   get tronscanApiBase() {
-    return getResolvedString("TRONSCAN_API_BASE", () => env.tronscanApiBase).replace(
-      /\/$/,
-      "",
-    );
+    return getResolvedString(
+      "TRONSCAN_API_BASE",
+      () => env.tronscanApiBase,
+    ).replace(/\/$/, "");
   },
 
   get tronscanApiKey() {
-    return getResolvedString("TRONSCAN_API_KEY", () => env.tronscanApiKey ?? "");
+    return getResolvedString(
+      "TRONSCAN_API_KEY",
+      () => env.tronscanApiKey ?? "",
+    );
   },
 
   get tronSolidityNode() {
@@ -214,48 +235,65 @@ export const re = {
   },
 
   get btcExplorerApiBase() {
-    return getResolvedString("BTC_EXPLORER_API_BASE", () =>
-      env.btcExplorerApiBase,
+    return getResolvedString(
+      "BTC_EXPLORER_API_BASE",
+      () => env.btcExplorerApiBase,
     );
   },
 
   get sweepMasterEvm() {
-    return getResolvedString("SWEEP_MASTER_EVM", () => env.sweepMasterEvm ?? "");
+    return getResolvedString(
+      "SWEEP_MASTER_EVM",
+      () => env.sweepMasterEvm ?? "",
+    );
   },
 
   get sweepMasterTron() {
-    return getResolvedString("SWEEP_MASTER_TRON", () => env.sweepMasterTron ?? "");
+    return getResolvedString(
+      "SWEEP_MASTER_TRON",
+      () => env.sweepMasterTron ?? "",
+    );
   },
 
   get sweepMasterTrx() {
-    return getResolvedString("SWEEP_MASTER_TRX", () => env.sweepMasterTrx ?? "");
+    return getResolvedString(
+      "SWEEP_MASTER_TRX",
+      () => env.sweepMasterTrx ?? "",
+    );
   },
 
   get sweepMasterUsdtEth() {
-    return getResolvedString("SWEEP_MASTER_USDT_ETH", () =>
-      env.sweepMasterUsdtEth ?? "",
+    return getResolvedString(
+      "SWEEP_MASTER_USDT_ETH",
+      () => env.sweepMasterUsdtEth ?? "",
     );
   },
 
   get sweepMasterUsdtBnb() {
-    return getResolvedString("SWEEP_MASTER_USDT_BNB", () =>
-      env.sweepMasterUsdtBnb ?? "",
+    return getResolvedString(
+      "SWEEP_MASTER_USDT_BNB",
+      () => env.sweepMasterUsdtBnb ?? "",
     );
   },
 
   get sweepMasterBtc() {
-    return getResolvedString("SWEEP_MASTER_BTC", () => env.sweepMasterBtc ?? "");
+    return getResolvedString(
+      "SWEEP_MASTER_BTC",
+      () => env.sweepMasterBtc ?? "",
+    );
   },
 
   get sweepMasterSolana() {
-    return getResolvedString("SWEEP_MASTER_SOLANA", () =>
-      env.sweepMasterSolana ?? "",
+    return getResolvedString(
+      "SWEEP_MASTER_SOLANA",
+      () => env.sweepMasterSolana ?? "",
     );
   },
 
   get sweepTrxFunderAddress() {
-    return getResolvedString("SWEEP_TRX_FUNDER_ADDRESS", () =>
-      env.sweepTrxFunderAddress ?? "",
+    return getResolvedString(
+      "SWEEP_TRX_FUNDER_ADDRESS",
+      () => env.sweepTrxFunderAddress ?? "",
     );
   },
 
@@ -264,20 +302,23 @@ export const re = {
   },
 
   get sweepTronUsdtMinAtomic() {
-    return getResolvedBigInt("SWEEP_TRON_USDT_MIN_ATOMIC", () =>
-      env.sweepTronUsdtMinAtomic,
+    return getResolvedBigInt(
+      "SWEEP_TRON_USDT_MIN_ATOMIC",
+      () => env.sweepTronUsdtMinAtomic,
     );
   },
 
   get sweepTronAutoCronEnabled() {
-    return getResolvedBool("SWEEP_TRON_AUTO_CRON_ENABLED", () =>
-      env.sweepTronAutoCronEnabled,
+    return getResolvedBool(
+      "SWEEP_TRON_AUTO_CRON_ENABLED",
+      () => env.sweepTronAutoCronEnabled,
     );
   },
 
   get sweepTronAutoCronMinutes() {
-    return getResolvedInt("SWEEP_TRON_AUTO_CRON_MINUTES", () =>
-      env.sweepTronAutoCronMinutes,
+    return getResolvedInt(
+      "SWEEP_TRON_AUTO_CRON_MINUTES",
+      () => env.sweepTronAutoCronMinutes,
     );
   },
 
@@ -294,14 +335,16 @@ export const re = {
   },
 
   get gatewayTronUsdtOnly() {
-    return getResolvedBoolTronGateway("GATEWAY_TRON_USDT_ONLY", () =>
-      env.gatewayTronUsdtOnly,
+    return getResolvedBoolTronGateway(
+      "GATEWAY_TRON_USDT_ONLY",
+      () => env.gatewayTronUsdtOnly,
     );
   },
 
   get outboundRpcMaxPerSecond() {
-    return getResolvedInt("OUTBOUND_RPC_MAX_PER_SECOND", () =>
-      env.outboundRpcMaxPerSecond,
+    return getResolvedInt(
+      "OUTBOUND_RPC_MAX_PER_SECOND",
+      () => env.outboundRpcMaxPerSecond,
     );
   },
 };

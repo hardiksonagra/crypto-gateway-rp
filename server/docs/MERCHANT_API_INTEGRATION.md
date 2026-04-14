@@ -59,7 +59,7 @@ GET /api/v1/auth/me
 Authorization: Bearer <JWT>
 ```
 
-Returns your profile fields used by the UI, including `defaultChains`, `defaultCurrency`, `defaultNetwork`, `supportedDepositRails`, `callbackUrl`, `apiKeyHint` (last characters of the key only — **not** the secret).
+Returns your profile fields used by the UI, including `defaultChains`, `defaultCurrency`, `defaultNetwork`, `supportedDepositRails`, `callbackUrl`, `apiKeyHint` (last characters of the key only — **not** the secret). Also **`gateway_tron_usdt_only`** (boolean) and **`gateway_supported_rail_keys`** (string array like `["USDT|TRC20",…]`): the rails the **gateway API** will actually accept — same as `GET /api/v1/gateway/supported-currency` when using your key. These can be a **subset** of `supportedDepositRails` while `gateway_tron_usdt_only` is true.
 
 ### 1.4 Other merchant-scoped routes
 
@@ -156,7 +156,7 @@ Build `X-Token` exactly like other gateway tokens, but the encrypted **plaintext
 
 **Live vs sandbox:** you do **not** need to pass `gateway_environment`. The gateway uses the merchant’s **portal profile** (Live / Sandbox in **Settings** — same as the dashboard). Optional query `?gateway_environment=live` or `sandbox` is only for **overriding** that default when live and sandbox share **one** API key and you need the other environment without changing Settings.
 
-**200** — `{ "pairs": [...], "default_currency", "default_network", "gateway_environment" }`.
+**200** — `{ "pairs": [...], "default_currency", "default_network", "gateway_environment", "gateway_tron_usdt_only" }`. Each `pairs[]` object includes `currency`, `network`, and `chain` (underlying chain code, same meaning as `deposit-address` / `create-wallet` responses). When `gateway_tron_usdt_only` is **true** (default in many deployments), the gateway only allows **USDT + TRC20** regardless of how many rails you saved in Settings — `pairs` will contain that one rail only until an admin sets `GATEWAY_TRON_USDT_ONLY` to **false** / **0** (env or System settings) and the API process is restarted if needed.
 
 ### 5.1 Get or create deposit address
 

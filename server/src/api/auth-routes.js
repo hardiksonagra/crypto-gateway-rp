@@ -15,6 +15,10 @@ import { logger } from "../lib/logger.js";
 import { re } from "../config/runtime-env.js";
 import { listMerchantSelectableChainsForAdmin } from "../lib/chain-enable.js";
 import {
+  depositRailKey,
+  listMerchantSupportedCurrencyPairs,
+} from "../config/payment-rails.js";
+import {
   logAuthenticatedPortalMutation,
   redactPanelBody,
 } from "../services/panel-audit-log.js";
@@ -153,6 +157,8 @@ router.get("/api/v1/auth/me", requireAuth(), async (req, res) => {
       defaultCurrency: "USDT",
       defaultNetwork: "TRC20",
       supportedDepositRails: [],
+      gateway_tron_usdt_only: false,
+      gateway_supported_rail_keys: [],
       callbackUrl: null,
       apiKeyHint: null,
       sandboxApiKeyHint: null,
@@ -239,6 +245,11 @@ router.get("/api/v1/auth/me", requireAuth(), async (req, res) => {
   }
   out.platform_enabled_chains = listMerchantSelectableChainsForAdmin(
     re.chainEnabledRecord,
+  );
+  const gatewayPairs = listMerchantSupportedCurrencyPairs(user);
+  out.gateway_tron_usdt_only = re.gatewayTronUsdtOnly;
+  out.gateway_supported_rail_keys = gatewayPairs.map((p) =>
+    depositRailKey(p.currency, p.network),
   );
   res.json(out);
 });

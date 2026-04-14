@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../../api";
 import {
+  ALL_DEPOSIT_RAIL_OPTIONS,
   depositRailsForChains,
   railKeyFromParts,
   splitRailKey,
@@ -95,6 +96,20 @@ function EndpointRow({ textToCopy, children, breakAll }) {
 }
 
 /**
+ * Rail keys for the Supported Currency table — same as
+ * `GET /api/v1/gateway/supported-currency` `pairs` (server applies
+ * `GATEWAY_TRON_USDT_ONLY` and chain flags).
+ * @param {object} u - `/api/v1/auth/me` JSON
+ * @returns {string[]}
+ */
+function railKeysForGatewayDocsTable(u) {
+  if (Array.isArray(u.gateway_supported_rail_keys)) {
+    return u.gateway_supported_rail_keys;
+  }
+  return effectiveMerchantRailKeys(u);
+}
+
+/**
  * Same rail keys as the Gateway & webhooks form (`Settings.js`).
  * @param {object} u - `/api/v1/auth/me` JSON
  * @returns {string[]}
@@ -127,10 +142,16 @@ function effectiveMerchantRailKeys(u) {
 
 /**
  * @param {string} key
- * @returns {{ currency: string, network: string }}
+ * @returns {{ currency: string, network: string, chain: string }}
  */
 function rowForRailKey(key) {
-  return splitRailKey(key);
+  const { currency, network } = splitRailKey(key);
+  const opt = ALL_DEPOSIT_RAIL_OPTIONS.find((o) => o.key === key);
+  return {
+    currency,
+    network,
+    chain: opt?.chain ?? "—",
+  };
 }
 
 /** Mask length in doc examples (prefix before `api_key_hint`). */
@@ -253,6 +274,7 @@ function Pre({ children, breakAll }) {
 
 export default function GatewayApiDocs() {
   const [railRows, setRailRows] = useState(null);
+  const [gatewayTronOnlyDoc, setGatewayTronOnlyDoc] = useState(false);
   const [apiKeyHint, setApiKeyHint] = useState(null);
   const [merchantNumericId, setMerchantNumericId] = useState(null);
   const [hasSandboxApiKey, setHasSandboxApiKey] = useState(false);
@@ -264,8 +286,8 @@ export default function GatewayApiDocs() {
     api("/api/v1/auth/me")
       .then((u) => {
         if (cancelled) return;
-        const keys = effectiveMerchantRailKeys(u);
-        setRailRows(keys.map(rowForRailKey));
+        setGatewayTronOnlyDoc(Boolean(u.gateway_tron_usdt_only));
+        setRailRows(railKeysForGatewayDocsTable(u).map(rowForRailKey));
         const h = u.apiKeyHint;
         setApiKeyHint(typeof h === "string" && h.trim() ? h.trim() : null);
         setMerchantNumericId(
@@ -280,6 +302,7 @@ export default function GatewayApiDocs() {
       .catch(() => {
         if (!cancelled) {
           setRailRows([]);
+          setGatewayTronOnlyDoc(false);
           setApiKeyHint(null);
           setMerchantNumericId(null);
           setHasSandboxApiKey(false);
@@ -360,6 +383,7 @@ export default function GatewayApiDocs() {
                   <tr>
                     <th>currency</th>
                     <th>network</th>
+                    <th>chain</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -367,12 +391,31 @@ export default function GatewayApiDocs() {
                     <tr key={`${row.currency}|${row.network}`}>
                       <td>{row.currency}</td>
                       <td>{row.network}</td>
+                      <td>{row.chain}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
           )}
+          {gatewayTronOnlyDoc ? (
+            <p className="mt-3 text-xs leading-relaxed text-amber-200/80">
+              This server is in{" "}
+              <span className="font-mono text-amber-100/90">
+                GATEWAY_TRON_USDT_ONLY
+              </span>{" "}
+              mode: only <span className="font-mono">USDT</span> on{" "}
+              <span className="font-mono">TRC20</span> is returned by{" "}
+              <span className="font-mono">
+                GET /api/v1/gateway/supported-currency
+              </span>
+              . You may still see more rails in Settings; they stay saved but are
+              inactive until an admin sets{" "}
+              <span className="font-mono">GATEWAY_TRON_USDT_ONLY=false</span>{" "}
+              (or <span className="font-mono">0</span>) in env or System settings
+              and restarts the API.
+            </p>
+          ) : null}
         </div>
       </section>
 
@@ -390,9 +433,16 @@ export default function GatewayApiDocs() {
         </EndpointRow>
         <p className="mt-3 text-sm text-white/55">
           Returns every <span className="font-mono">currency</span> +{" "}
-          <span className="font-mono">network</span> pair your merchant can use
-          on the gateway, in order (same rules as the table above — use it to
-          build checkout dropdowns on your backend).
+          <span className="font-mono">network</span> +{" "}
+          <span className="font-mono">chain</span> row your merchant can use on
+          the gateway, in order (same columns as the table above — use it to
+          build checkout dropdowns on your backend). The boolean{" "}
+          <span className="font-mono">gateway_tron_usdt_only</span> mirrors
+          server config: when <span className="font-mono">true</span>, only
+          USDT·TRC20 is allowed and <span className="font-mono">pairs</span>{" "}
+          stays a single entry until multi-rail mode is enabled (env{" "}
+          <span className="font-mono">GATEWAY_TRON_USDT_ONLY=false</span> or
+          System settings).
         </p>
         <p className="mt-3 text-xs font-medium text-white/45">
           GET + headers (no JSON body)
@@ -436,7 +486,9 @@ X-Token: <base64 from buildXToken on canonical JSON of:
     { "currency": "USDT", "network": "TRC20", "chain": "TRON" }
   ],
   "default_currency": "USDT",
-  "default_network": "TRC20"
+  "default_network": "TRC20",
+  "gateway_environment": "live",
+  "gateway_tron_usdt_only": true
 }`}</Pre>
         <p className="mt-4 text-xs text-white/45">
           <span className="font-mono">401 invalid_x_token</span> if auth fails.

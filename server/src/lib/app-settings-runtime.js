@@ -477,8 +477,9 @@ export async function upsertAppSettingsFromCurrentEnv() {
 
   await loadAppSettingsFromDatabase();
 
-  const considered = APP_SETTING_DEFINITIONS.filter((d) => !d.hideFromAdminList)
-    .length;
+  const considered = APP_SETTING_DEFINITIONS.filter(
+    (d) => !d.hideFromAdminList,
+  ).length;
   const skipped = considered - ops.length;
   return { upserted: ops.length, skipped };
 }
@@ -487,76 +488,78 @@ export async function upsertAppSettingsFromCurrentEnv() {
  * Admin GET payload.
  */
 export function buildAppSettingsAdminList() {
-  return APP_SETTING_DEFINITIONS.filter((d) => !d.hideFromAdminList).map((def) => {
-    const envVal = envFallbackString(def.key);
-    const dbVal = hasDbOverride(def.key) ? rawDbValue(def.key) : null;
-    const effective = hasDbOverride(def.key) ? String(dbVal ?? "") : envVal;
-    let displayEffective = effective;
-    if (def.sensitive) {
-      /** DB override: round-trip in admin UI (plain text). `.env` only: never send secret to browser. */
-      if (dbVal?.trim()) {
-        displayEffective = String(dbVal);
-      } else if (envVal?.trim()) {
-        displayEffective = MASK;
+  return APP_SETTING_DEFINITIONS.filter((d) => !d.hideFromAdminList).map(
+    (def) => {
+      const envVal = envFallbackString(def.key);
+      const dbVal = hasDbOverride(def.key) ? rawDbValue(def.key) : null;
+      const effective = hasDbOverride(def.key) ? String(dbVal ?? "") : envVal;
+      let displayEffective = effective;
+      if (def.sensitive) {
+        /** DB override: round-trip in admin UI (plain text). `.env` only: never send secret to browser. */
+        if (dbVal?.trim()) {
+          displayEffective = String(dbVal);
+        } else if (envVal?.trim()) {
+          displayEffective = MASK;
+        }
       }
-    }
-    if (def.type === "json" && effective?.trim()) {
-      try {
-        displayEffective = JSON.stringify(JSON.parse(effective), null, 2);
-      } catch {
-        /* keep raw */
+      if (def.type === "json" && effective?.trim()) {
+        try {
+          displayEffective = JSON.stringify(JSON.parse(effective), null, 2);
+        } catch {
+          /* keep raw */
+        }
       }
-    }
-    if (def.type === "usdt6" && effective?.trim()) {
-      displayEffective = atomicUsdt6ToDecimalDisplay(effective);
-    }
-    return {
-      key: def.key,
-      label: def.label,
-      category: def.category,
-      type: def.type,
-      sensitive: Boolean(def.sensitive),
-      has_db_override: Boolean(dbVal != null && hasDbOverride(def.key)),
-      env_display: coerceEnvStringForDisplay(def, envVal),
-      effective_display: displayEffective,
-      /**
-       * For Formik: sensitive values prefilled from DB so “Save” does not wipe them when other fields change.
-       * Empty sensitive + DB row still means “remove override” on save. `.env`-only secrets stay out of the form.
-       */
-      form_initial: def.sensitive
-        ? dbVal != null && String(dbVal).trim() !== ""
-          ? String(dbVal)
-          : ""
-        : def.type === "bool" || def.type === "bool_tron_gateway"
-          ? hasDbOverride(def.key)
-            ? (() => {
-                const s = String(dbVal ?? "")
-                  .trim()
-                  .toLowerCase();
-                return s === "true" || s === "1" ? "true" : "false";
-              })()
+      if (def.type === "usdt6" && effective?.trim()) {
+        displayEffective = atomicUsdt6ToDecimalDisplay(effective);
+      }
+      return {
+        key: def.key,
+        label: def.label,
+        category: def.category,
+        type: def.type,
+        sensitive: Boolean(def.sensitive),
+        has_db_override: Boolean(dbVal != null && hasDbOverride(def.key)),
+        env_display: coerceEnvStringForDisplay(def, envVal),
+        effective_display: displayEffective,
+        /**
+         * For Formik: sensitive values prefilled from DB so “Save” does not wipe them when other fields change.
+         * Empty sensitive + DB row still means “remove override” on save. `.env`-only secrets stay out of the form.
+         */
+        form_initial: def.sensitive
+          ? dbVal != null && String(dbVal).trim() !== ""
+            ? String(dbVal)
             : ""
-          : def.type === "json"
-            ? (() => {
-                const src = hasDbOverride(def.key)
+          : def.type === "bool" || def.type === "bool_tron_gateway"
+            ? hasDbOverride(def.key)
+              ? (() => {
+                  const s = String(dbVal ?? "")
+                    .trim()
+                    .toLowerCase();
+                  return s === "true" || s === "1" ? "true" : "false";
+                })()
+              : ""
+            : def.type === "json"
+              ? (() => {
+                  const src = hasDbOverride(def.key)
+                    ? String(dbVal ?? "")
+                    : envVal;
+                  if (!src?.trim()) return "{}";
+                  try {
+                    return JSON.stringify(JSON.parse(src), null, 2);
+                  } catch {
+                    return src;
+                  }
+                })()
+              : def.type === "usdt6"
+                ? atomicUsdt6ToDecimalDisplay(
+                    hasDbOverride(def.key) ? String(dbVal ?? "") : envVal,
+                  )
+                : hasDbOverride(def.key)
                   ? String(dbVal ?? "")
-                  : envVal;
-                if (!src?.trim()) return "{}";
-                try {
-                  return JSON.stringify(JSON.parse(src), null, 2);
-                } catch {
-                  return src;
-                }
-              })()
-            : def.type === "usdt6"
-              ? atomicUsdt6ToDecimalDisplay(
-                  hasDbOverride(def.key) ? String(dbVal ?? "") : envVal,
-                )
-              : hasDbOverride(def.key)
-                ? String(dbVal ?? "")
-                : envVal,
-    };
-  });
+                  : envVal,
+      };
+    },
+  );
 }
 
 /**

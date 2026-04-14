@@ -3,7 +3,10 @@ import { Chain } from "@prisma/client";
 import { generateGatewayReferenceTransactionId } from "crypto-payment-gateway/src/lib/gateway-reference-transaction-id.js";
 import { env } from "crypto-payment-gateway/src/config/env.js";
 import { re } from "crypto-payment-gateway/src/config/runtime-env.js";
-import { EVM_CHAINS, isEvmChain } from "crypto-payment-gateway/src/config/chains.js";
+import {
+  EVM_CHAINS,
+  isEvmChain,
+} from "crypto-payment-gateway/src/config/chains.js";
 import { isChainLiveForPlatform } from "crypto-payment-gateway/src/lib/chain-enable.js";
 import { nextScanExpiresAt } from "crypto-payment-gateway/src/lib/wallet-scan.js";
 import { deriveEvmAddress } from "crypto-payment-gateway/src/services/wallet/evm-wallet.js";
@@ -16,15 +19,14 @@ import { deriveSolanaAddressBase58 } from "crypto-payment-gateway/src/services/w
 
 /** @param {unknown} e */
 function isWalletAssignmentTableMissingError(e) {
-  const err = /** @type {{ code?: string, message?: string, meta?: { code?: string, message?: string } }} */ (
-    e && typeof e === "object" ? e : {}
-  );
+  const err =
+    /** @type {{ code?: string, message?: string, meta?: { code?: string, message?: string } }} */ (
+      e && typeof e === "object" ? e : {}
+    );
   const blob = `${String(err.message ?? "")} ${String(err.meta?.message ?? "")}`;
   if (!blob.includes("wallet_assignment_events")) return false;
   return (
-    err.code === "P2010" ||
-    err.code === "P2021" ||
-    err.meta?.code === "42P01"
+    err.code === "P2010" || err.code === "P2021" || err.meta?.code === "42P01"
   );
 }
 
@@ -52,7 +54,9 @@ export async function assignPooledWalletForDeposit(tx, p) {
     throw new Error("CHAIN_DISABLED_FOR_PLATFORM");
   }
   const refTxRaw =
-    p.referenceTransactionId != null ? String(p.referenceTransactionId).trim() : "";
+    p.referenceTransactionId != null
+      ? String(p.referenceTransactionId).trim()
+      : "";
   /** Always set: merchant `transaction_id` or gateway-generated 64-char hex (fits VARCHAR(256)). */
   const referenceTransactionId = refTxRaw
     ? refTxRaw.slice(0, 256)
@@ -119,7 +123,11 @@ export async function assignPooledWalletForDeposit(tx, p) {
         source = "new_wallet";
       } catch (e) {
         const msg = String(e);
-        if (!msg.includes("Unique constraint") && !msg.includes("unique constraint")) throw e;
+        if (
+          !msg.includes("Unique constraint") &&
+          !msg.includes("unique constraint")
+        )
+          throw e;
         picked = await tryPickFreePoolWallet(tx, pickArgs);
         if (picked) {
           wallet = picked;
@@ -166,8 +174,16 @@ export async function assignPooledWalletForDeposit(tx, p) {
  * @param {object} args
  */
 async function tryPickFreePoolWallet(tx, args) {
-  const { merchantId, environment, chain, currency, network, userId, holdUntil, scanAt } =
-    args;
+  const {
+    merchantId,
+    environment,
+    chain,
+    currency,
+    network,
+    userId,
+    holdUntil,
+    scanAt,
+  } = args;
 
   const out = await tx.$queryRaw`
     UPDATE "wallets" w
@@ -252,7 +268,12 @@ async function createNewPooledWallet(tx, args) {
     address = peerOnChain.address;
     derivationIndex = peerOnChain.derivationIndex;
   } else {
-    derivationIndex = await nextDerivationIndex(tx, merchantId, environment, chain);
+    derivationIndex = await nextDerivationIndex(
+      tx,
+      merchantId,
+      environment,
+      chain,
+    );
     if (isEvmChain(chain)) {
       address = deriveEvmAddress(derivationIndex);
     } else if (chain === Chain.TRON) {

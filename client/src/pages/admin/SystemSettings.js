@@ -31,12 +31,7 @@ function FieldForItem({ it }) {
         <label className={label} htmlFor={name}>
           {it.label}
         </label>
-        <Field
-          id={name}
-          name={name}
-          as="select"
-          className={input}
-        >
+        <Field id={name} name={name} as="select" className={input}>
           <option value="">Use .env default ({it.env_display || "—"})</option>
           <option value="true">true</option>
           <option value="false">false</option>
@@ -48,7 +43,8 @@ function FieldForItem({ it }) {
         />
         {it.has_db_override ? (
           <p className="mt-1 text-[11px] text-amber-200/80">
-            Database override active — choose “Use .env default” and save to clear it.
+            Database override active — choose “Use .env default” and save to
+            clear it.
           </p>
         ) : null}
       </div>
@@ -71,13 +67,22 @@ function FieldForItem({ it }) {
           className={input}
         />
         <p className="mt-1 text-[11px] text-white/45">
-          USDT amount (example: <span className="font-mono text-white/70">1</span> = 1 USDT). Server stores 6-decimal
-          atomic units; <span className="font-mono text-white/70">.env</span> default shown as USDT below.
+          USDT amount (example:{" "}
+          <span className="font-mono text-white/70">1</span> = 1 USDT). Server
+          stores 6-decimal atomic units;{" "}
+          <span className="font-mono text-white/70">.env</span> default shown as
+          USDT below.
         </p>
         <p className="mt-0.5 text-[11px] text-white/35">
-          Effective now: <span className="font-mono text-emerald-200/90">{it.effective_display || "—"} USDT</span>
+          Effective now:{" "}
+          <span className="font-mono text-emerald-200/90">
+            {it.effective_display || "—"} USDT
+          </span>
           {" · "}
-          .env: <span className="font-mono text-white/55">{it.env_display || "—"} USDT</span>
+          .env:{" "}
+          <span className="font-mono text-white/55">
+            {it.env_display || "—"} USDT
+          </span>
         </p>
         <ErrorMessage
           name={name}
@@ -94,7 +99,13 @@ function FieldForItem({ it }) {
         <label className={label} htmlFor={name}>
           {it.label}
         </label>
-        <Field id={name} name={name} as="textarea" className={textarea} spellCheck={false} />
+        <Field
+          id={name}
+          name={name}
+          as="textarea"
+          className={textarea}
+          spellCheck={false}
+        />
         <p className="mt-1 text-[11px] text-white/40">
           Must be a JSON object. Clear the field and save to fall back to .env.
         </p>
@@ -109,7 +120,11 @@ function FieldForItem({ it }) {
 
   const isSecret = it.sensitive;
   return (
-    <div className={it.type === "comma_origins" ? "lg:col-span-2" : "lg:col-span-1"}>
+    <div
+      className={
+        it.type === "comma_origins" ? "lg:col-span-2" : "lg:col-span-1"
+      }
+    >
       <label className={label} htmlFor={name}>
         {it.label}
       </label>
@@ -132,13 +147,16 @@ function FieldForItem({ it }) {
         <p className="mt-1 text-[11px] text-white/40">
           {it.has_db_override ? (
             <>
-              Value is stored in the database (shown in the field). Clear the field and save to remove
-              it and use <span className="font-mono text-white/55">.env</span> instead.
+              Value is stored in the database (shown in the field). Clear the
+              field and save to remove it and use{" "}
+              <span className="font-mono text-white/55">.env</span> instead.
             </>
           ) : (
             <>
-              <span className="font-mono text-white/55">.env</span> may define this key ({it.effective_display}
-              ); it is not loaded into the form. Enter a value and save to store an override in the database.
+              <span className="font-mono text-white/55">.env</span> may define
+              this key ({it.effective_display}
+              ); it is not loaded into the form. Enter a value and save to store
+              an override in the database.
             </>
           )}
         </p>
@@ -153,7 +171,9 @@ function FieldForItem({ it }) {
 }
 
 export default function SystemSettings() {
-  const [items, setItems] = useState(/** @type {SettingItem[] | null} */ (null));
+  const [items, setItems] = useState(
+    /** @type {SettingItem[] | null} */ (null),
+  );
   const [loadError, setLoadError] = useState(null);
 
   const load = useCallback(async () => {
@@ -193,7 +213,12 @@ export default function SystemSettings() {
   if (loadError) {
     return (
       <div className="w-full max-w-none">
-        <h1 className="font-display text-2xl font-bold" style={{ color: "var(--text-1)" }}>System settings</h1>
+        <h1
+          className="font-display text-2xl font-bold"
+          style={{ color: "var(--text-1)" }}
+        >
+          System settings
+        </h1>
         <p className="mt-4 text-sm text-rose-400">{loadError}</p>
       </div>
     );
@@ -202,7 +227,12 @@ export default function SystemSettings() {
   if (!items) {
     return (
       <div className="w-full max-w-none">
-        <h1 className="font-display text-2xl font-bold" style={{ color: "var(--text-1)" }}>System settings</h1>
+        <h1
+          className="font-display text-2xl font-bold"
+          style={{ color: "var(--text-1)" }}
+        >
+          System settings
+        </h1>
         <BrandLoader
           variant="section"
           title=""
@@ -216,19 +246,36 @@ export default function SystemSettings() {
 
   return (
     <div className="w-full max-w-none">
-      <h1 className="font-display text-2xl font-bold" style={{ color: "var(--text-1)" }}>System settings</h1>
-      <p className="mt-1 text-sm" style={{ color: "var(--text-2)" }}>Configure gateway behavior. Database overrides take effect immediately without restart.</p>
+      <h1
+        className="font-display text-2xl font-bold"
+        style={{ color: "var(--text-1)" }}
+      >
+        System settings
+      </h1>
+      <p className="mt-1 text-sm" style={{ color: "var(--text-2)" }}>
+        Configure gateway behavior. Database overrides take effect immediately
+        without restart.
+      </p>
       <p className="mt-2 max-w-3xl text-sm text-white/55 text-pretty">
-        Saving writes every field below to the database (even when a value matches{" "}
-        <span className="font-mono text-white/80">.env</span>). Bootstrap
-        secrets (database URL, mnemonic, JWT secret, encryption key, TRX funder private key) stay in{" "}
-        <span className="font-mono text-white/80">.env</span> only. The running API reloads overrides
-        on save; restart PM2{" "}
+        Saving writes every field below to the database (even when a value
+        matches <span className="font-mono text-white/80">.env</span>).
+        Bootstrap secrets (database URL, mnemonic, JWT secret, encryption key,
+        TRX funder private key) stay in{" "}
+        <span className="font-mono text-white/80">.env</span> only. The running
+        API reloads overrides on save; restart PM2{" "}
         <span className="font-mono text-white/80">crypto-gateway-worker</span> /{" "}
-        <span className="font-mono text-white/80">crypto-gateway-cron-maintenance</span> /{" "}
-        <span className="font-mono text-white/80">crypto-gateway-cron-deposit-full-scan</span> /{" "}
-        <span className="font-mono text-white/80">crypto-gateway-cron-tron-sweep</span> if you change
-        scanner poll interval or other cron-only behavior.
+        <span className="font-mono text-white/80">
+          crypto-gateway-cron-maintenance
+        </span>{" "}
+        /{" "}
+        <span className="font-mono text-white/80">
+          crypto-gateway-cron-deposit-full-scan
+        </span>{" "}
+        /{" "}
+        <span className="font-mono text-white/80">
+          crypto-gateway-cron-tron-sweep
+        </span>{" "}
+        if you change scanner poll interval or other cron-only behavior.
       </p>
 
       <div className="glass mt-8 w-full rounded-2xl p-6 lg:p-8">

@@ -210,7 +210,11 @@ export async function sweepEvmUsdtOne(walletId, chain) {
       return { ok: false, error: "TX_REVERTED" };
     }
   } catch (e) {
-    logger.error("evm usdt sweep transfer failed", { walletId, chain, err: String(e) });
+    logger.error("evm usdt sweep transfer failed", {
+      walletId,
+      chain,
+      err: String(e),
+    });
     return { ok: false, error: "TRANSFER_FAILED", detail: String(e) };
   }
 
@@ -261,7 +265,9 @@ export async function sweepEvmUsdtAll(chain) {
           status: "skipped",
           reason: r.reason,
           ...(r.from_address ? { from_address: r.from_address } : {}),
-          ...(r.balance_atomic != null ? { balance_atomic: String(r.balance_atomic) } : {}),
+          ...(r.balance_atomic != null
+            ? { balance_atomic: String(r.balance_atomic) }
+            : {}),
           ...(r.detail ? { detail: r.detail } : {}),
         });
       } else {

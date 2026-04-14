@@ -323,7 +323,8 @@ export const APP_SETTING_DEFINITIONS = [
   },
   {
     key: "SWEEP_TRX_TOPUP_SUN",
-    label: "TRX top-up base (sun, legacy — auto-sweep uses dynamic fee estimate)",
+    label:
+      "TRX top-up base (sun, legacy — auto-sweep uses dynamic fee estimate)",
     category: "Sweep · TRON auto",
     type: "bigint",
   },

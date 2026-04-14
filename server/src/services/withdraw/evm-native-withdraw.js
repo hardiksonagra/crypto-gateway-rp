@@ -1,7 +1,11 @@
 import { HDNodeWallet, JsonRpcProvider } from "ethers";
 import { MerchantGatewayEnv } from "@prisma/client";
 import { env } from "../../config/env.js";
-import { chainToRpcUrl, chainToStaticNetwork, isEvmChain } from "../../config/chains.js";
+import {
+  chainToRpcUrl,
+  chainToStaticNetwork,
+  isEvmChain,
+} from "../../config/chains.js";
 import { prisma } from "../../lib/prisma.js";
 import {
   acquireOutboundRpcSlot,
@@ -14,9 +18,13 @@ export async function sendEvmNativeFromMerchantPool(params) {
   const { merchantId, chain, toAddress, amountWei } = params;
   if (!isEvmChain(chain)) throw new Error("NOT_EVM_CHAIN");
 
-  const provider = new JsonRpcProvider(chainToRpcUrl(chain), chainToStaticNetwork(chain), {
-    staticNetwork: true,
-  });
+  const provider = new JsonRpcProvider(
+    chainToRpcUrl(chain),
+    chainToStaticNetwork(chain),
+    {
+      staticNetwork: true,
+    },
+  );
   const budgetKey = evmRpcBudgetKey(chain);
 
   const wallets = await prisma.wallet.findMany({
@@ -31,7 +39,11 @@ export async function sendEvmNativeFromMerchantPool(params) {
 
   for (const w of wallets) {
     const path = `m/44'/60'/0'/0/${w.derivationIndex}`;
-    const signer = HDNodeWallet.fromPhrase(env.mnemonic, undefined, path).connect(provider);
+    const signer = HDNodeWallet.fromPhrase(
+      env.mnemonic,
+      undefined,
+      path,
+    ).connect(provider);
     if (signer.address.toLowerCase() !== w.address.toLowerCase()) {
       continue;
     }
