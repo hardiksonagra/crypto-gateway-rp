@@ -117,7 +117,26 @@ export const env = {
   confirmationsTon: intEnv("CONFIRMATIONS_TON", 2),
   confirmationsSolana: intEnv("CONFIRMATIONS_SOLANA", 1),
 
-  workerPollMs: intEnv("WORKER_POLL_INTERVAL_MS", 8000),
+  /** USDT·ERC20 (Ethereum) deposit worker poll interval (ms). Admin: `WORKER_POLL_INTERVAL_MS_ERC20`. */
+  workerPollMsErc20: intEnv(
+    "WORKER_POLL_INTERVAL_MS_ERC20",
+    intEnv("WORKER_POLL_INTERVAL_MS", 8000),
+  ),
+  /** USDT·TRC20 (TRON) deposit worker poll interval (ms). Admin: `WORKER_POLL_INTERVAL_MS_TRC20`. */
+  workerPollMsTrc20: intEnv(
+    "WORKER_POLL_INTERVAL_MS_TRC20",
+    intEnv("WORKER_POLL_INTERVAL_MS", 8000),
+  ),
+  /**
+   * ERC20 deposit scanner: max Ethereum blocks per worker tick (each block = Etherscan getLogs, sequential).
+   * Lower = shorter `tick_duration_ms` per tick; higher = faster catch-up behind chain tip. Admin: `EVM_DEPOSIT_SCAN_MAX_BLOCKS_PER_TICK`.
+   */
+  evmDepositScanMaxBlocksPerTick: (() => {
+    const primary = intEnv("EVM_DEPOSIT_SCAN_MAX_BLOCKS_PER_TICK", 0);
+    if (primary >= 1) return Math.min(50, primary);
+    const legacy = intEnv("EVM_SCAN_MAX_BLOCKS_PER_TICK", 4);
+    return Math.min(50, Math.max(1, legacy));
+  })(),
   /** `0` = no assign TTL (`scan_expires_at` null); hot-path scan uses tx rows, one-shot, or full-scan cron. */
   walletScanTtlMinutes: intEnv("WALLET_SCAN_TTL_MINUTES", 10),
   /**
@@ -148,8 +167,8 @@ export const env = {
    */
   workerLogRailCounts: optional("WORKER_LOG_RAIL_COUNTS", "always"),
   /**
-   * When true (default), PM2 `crypto-gateway-worker` deposit scanner runs **TRON only** (native + TRC20 such as USDT).
-   * Set `DEPOSIT_SCANNER_TRON_ONLY=false` to scan EVM (ETH/BNB) and TON on each tick again.
+   * When true (default), the **ERC20** deposit worker only loads Ethereum wallets when at least one exists (lighter).
+   * Set `DEPOSIT_SCANNER_TRON_ONLY=false` to run the full ETH block walk each ERC20 tick. TRON is scanned by the TRC20 worker process.
    */
   depositScannerTronOnly: (() => {
     const v = optional("DEPOSIT_SCANNER_TRON_ONLY", "true").toLowerCase();
@@ -162,15 +181,15 @@ export const env = {
    */
   chainEnabledJson: optional("CHAIN_ENABLED", "{}"),
 
-  rpcEth: required("RPC_ETH"),
-  rpcBnb: required("RPC_BNB"),
-  rpcPolygon: required("RPC_POLYGON"),
-  rpcArbitrum: required("RPC_ARBITRUM"),
-  rpcOptimism: required("RPC_OPTIMISM"),
+  /**
+   * Ethereum JSON-RPC URL — **optional** if you only use TronScan + Etherscan for deposits/balances.
+   * Required for **USDT·ERC20 consolidate sweep** (broadcast + gas) and any code that sends native ETH txs.
+   */
+  rpcEth: optional("RPC_ETH", ""),
 
   /**
-   * Etherscan HTTP API v2 base (same pattern as `TRONSCAN_API_BASE`). Used when JSON-RPC `eth_getLogs` fails
-   * while scanning ERC20 `Transfer` logs on ETH/BNB. Docs: https://docs.etherscan.io/
+   * Etherscan HTTP API v2 base (same pattern as `TRONSCAN_API_BASE`). **USDT·ERC20 deposit scan** and admin
+   * ERC20 balance refresh use this + `ETHERSCAN_API_KEY` only (no `RPC_ETH`). Docs: https://docs.etherscan.io/
    */
   etherscanApiBase: optional(
     "ETHERSCAN_API_BASE",
@@ -179,7 +198,7 @@ export const env = {
   /**
    * Etherscan API key (same pattern as `TRONSCAN_API_KEY`): optional in .env if you store it in Admin → System settings
    * (`app_settings.ETHERSCAN_API_KEY`); non-empty DB value overrides this env var after `loadAppSettingsFromDatabase`.
-   * Create a key at https://etherscan.io/apidashboard — one v2 key covers `chainid` 1 (ETH) and 56 (BNB) on the default base.
+   * Create a key at https://etherscan.io/apidashboard — use a v2 key for `chainid` 1 (Ethereum mainnet).
    */
   etherscanApiKey: optional("ETHERSCAN_API_KEY", ""),
 
@@ -209,14 +228,9 @@ export const env = {
 
   sweepMasterEvm: optional("SWEEP_MASTER_EVM"),
   sweepMasterTron: optional("SWEEP_MASTER_TRON"),
-  /** Native TRX on TRON; if unset, TRX sweep uses `SWEEP_MASTER_TRON` (same T address). */
-  sweepMasterTrx: optional("SWEEP_MASTER_TRX"),
   /** ERC20 USDT (Ethereum) consolidation destination. */
   sweepMasterUsdtEth: optional("SWEEP_MASTER_USDT_ETH"),
-  /** BEP20 USDT (BNB Chain) consolidation destination. */
-  sweepMasterUsdtBnb: optional("SWEEP_MASTER_USDT_BNB"),
   sweepMasterBtc: optional("SWEEP_MASTER_BTC"),
-  sweepMasterSolana: optional("SWEEP_MASTER_SOLANA"),
 
   /**
    * Hex private key (no 0x prefix ok) for a hot wallet that sends **native TRX** to deposit addresses
@@ -253,17 +267,6 @@ export const env = {
     optional("SWEEP_TRON_AUTO_CRON_ENABLED", "false").toLowerCase() === "true",
   /** Minutes between automated TRON USDT sweep cron ticks (default 30). */
   sweepTronAutoCronMinutes: intEnv("SWEEP_TRON_AUTO_CRON_MINUTES", 30),
-
-  /** Solana JSON RPC (mainnet-beta by default). */
-  solanaRpcUrl: optional(
-    "SOLANA_RPC_URL",
-    "https://api.mainnet-beta.solana.com",
-  ),
-  /** SPL USDT mint (mainnet default). */
-  solanaUsdtMint: optional(
-    "SOLANA_USDT_MINT",
-    "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
-  ),
 
   /**
    * When true, allows POST /sandbox/simulate-deposit with the **live** API key too

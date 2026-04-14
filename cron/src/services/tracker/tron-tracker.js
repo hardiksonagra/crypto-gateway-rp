@@ -3,27 +3,16 @@ import { utils } from "tronweb";
 import { confirmationsForChain } from "crypto-payment-gateway/src/config/chains.js";
 import { getTrc20Contracts } from "crypto-payment-gateway/src/config/env.js";
 import { re } from "crypto-payment-gateway/src/config/runtime-env.js";
-import { logger } from "crypto-payment-gateway/src/lib/logger.js";
 import { acquireOutboundRpcSlot } from "crypto-payment-gateway/src/lib/network-rpc-rate-limit.js";
-import {
-  getTronscanFetchHeaders,
-  tronFullNodeHostnameForLog,
-  tronscanApiHostnameForLog,
-} from "crypto-payment-gateway/src/lib/tron-node-client.js";
-import {
-  nativeDecimalsForChain,
-  nativeSymbolForChain,
-} from "crypto-payment-gateway/src/services/native-symbols.js";
+import { getTronscanFetchHeaders } from "crypto-payment-gateway/src/lib/tron-node-client.js";
 import { pickSingleDepositWallet } from "crypto-payment-gateway/src/lib/deposit-scan-dedupe.js";
 import {
   loadWalletsForChain,
   upsertIncomingTransaction,
 } from "crypto-payment-gateway/src/services/payment/transaction-upsert.js";
+import { logger } from "crypto-payment-gateway/src/lib/logger.js";
 import { recordDepositScanPolledAddresses } from "crypto-payment-gateway/src/services/tracker/deposit-rail-metrics.js";
 import { pickUsdtTrc20Contract } from "crypto-payment-gateway/src/services/sweep/tron-usdt-sweep.js";
-
-/** @type {boolean} */
-let loggedMissingTronscanKey = false;
 
 function tronAddrEq(a, b) {
   try {
@@ -67,11 +56,6 @@ function lookupTrc20Meta(map, contract) {
   }
 }
 
-function transferListRows(data) {
-  if (Array.isArray(data)) return data;
-  return data?.data ?? [];
-}
-
 function trc20TransferListRows(data) {
   if (Array.isArray(data)) return data;
   return data?.token_transfers ?? data?.data ?? [];
@@ -103,21 +87,6 @@ function rowTxId(row) {
   ).trim();
 }
 
-function rowTrxAmountSun(row) {
-  const raw = row.amount ?? row.quant ?? row.amount_str;
-  if (raw === undefined || raw === null) return null;
-  const n = typeof raw === "number" ? raw : Number(String(raw).trim());
-  return Number.isFinite(n) && n > 0 ? n : null;
-}
-
-/** After `token=_` TRX filter; skip obvious TRC10 rows if present. */
-function rowLooksLikeTrx(row) {
-  const abbr = row.token_abbr ?? row.tokenInfo?.token_abbr ?? row.token_id;
-  if (abbr === undefined || abbr === null || abbr === "") return true;
-  const s = String(abbr).toLowerCase();
-  return s === "trx" || s === "_";
-}
-
 /**
  * @param {{ wallets?: Array<{ id: string, address: string, currency: string, network: string }> }} [options]
  */
@@ -127,13 +96,6 @@ export async function scanTronChain(options = {}) {
 
   if (wallets.length === 0) return;
   if (!re.tronscanApiKey?.trim()) {
-    if (!loggedMissingTronscanKey) {
-      loggedMissingTronscanKey = true;
-      logger.error("tronscan_api_key_missing", {
-        event: "tronscan_api_key_missing",
-        note: "Set TRONSCAN_API_KEY in .env or Admin → System settings (TronScan dashboard API key).",
-      });
-    }
     return;
   }
 
@@ -147,119 +109,26 @@ export async function scanTronChain(options = {}) {
     byHex.get(k).push(w);
   }
 
-  /** @type {Array<{ address: string, trxTargets: typeof wallets, usdtTargets: typeof wallets }>} */
+  /** @type {Array<{ address: string, usdtTargets: typeof wallets }>} */
   const work = [];
 
   for (const group of byHex.values()) {
     const address = group[0].address;
-    const trxTargets = group.filter(
-      (w) => w.currency === "TRX" && w.network === "TRON",
-    );
     const usdtTargets = group.filter(
       (w) => w.currency === "USDT" && w.network === "TRC20",
     );
-    if (trxTargets.length || usdtTargets.length) {
-      work.push({ address, trxTargets, usdtTargets });
+    if (usdtTargets.length) {
+      work.push({ address, usdtTargets });
     }
   }
 
-  for (const { address, trxTargets, usdtTargets } of work) {
-    if (trxTargets.length) {
-      await ingestTrxViaTronscan(base, address, trxTargets, chain);
-    }
-    if (usdtTargets.length) {
-      await ingestTrc20ViaTronscan(base, address, usdtTargets, chain, trc20Map);
-    }
+  for (const { address, usdtTargets } of work) {
+    await ingestTrc20ViaTronscan(base, address, usdtTargets, chain, trc20Map);
   }
   recordDepositScanPolledAddresses(
     Chain.TRON,
     work.map((w) => w.address),
   );
-}
-
-/**
- * TronScan: TRX transfers for account (`token=_` = TRX only per TronScan API doc #13).
- */
-async function ingestTrxViaTronscan(base, address, targets, chain) {
-  const url = `${base}/api/transfer?sort=-timestamp&limit=50&start=0&count=false&token=_&address=${encodeURIComponent(address)}`;
-  let data = {};
-  try {
-    await acquireOutboundRpcSlot("TRON");
-    const res = await fetch(url, { headers: getTronscanFetchHeaders() });
-    const text = await res.text();
-    try {
-      data = JSON.parse(text);
-    } catch {
-      logger.error("tronscan_trx_non_json", {
-        event: "tronscan_trx_non_json",
-        rail: "TRON_TRX",
-        address,
-        request_url: url,
-        httpStatus: res.status,
-        tronscan_host: tronscanApiHostnameForLog(),
-        tron_full_node_host: tronFullNodeHostnameForLog(),
-        body_preview: text.slice(0, 400),
-      });
-      return;
-    }
-    if (!res.ok) {
-      logger.error("tronscan_trx_http_error", {
-        event: "tronscan_trx_http_error",
-        rail: "TRON_TRX",
-        address,
-        request_url: url,
-        httpStatus: res.status,
-        tronscan_host: tronscanApiHostnameForLog(),
-        tron_full_node_host: tronFullNodeHostnameForLog(),
-        body_preview: text.slice(0, 400),
-      });
-      return;
-    }
-  } catch (e) {
-    logger.error("tronscan_trx_fetch_failed", {
-      event: "tronscan_trx_fetch_failed",
-      rail: "TRON_TRX",
-      address,
-      request_url: url,
-      tronscan_host: tronscanApiHostnameForLog(),
-      tron_full_node_host: tronFullNodeHostnameForLog(),
-      err: String(e),
-    });
-    return;
-  }
-
-  for (const row of transferListRows(data)) {
-    const to = rowToAddress(row);
-    const from = rowFromAddress(row);
-    const txid = rowTxId(row);
-    const sun = rowTrxAmountSun(row);
-    if (!to || !txid || sun === null) continue;
-    if (!tronAddrEq(to, address)) continue;
-    if (!rowLooksLikeTrx(row)) continue;
-
-    const w = pickSingleDepositWallet(targets, {
-      chain,
-      tx_hash: txid,
-      kind: "tron_trx",
-      deposit_address: address,
-    });
-    if (!w) continue;
-    await upsertIncomingTransaction({
-      walletId: w.id,
-      currency: w.currency,
-      network: w.network,
-      txHash: txid,
-      fromAddress: from,
-      toAddress: address,
-      amount: String(Math.trunc(sun)),
-      tokenSymbol: nativeSymbolForChain(chain),
-      tokenDecimals: nativeDecimalsForChain(chain),
-      chain,
-      confirmations: confirmationsForChain(chain),
-      blockNumber: null,
-      logIndex: -1,
-    });
-  }
 }
 
 /**
@@ -270,58 +139,64 @@ async function ingestTrc20ViaTronscan(base, address, targets, chain, trc20Map) {
   try {
     usdtContract = pickUsdtTrc20Contract();
   } catch {
-    logger.error("tronscan_trc20_no_usdt_contract", {
-      event: "tronscan_trc20_no_usdt_contract",
-      address,
-      note: "Configure USDT TRC20 in env / app settings (TRC20 contracts map).",
-    });
     return;
   }
 
   // Omit `confirm` — TronScan returns empty `token_transfers` for `relatedAddress` when `confirm=true`.
-  const url = `${base}/api/token_trc20/transfers?limit=50&start=0&contract_address=${encodeURIComponent(usdtContract)}&relatedAddress=${encodeURIComponent(address)}`;
+  const pathLabel = "/api/token_trc20/transfers";
+  const url = `${base}${pathLabel}?limit=50&start=0&contract_address=${encodeURIComponent(usdtContract)}&relatedAddress=${encodeURIComponent(address)}`;
   let data = {};
+  const t0 = Date.now();
+  logger.info({
+    event: "explorer_api_tronscan",
+    phase: "start",
+    address,
+    path: pathLabel,
+    message: `TRC20: START API CALL (${address})`,
+  });
   try {
     await acquireOutboundRpcSlot("TRON");
     const res = await fetch(url, { headers: getTronscanFetchHeaders() });
     const text = await res.text();
+    const duration_ms = Date.now() - t0;
+    let parse_ok = false;
     try {
       data = JSON.parse(text);
+      parse_ok = true;
     } catch {
-      logger.error("tronscan_trc20_non_json", {
-        event: "tronscan_trc20_non_json",
-        rail: "TRON_TRC20",
-        address,
-        request_url: url,
-        httpStatus: res.status,
-        tronscan_host: tronscanApiHostnameForLog(),
-        tron_full_node_host: tronFullNodeHostnameForLog(),
-        body_preview: text.slice(0, 400),
-      });
+      data = {};
+    }
+    const ok = Boolean(res.ok && parse_ok);
+    const endNote = ok ? "" : ` fail http=${res.status} parse_ok=${parse_ok}`;
+    logger.info({
+      event: "explorer_api_tronscan",
+      phase: "end",
+      address,
+      path: pathLabel,
+      duration_ms,
+      http_status: res.status,
+      ok,
+      response_bytes: text.length,
+      message: `TRC20: END API CALL (${address}) (${duration_ms}ms)${endNote}`,
+    });
+    if (!res.ok) {
       return;
     }
-    if (!res.ok) {
-      logger.error("tronscan_trc20_http_error", {
-        event: "tronscan_trc20_http_error",
-        rail: "TRON_TRC20",
-        address,
-        request_url: url,
-        httpStatus: res.status,
-        tronscan_host: tronscanApiHostnameForLog(),
-        tron_full_node_host: tronFullNodeHostnameForLog(),
-        body_preview: text.slice(0, 400),
-      });
+    if (!parse_ok) {
       return;
     }
   } catch (e) {
-    logger.error("tronscan_trc20_fetch_failed", {
-      event: "tronscan_trc20_fetch_failed",
-      rail: "TRON_TRC20",
+    const duration_ms = Date.now() - t0;
+    const err = e instanceof Error ? e.message : String(e);
+    logger.info({
+      event: "explorer_api_tronscan",
+      phase: "end",
       address,
-      request_url: url,
-      tronscan_host: tronscanApiHostnameForLog(),
-      tron_full_node_host: tronFullNodeHostnameForLog(),
-      err: String(e),
+      path: pathLabel,
+      duration_ms,
+      ok: false,
+      error: err,
+      message: `TRC20: END API CALL (${address}) (${duration_ms}ms) err=${err}`,
     });
     return;
   }

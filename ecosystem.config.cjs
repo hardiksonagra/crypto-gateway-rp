@@ -3,7 +3,9 @@
  *
  * Apps:
  * - `crypto-gateway-api` — HTTP + static client (no timers).
- * - `crypto-gateway-worker` — deposit / transaction tracker (`WORKER_POLL_INTERVAL_MS`).
+ * - `crypto-gateway-worker-erc20` — USDT·ERC20 deposit scan (`WORKER_POLL_INTERVAL_MS_ERC20`).
+ * - `crypto-gateway-worker-trc20` — USDT·TRC20 deposit scan + callback retries (`WORKER_POLL_INTERVAL_MS_TRC20`).
+ * - (Optional) `crypto-gateway-worker` — both rails in one process (`entry-worker.js`); prefer the split apps above in production.
  * - `crypto-gateway-cron-maintenance` — heartbeat + wallet-pool expired holds.
  * - `crypto-gateway-cron-deposit-full-scan` — periodic full live-wallet deposit scan (`DEPOSIT_FULL_SCAN_INTERVAL_HOURS`).
  * - `crypto-gateway-cron-tron-sweep` — TRON USDT auto-sweep (and similar chain-heavy jobs).
@@ -33,14 +35,27 @@ module.exports = {
       },
     },
     {
-      name: "crypto-gateway-worker",
+      name: "crypto-gateway-worker-erc20",
       cwd: "./cron",
-      script: "src/entry-worker.js",
+      script: "src/entry-worker-erc20.js",
       interpreter: "node",
       exec_mode: "fork",
       instances: 1,
       autorestart: true,
-      max_memory_restart: "500M",
+      max_memory_restart: "400M",
+      env: {
+        NODE_ENV: "production",
+      },
+    },
+    {
+      name: "crypto-gateway-worker-trc20",
+      cwd: "./cron",
+      script: "src/entry-worker-trc20.js",
+      interpreter: "node",
+      exec_mode: "fork",
+      instances: 1,
+      autorestart: true,
+      max_memory_restart: "400M",
       env: {
         NODE_ENV: "production",
       },

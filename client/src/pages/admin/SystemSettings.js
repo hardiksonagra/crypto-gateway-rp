@@ -262,8 +262,14 @@ export default function SystemSettings() {
         Bootstrap secrets (database URL, mnemonic, JWT secret, encryption key,
         TRX funder private key) stay in{" "}
         <span className="font-mono text-white/80">.env</span> only. The running
-        API reloads overrides on save; restart PM2{" "}
-        <span className="font-mono text-white/80">crypto-gateway-worker</span> /{" "}
+        API reloads overrides on save;         restart PM2{" "}
+        <span className="font-mono text-white/80">
+          crypto-gateway-worker-erc20
+        </span>{" "}
+        /{" "}
+        <span className="font-mono text-white/80">
+          crypto-gateway-worker-trc20
+        </span> /{" "}
         <span className="font-mono text-white/80">
           crypto-gateway-cron-maintenance
         </span>{" "}
@@ -275,7 +281,7 @@ export default function SystemSettings() {
         <span className="font-mono text-white/80">
           crypto-gateway-cron-tron-sweep
         </span>{" "}
-        if you change scanner poll interval or other cron-only behavior.
+        if you change ERC20/TRC20 scanner poll intervals or other cron-only behavior.
       </p>
 
       <div className="glass mt-8 w-full rounded-2xl p-6 lg:p-8">

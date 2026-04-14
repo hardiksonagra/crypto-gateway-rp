@@ -9,7 +9,6 @@
  * (TRON uses `log_index = -1` → one row per on-chain tx id on TRON).
  */
 import { Chain, MerchantGatewayEnv, TxStatus } from "@prisma/client";
-import { Address } from "@ton/core";
 import { utils } from "tronweb";
 import { prisma } from "../../lib/prisma.js";
 import { logger } from "../../lib/logger.js";
@@ -205,20 +204,11 @@ export async function loadAllLiveWalletsForChain(chain) {
 
 export function normalizeMatchAddress(chain, address) {
   if (chain === Chain.TRON) return address;
-  if (chain === Chain.SOLANA) return address.trim();
-  if (chain === Chain.BTC) return address;
-  if (chain === Chain.TON) {
-    try {
-      return Address.parse(address.trim()).toRawString();
-    } catch {
-      return address.trim();
-    }
-  }
-  return address.toLowerCase();
+  return String(address ?? "").trim().toLowerCase();
 }
 
 /**
- * Same chain “to” for deposit matching (TRON base58 vs hex, EVM case, TON raw).
+ * Same chain “to” for deposit matching (TRON base58 vs hex, EVM case-insensitive).
  * @param {import("@prisma/client").Chain} chain
  * @param {string} a
  * @param {string} b

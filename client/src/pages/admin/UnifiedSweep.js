@@ -1,27 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { api } from "../../api";
-import { GATEWAY_TRON_USDT_ONLY } from "../../admin/depositRailOptions.js";
 import ConfirmModal from "../../components/ConfirmModal";
 import { BrandLoader } from "../../components/BrandLoader.js";
 
 const FILTER_ALL = "all";
 
-const SWEEP_FILTERS_FULL = [
+const SWEEP_FILTERS = [
   { value: FILTER_ALL, label: "All rails" },
   { value: "tron_usdt", label: "USDT · TRC20" },
-  { value: "tron_trx", label: "TRX · TRON" },
   { value: "evm_usdt_eth", label: "USDT · ERC20" },
-  { value: "evm_usdt_bnb", label: "USDT · BEP20" },
-  { value: "solana_usdt", label: "USDT · SPL" },
 ];
-
-const SWEEP_FILTERS = GATEWAY_TRON_USDT_ONLY
-  ? [
-      { value: FILTER_ALL, label: "All (TRC20)" },
-      { value: "tron_usdt", label: "USDT · TRC20" },
-    ]
-  : SWEEP_FILTERS_FULL;
 
 export default function AdminUnifiedSweep() {
   const qc = useQueryClient();
@@ -58,6 +47,7 @@ export default function AdminUnifiedSweep() {
   });
 
   const allWallets = targets.data?.wallets ?? [];
+  const gatewayTronUsdtOnly = Boolean(targets.data?.gateway_tron_usdt_only);
   const wallets = useMemo(() => {
     if (filter === FILTER_ALL) return allWallets;
     return allWallets.filter((w) => w.sweep_kind === filter);
@@ -120,7 +110,7 @@ export default function AdminUnifiedSweep() {
           onClick={() => setConfirmAll(true)}
           className="rounded-xl bg-rose-600/90 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-rose-600 disabled:cursor-not-allowed disabled:opacity-40"
         >
-          {GATEWAY_TRON_USDT_ONLY ? "Sweep all (TRC20)" : "Sweep all (all rails)"}
+          {gatewayTronUsdtOnly ? "Sweep all (TRC20)" : "Sweep all (all rails)"}
         </button>
         {targets.isFetching ? <span className="text-xs text-white/40">Refreshing…</span> : null}
       </div>
@@ -265,7 +255,7 @@ export default function AdminUnifiedSweep() {
           <>
             Rail <span className="font-mono text-white/85">{selectedRow.sweep_label}</span> — funds go to the master you
             configured (<span className="font-mono text-white/70">{selectedRow.master_env}</span>). Ensure fee balances
-            on-chain (e.g. TRX for TRC20, ETH/BNB for ERC20/BEP20, SOL for SPL) where applicable.
+            on-chain (TRX for TRC20 bandwidth/energy, ETH for ERC20 gas) where applicable.
           </>
         ) : (
           <>This rail is not configured.</>
@@ -274,7 +264,7 @@ export default function AdminUnifiedSweep() {
 
       <ConfirmModal
         open={confirmAll}
-        title="Sweep all rails?"
+        title={gatewayTronUsdtOnly ? "Sweep TRC20 wallets?" : "Sweep all rails?"}
         danger
         confirmLabel="Sweep all"
         isLoading={sweepAllMut.isPending}
@@ -287,9 +277,19 @@ export default function AdminUnifiedSweep() {
           });
         }}
       >
-        Runs every configured consolidate sweep in sequence (TRON USDT, TRX, Ethereum USDT, BNB USDT, Solana USDT).
-        Rails without a master address in <span className="font-mono">.env</span> are skipped entirely; individual
-        wallets may still skip (zero balance) or fail (fees).
+        {gatewayTronUsdtOnly ? (
+          <>
+            Runs the USDT·TRC20 consolidate sweep for every configured wallet. Rails without a master address in{" "}
+            <span className="font-mono">.env</span> are skipped entirely; individual wallets may still skip (zero
+            balance) or fail (fees).
+          </>
+        ) : (
+          <>
+            Runs every configured consolidate sweep in sequence (USDT·TRC20, then USDT·ERC20). Rails without a master
+            address in <span className="font-mono">.env</span> are skipped entirely; individual wallets may still skip
+            (zero balance) or fail (fees).
+          </>
+        )}
       </ConfirmModal>
     </div>
   );

@@ -1,86 +1,95 @@
+import { AsyncLocalStorage } from "node:async_hooks";
+import { re } from "../../config/runtime-env.js";
 import {
   depositRailKey,
   normalizeAssetPart,
 } from "../../config/payment-rails.js";
-import { re } from "../../config/runtime-env.js";
-import { logger } from "../../lib/logger.js";
-
-/** Product rails shown first in tick logs (matches gateway USDT/TRX rails). */
-export const WORKER_RAIL_LOG_ORDER = [
-  "USDT|TRC20",
-  "USDT|SPL",
-  "USDT|ERC20",
-  "USDT|BEP20",
-  "USDT|TON",
-  "TRX|TRON",
-];
-
-/** Human-readable rail labels for console / log lines. */
-const RAIL_LABEL = {
-  "USDT|TRC20": "USDT TRC20",
-  "USDT|SPL": "USDT SPL (Solana)",
-  "USDT|ERC20": "USDT ERC20",
-  "USDT|BEP20": "USDT BEP20",
-  "USDT|TON": "USDT TON",
-  "TRX|TRON": "TRX TRON",
-};
 
 /**
- * @param {number} total
- * @param {Record<string, number>} rails
- * @param {number} other
+ * Which cron label is collecting address / rail metrics for the current async tick
+ * (so EVM + TRON deposit ticks can run in parallel in one process without mixing buffers).
+ * @type {AsyncLocalStorage<{ cron: string }>}
  */
-function formatDepositScanLogMessage(total, rails, other) {
-  const head =
-    total === 0
-      ? "Deposit scan — no new transaction rows (chains checked, nothing to insert)."
-      : `Deposit scan — ${total} new transaction row(s) inserted.`;
-  const lines = WORKER_RAIL_LOG_ORDER.map(
-    (key) => `  · ${RAIL_LABEL[key] ?? key}: ${rails[key] ?? 0}`,
-  );
-  const tail = other > 0 ? `\n  · other rails (new rows): ${other}` : "";
-  return `${head}\nRails:\n${lines.join("\n")}${tail}`;
+const depositScanLogAls = new AsyncLocalStorage();
+
+/**
+ * Run a deposit-scan tick body with a stable `cron` in context for `recordDepositScanPolledAddresses` / rail counts.
+ *
+ * @param {string} cronLabel e.g. `erc20` (deposit rail id, not PM2 app name)
+ * @param {() => void | Promise<void>} fn
+ * @returns {Promise<void>}
+ */
+export function withDepositScanLogCron(cronLabel, fn) {
+  const label = String(cronLabel || "combined").trim() || "combined";
+  return depositScanLogAls.run({ cron: label }, () => Promise.resolve(fn()));
 }
 
-let tickActive = false;
-/** @type {Map<string, number>} */
-let tickCounts = new Map();
-/** @type {Map<string, Set<string>>} chain name -> on-chain addresses we fetched / monitored this tick */
-let tickPolledAddresses = new Map();
-/** When true, `recordDepositScanPolledAddresses` also records into the address-only buffer for `deposit_scan_addresses`. */
-let addressScanLogRoundActive = false;
-/** @type {Map<string, Set<string>>} */
-let tickScanAddressesOnly = new Map();
+/**
+ * @typedef {{
+ *   addressScanLogRoundActive: boolean,
+ *   depositScanRoundStartedAtIso: string | null,
+ *   tickScanAddressesOnly: Map<string, Set<string>>,
+ *   metricsTickActive: boolean,
+ *   tickCounts: Map<string, number>,
+ *   tickPolledAddresses: Map<string, Set<string>>,
+ * }} DepositScanRoundState
+ */
+
+/** @type {Map<string, DepositScanRoundState>} */
+const roundByCron = new Map();
+
+/** @param {string} cron */
+function getRound(cron) {
+  return roundByCron.get(cron);
+}
+
+/** @param {string} cron */
+function ensureRound(cron) {
+  let r = roundByCron.get(cron);
+  if (!r) {
+    r = {
+      addressScanLogRoundActive: false,
+      depositScanRoundStartedAtIso: null,
+      tickScanAddressesOnly: new Map(),
+      metricsTickActive: false,
+      tickCounts: new Map(),
+      tickPolledAddresses: new Map(),
+    };
+    roundByCron.set(cron, r);
+  }
+  return r;
+}
 
 /**
  * Start of each worker deposit-scan pass: reset address-only log buffer (runs every tick).
+ *
+ * @param {string} [cronLabel] Deposit rail id (e.g. `erc20`, `trc20`, `combined`).
  */
-export function beginDepositScanAddressRound() {
-  addressScanLogRoundActive = true;
-  tickScanAddressesOnly = new Map();
+export function beginDepositScanAddressRound(cronLabel = "combined") {
+  const key = String(cronLabel || "combined").trim() || "combined";
+  const r = ensureRound(key);
+  r.addressScanLogRoundActive = true;
+  r.depositScanRoundStartedAtIso = new Date().toISOString();
+  r.tickScanAddressesOnly = new Map();
 }
 
 /**
- * End of deposit-scan pass: one `info` line — only comma-separated scanned addresses (or placeholder if none).
+ * End of deposit-scan pass: clears per-rail address buffer (no console line — use `TRC20:` / `ERC20:` explorer logs).
+ *
+ * @param {number | null} [_tickDurationMs] Reserved for future metrics; unused.
+ * @param {string} [cronLabel] Must match `beginDepositScanAddressRound` for this tick.
  */
-export function finishDepositScanAddressRound() {
-  if (!addressScanLogRoundActive) return;
-  addressScanLogRoundActive = false;
-
-  const flat = [
-    ...new Set([...tickScanAddressesOnly.values()].flatMap((set) => [...set])),
-  ].sort();
-  tickScanAddressesOnly = new Map();
-
-  logger.log({
-    level: "info",
-    message:
-      flat.length > 0
-        ? flat.join(", ")
-        : "(no deposit addresses scanned this tick)",
-    event: "deposit_scan_addresses",
-    addresses: flat,
-  });
+export function finishDepositScanAddressRound(_tickDurationMs = null, cronLabel) {
+  const key =
+    (typeof cronLabel === "string" && String(cronLabel).trim()
+      ? String(cronLabel).trim()
+      : depositScanLogAls.getStore()?.cron) || "combined";
+  const r = getRound(key);
+  if (!r?.addressScanLogRoundActive) return;
+  r.addressScanLogRoundActive = false;
+  r.depositScanRoundStartedAtIso = null;
+  r.tickScanAddressesOnly = new Map();
+  roundByCron.delete(key);
 }
 
 export function workerRailMetricsEnabled() {
@@ -90,30 +99,41 @@ export function workerRailMetricsEnabled() {
 
 export function startWorkerDepositScanTick() {
   if (!workerRailMetricsEnabled()) return;
-  tickActive = true;
-  tickCounts = new Map();
-  tickPolledAddresses = new Map();
+  const ctx = depositScanLogAls.getStore();
+  const cron = ctx?.cron;
+  if (!cron) return;
+  const r = ensureRound(cron);
+  r.metricsTickActive = true;
+  r.tickCounts = new Map();
+  r.tickPolledAddresses = new Map();
 }
 
 /**
- * Wallets / on-chain addresses included in this tick’s incoming-tx poll (TronScan, TON API, block scan + logs, etc.).
+ * Wallets / on-chain addresses included in this tick’s incoming-tx poll.
  * @param {string} chain Prisma `Chain` enum value (e.g. TRON, ETH).
  * @param {Iterable<string>} addresses
  */
 export function recordDepositScanPolledAddresses(chain, addresses) {
+  const ctx = depositScanLogAls.getStore();
+  const cron = ctx?.cron;
+  if (!cron) return;
+  const r = getRound(cron);
+  if (!r) return;
+
   const ck = String(chain);
-  if (workerRailMetricsEnabled() && tickActive) {
-    if (!tickPolledAddresses.has(ck)) tickPolledAddresses.set(ck, new Set());
-    const set = tickPolledAddresses.get(ck);
+  if (workerRailMetricsEnabled() && r.metricsTickActive) {
+    if (!r.tickPolledAddresses.has(ck))
+      r.tickPolledAddresses.set(ck, new Set());
+    const set = r.tickPolledAddresses.get(ck);
     for (const a of addresses) {
       const s = a != null ? String(a).trim() : "";
       if (s) set.add(s);
     }
   }
-  if (addressScanLogRoundActive) {
-    if (!tickScanAddressesOnly.has(ck))
-      tickScanAddressesOnly.set(ck, new Set());
-    const setOnly = tickScanAddressesOnly.get(ck);
+  if (r.addressScanLogRoundActive) {
+    if (!r.tickScanAddressesOnly.has(ck))
+      r.tickScanAddressesOnly.set(ck, new Set());
+    const setOnly = r.tickScanAddressesOnly.get(ck);
     for (const a of addresses) {
       const s = a != null ? String(a).trim() : "";
       if (s) setOnly.add(s);
@@ -128,56 +148,26 @@ export function recordDepositScanPolledAddresses(chain, addresses) {
  */
 export function recordNewDepositInsert(currency, network) {
   if (!workerRailMetricsEnabled()) return;
+  const ctx = depositScanLogAls.getStore();
+  const cron = ctx?.cron;
+  if (!cron) return;
+  const r = getRound(cron);
+  if (!r?.metricsTickActive) return;
   const key = depositRailKey(
     normalizeAssetPart(currency),
     normalizeAssetPart(network),
   );
-  if (tickActive) {
-    tickCounts.set(key, (tickCounts.get(key) ?? 0) + 1);
-    return;
-  }
-  logger.info("new_deposit_row_inserted", {
-    deposit_rail: key,
-    note: "outside_worker_scan_tick (e.g. sandbox simulate-deposit)",
-  });
+  r.tickCounts.set(key, (r.tickCounts.get(key) ?? 0) + 1);
 }
 
 export function finishWorkerDepositScanTick() {
   if (!workerRailMetricsEnabled()) return;
-  tickActive = false;
-  const mode = re.workerLogRailCounts.toLowerCase();
-
-  const rails = {};
-  let total = 0;
-  for (const k of WORKER_RAIL_LOG_ORDER) {
-    const n = tickCounts.get(k) ?? 0;
-    rails[k] = n;
-    total += n;
-  }
-  let other = 0;
-  for (const [k, n] of tickCounts) {
-    if (!WORKER_RAIL_LOG_ORDER.includes(k)) {
-      other += n;
-      total += n;
-    }
-  }
-
-  tickPolledAddresses = new Map();
-
-  const readableMessage = formatDepositScanLogMessage(total, rails, other);
-  const payload = {
-    message: readableMessage,
-    event: "worker_deposit_scan_tick",
-    new_row_inserts_by_rail: rails,
-    total_new_rows: total,
-    ...(other > 0 ? { other_rails_new_rows: other } : {}),
-  };
-
-  if (mode === "always") {
-    logger.log({ level: "info", ...payload });
-    return;
-  }
-  if (mode === "nonzero" && total > 0) {
-    logger.log({ level: "info", ...payload });
-  }
+  const ctx = depositScanLogAls.getStore();
+  const cron = ctx?.cron;
+  if (!cron) return;
+  const r = getRound(cron);
+  if (!r) return;
+  r.metricsTickActive = false;
+  r.tickCounts = new Map();
+  r.tickPolledAddresses = new Map();
 }

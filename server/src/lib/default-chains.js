@@ -4,14 +4,8 @@ import { isChainLiveForPlatform } from "./chain-enable.js";
 
 const CHAINS = new Set(Object.values(Chain));
 
-/** Gateway-supported L1/L2 list (USDT TRC20 / ERC20 / TON / BEP20 + TRX TRON). */
-const PRODUCT_CHAINS = new Set([
-  Chain.TRON,
-  Chain.SOLANA,
-  Chain.ETH,
-  Chain.BNB,
-  Chain.TON,
-]);
+/** Gateway-supported chains for default selection (USDT·TRC20 + USDT·ERC20). */
+const PRODUCT_CHAINS = new Set([Chain.TRON, Chain.ETH]);
 
 /**
  * @param {unknown} raw
@@ -31,15 +25,7 @@ export function parseDefaultChainsArray(raw, opts) {
   }
   if (!uniq.every((c) => PRODUCT_CHAINS.has(c))) {
     return {
-      error:
-        "only TRON, SOLANA, ETH, BNB, TON are supported (matches gateway rails)",
-    };
-  }
-  const tronOnlyBlock =
-    re.gatewayTronUsdtOnly && opts?.ignoreGatewayTronUsdtOnly !== true;
-  if (tronOnlyBlock && !uniq.every((c) => c === Chain.TRON)) {
-    return {
-      error: "only the TRON chain is enabled for deposits (USDT TRC20)",
+      error: "only TRON and ETH are supported (matches gateway rails)",
     };
   }
   for (const c of uniq) {

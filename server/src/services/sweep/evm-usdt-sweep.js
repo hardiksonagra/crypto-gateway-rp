@@ -3,6 +3,7 @@ import { Contract, HDNodeWallet, JsonRpcProvider, ethers } from "ethers";
 import { env, getErc20Contracts } from "../../config/env.js";
 import { re } from "../../config/runtime-env.js";
 import { chainToRpcUrl, chainToStaticNetwork } from "../../config/chains.js";
+import { parseWalletDbId } from "../../lib/parse-wallet-db-id.js";
 import { prisma } from "../../lib/prisma.js";
 import { logger } from "../../lib/logger.js";
 import {
@@ -15,28 +16,23 @@ const ERC20_MIN_ABI = [
   "function transfer(address to, uint256 amount) returns (bool)",
 ];
 
-const DEFAULT_USDT = {
-  ETH: "0xdAC17F958D2ee523a2206206994597C13D831ec7",
-  BNB: "0x55d398326f99059fF775485246999027B3197955",
-};
+const DEFAULT_USDT_ETH = "0xdAC17F958D2ee523a2206206994597C13D831ec7";
 
-const EXPECTED_NETWORK = {
-  ETH: "ERC20",
-  BNB: "BEP20",
-};
+const EXPECTED_NETWORK_ETH = "ERC20";
 
 /**
  * @param {import("@prisma/client").Chain} chain
  * @returns {string | null}
  */
 export function pickUsdtTokenAddress(chain) {
-  const raw = getErc20Contracts()[chain] ?? {};
+  if (chain !== Chain.ETH) return null;
+  const raw = getErc20Contracts()[Chain.ETH] ?? {};
   for (const [addr, meta] of Object.entries(raw)) {
     if (String(meta?.symbol ?? "").toUpperCase() === "USDT") {
       return String(addr).trim();
     }
   }
-  return DEFAULT_USDT[chain] ?? null;
+  return DEFAULT_USDT_ETH;
 }
 
 /**
@@ -45,7 +41,6 @@ export function pickUsdtTokenAddress(chain) {
  */
 function masterForChain(chain) {
   if (chain === Chain.ETH) return re.sweepMasterUsdtEth?.trim() ?? "";
-  if (chain === Chain.BNB) return re.sweepMasterUsdtBnb?.trim() ?? "";
   return "";
 }
 
@@ -53,10 +48,10 @@ function masterForChain(chain) {
  * @param {import("@prisma/client").Chain} chain
  */
 export async function listEvmUsdtSweepTargets(chain) {
-  if (chain !== Chain.ETH && chain !== Chain.BNB) {
+  if (chain !== Chain.ETH) {
     throw new Error("UNSUPPORTED_EVM_SWEEP_CHAIN");
   }
-  const network = EXPECTED_NETWORK[chain];
+  const network = EXPECTED_NETWORK_ETH;
   const master = masterForChain(chain);
   const token = pickUsdtTokenAddress(chain);
 
@@ -94,22 +89,33 @@ export async function listEvmUsdtSweepTargets(chain) {
 }
 
 /**
- * @param {string} walletId
+ * @param {string | number} walletId
  * @param {import("@prisma/client").Chain} chain
  */
 export async function sweepEvmUsdtOne(walletId, chain) {
-  if (chain !== Chain.ETH && chain !== Chain.BNB) {
+  if (chain !== Chain.ETH) {
     return { ok: false, error: "UNSUPPORTED_CHAIN" };
+  }
+
+  const wid = parseWalletDbId(walletId);
+  if (wid == null) {
+    return { ok: false, error: "WALLET_NOT_FOUND" };
+  }
+
+  if (!re.rpcEth?.trim()) {
+    return {
+      ok: false,
+      error: "RPC_ETH_NOT_SET",
+      detail:
+        "USDT·ERC20 sweep broadcasts via JSON-RPC; set RPC_ETH to any Ethereum node, or skip EVM consolidate until configured.",
+    };
   }
 
   const master = masterForChain(chain);
   if (!master) {
     return {
       ok: false,
-      error:
-        chain === Chain.ETH
-          ? "SWEEP_MASTER_USDT_ETH_NOT_SET"
-          : "SWEEP_MASTER_USDT_BNB_NOT_SET",
+      error: "SWEEP_MASTER_USDT_ETH_NOT_SET",
     };
   }
 
@@ -118,11 +124,11 @@ export async function sweepEvmUsdtOne(walletId, chain) {
     return { ok: false, error: "NO_USDT_CONTRACT", detail: String(chain) };
   }
 
-  const network = EXPECTED_NETWORK[chain];
+  const network = EXPECTED_NETWORK_ETH;
 
   const wallet = await prisma.wallet.findFirst({
     where: {
-      id: walletId,
+      id: wid,
       chain,
       currency: "USDT",
       network,

@@ -10,11 +10,7 @@ import { nativeSymbolForChain } from "../services/native-symbols.js";
 /** Integrator-facing rails (currency + network → underlying chain). */
 export const GATEWAY_RAILS = [
   { currency: "USDT", network: "TRC20", chain: Chain.TRON },
-  { currency: "USDT", network: "SPL", chain: Chain.SOLANA },
   { currency: "USDT", network: "ERC20", chain: Chain.ETH },
-  { currency: "USDT", network: "TON", chain: Chain.TON },
-  { currency: "USDT", network: "BEP20", chain: Chain.BNB },
-  { currency: "TRX", network: "TRON", chain: Chain.TRON },
 ];
 
 /**
@@ -24,12 +20,7 @@ export const GATEWAY_RAILS = [
 /** Only gateway rails; add chains here + cron tracker + migration when you support more. */
 export const SCANNER_STATE_ROWS_BY_CHAIN = {
   [Chain.ETH]: [{ currency: "USDT", network: "ERC20" }],
-  [Chain.BNB]: [{ currency: "USDT", network: "BEP20" }],
-  [Chain.TRON]: [
-    { currency: "USDT", network: "TRC20" },
-    { currency: "TRX", network: "TRON" },
-  ],
-  [Chain.TON]: [{ currency: "USDT", network: "TON" }],
+  [Chain.TRON]: [{ currency: "USDT", network: "TRC20" }],
 };
 
 /**
@@ -100,20 +91,8 @@ export function parseDepositRailKeyString(key) {
  * @returns {string | undefined}
  */
 export function evmNetworkLabelForChain(chain) {
-  switch (chain) {
-    case Chain.ETH:
-      return "ERC20";
-    case Chain.BNB:
-      return "BEP20";
-    case Chain.POLYGON:
-      return "POLYGON";
-    case Chain.ARBITRUM:
-      return "ARBITRUM";
-    case Chain.OPTIMISM:
-      return "OPTIMISM";
-    default:
-      return undefined;
-  }
+  if (chain === Chain.ETH) return "ERC20";
+  return undefined;
 }
 
 /**
@@ -278,12 +257,6 @@ export function suggestedDefaultPairForChain(chain) {
       return { currency: "USDT", network: "TRC20" };
     case Chain.ETH:
       return { currency: "USDT", network: "ERC20" };
-    case Chain.BNB:
-      return { currency: "USDT", network: "BEP20" };
-    case Chain.TON:
-      return { currency: "USDT", network: "TON" };
-    case Chain.SOLANA:
-      return { currency: "USDT", network: "SPL" };
     default:
       return { currency: "USDT", network: "TRC20" };
   }

@@ -1,50 +1,27 @@
 /**
- * Full gateway rail list (mirrors server `GATEWAY_RAILS`). The exported `DEPOSIT_RAIL_OPTIONS`
- * may be narrowed when `VITE_GATEWAY_TRON_USDT_ONLY` is not `false`/`0` (default: Tron USDT only).
+ * Gateway rails: USDT·TRC20 + USDT·ERC20 only (mirrors server `GATEWAY_RAILS`).
  */
 export const ALL_DEPOSIT_RAIL_OPTIONS = [
   { key: "USDT|TRC20", label: "USDT — TRC20 (TRON)", chain: "TRON" },
-  { key: "USDT|SPL", label: "USDT — SPL (Solana)", chain: "SOLANA" },
   { key: "USDT|ERC20", label: "USDT — ERC20 (Ethereum)", chain: "ETH" },
-  { key: "USDT|TON", label: "USDT — TON", chain: "TON" },
-  { key: "USDT|BEP20", label: "USDT — BEP20 (BNB Chain)", chain: "BNB" },
-  { key: "TRX|TRON", label: "TRX — TRON (native)", chain: "TRON" },
 ];
 
-const tronUsdtOnly =
-  import.meta.env.VITE_GATEWAY_TRON_USDT_ONLY !== "false" &&
-  import.meta.env.VITE_GATEWAY_TRON_USDT_ONLY !== "0";
+/** Client-only default; real value comes from API (`gateway_tron_usdt_only` / Admin System settings). */
+export const GATEWAY_TRON_USDT_ONLY = false;
 
-/** Matches server `GATEWAY_TRON_USDT_ONLY` (see `server/src/config/env.js`). */
-export const GATEWAY_TRON_USDT_ONLY = tronUsdtOnly;
-
-export const DEPOSIT_RAIL_OPTIONS = tronUsdtOnly
-  ? ALL_DEPOSIT_RAIL_OPTIONS.filter((o) => o.key === "USDT|TRC20")
-  : ALL_DEPOSIT_RAIL_OPTIONS;
-
+export const DEPOSIT_RAIL_OPTIONS = ALL_DEPOSIT_RAIL_OPTIONS;
 export const DEPOSIT_RAIL_KEYS = DEPOSIT_RAIL_OPTIONS.map((o) => o.key);
 
 /** Chains allowed in merchant Settings / admin merchant forms for default_chains. */
-export const MERCHANT_SETTINGS_CHAIN_VALUES = tronUsdtOnly
-  ? ["TRON"]
-  : ["TRON", "SOLANA", "ETH", "BNB", "TON"];
+export const MERCHANT_SETTINGS_CHAIN_VALUES = ["TRON", "ETH"];
 
-/**
- * Gateway product chains (mirrors server `PRODUCT_CHAINS`). **Not** narrowed by VITE — use when intersecting
- * Admin → Supported chains so ETH/ERC20 etc. still appear on admin merchant create/edit when enabled.
- */
-export const MERCHANT_PRODUCT_CHAIN_CODES = [
-  "TRON",
-  "SOLANA",
-  "ETH",
-  "BNB",
-  "TON",
-];
+/** Gateway product chains (mirrors server). */
+export const MERCHANT_PRODUCT_CHAIN_CODES = ["TRON", "ETH"];
 
 /**
  * @param {string[] | undefined} chains Selected default chains
  * @param {string[] | undefined} [platformChains] If set, only rails on these platform-enabled chains (admin Supported chains).
- * @param {boolean} [useFullProductCatalog] Admin merchant forms: use full rail list (USDT ERC20, BEP20, …) even when VITE tron-only narrows the merchant portal.
+ * @param {boolean} [useFullProductCatalog] Admin merchant forms: use full rail list (same as product here).
  * @returns {typeof ALL_DEPOSIT_RAIL_OPTIONS}
  */
 export function depositRailsForChains(chains, platformChains, useFullProductCatalog = false) {

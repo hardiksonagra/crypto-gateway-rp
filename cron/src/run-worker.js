@@ -1,4 +1,5 @@
 import { re } from "crypto-payment-gateway/src/config/runtime-env.js";
+import { etherscanApiHostnameForLog } from "crypto-payment-gateway/src/lib/etherscan-client.js";
 import { logger } from "crypto-payment-gateway/src/lib/logger.js";
 import {
   startBlockchainWorker,
@@ -6,19 +7,13 @@ import {
 } from "./services/tracker/worker.js";
 
 startBlockchainWorker();
-logger.info("blockchain deposit / transaction tracker started (worker process)", {
-  note: "poll interval: WORKER_POLL_INTERVAL_MS; full deposit scan: separate PM2 app crypto-gateway-cron-deposit-full-scan",
+logger.info("blockchain deposit / transaction tracker started (combined worker)", {
+  note: "Both ERC20 + TRC20 rails in one process; each rail has its own work queue so a long TRC20 tick (sweep/callbacks) does not delay ERC20 polling. Production PM2: prefer crypto-gateway-worker-erc20 + crypto-gateway-worker-trc20. Poll: WORKER_POLL_INTERVAL_MS_ERC20 / WORKER_POLL_INTERVAL_MS_TRC20. Restart to apply ms. Full deposit scan: crypto-gateway-cron-deposit-full-scan",
   tron_deposit_scan: "tronscan",
   deposit_scanner_tron_only: re.depositScannerTronOnly,
   tronscan_key_configured: Boolean(re.tronscanApiKey?.trim()),
   etherscan_key_configured: Boolean(re.etherscanApiKey?.trim()),
-  etherscan_api_host: (() => {
-    try {
-      return new URL(re.etherscanApiBase.replace(/\/$/, "")).hostname;
-    } catch {
-      return "invalid";
-    }
-  })(),
+  etherscan_api_host: etherscanApiHostnameForLog(),
   tronscan_host: (() => {
     try {
       return new URL(re.tronscanApiBase.replace(/\/$/, "")).hostname;
@@ -28,15 +23,15 @@ logger.info("blockchain deposit / transaction tracker started (worker process)",
   })(),
   ...(re.depositScannerTronOnly
     ? {
-        note_evm_ton:
-          "DEPOSIT_SCANNER_TRON_ONLY=true: ETH/BNB + TON deposit polling skipped — USDT·ERC20 rows will not appear in evm_addresses_this_tick logs. Set env false to scan EVM.",
+        note_evm:
+          "DEPOSIT_SCANNER_TRON_ONLY=true: Ethereum USDT·ERC20 is only scanned when at least one live ETH wallet exists.",
       }
     : {}),
 });
 
 function shutdown(signal) {
   stopBlockchainWorker();
-  logger.info("crypto-gateway-worker shutdown", { signal });
+  logger.info("crypto-gateway-worker (combined) shutdown", { signal });
   process.exit(0);
 }
 

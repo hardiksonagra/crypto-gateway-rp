@@ -74,7 +74,7 @@ fi
 if ! command -v pm2 >/dev/null 2>&1; then
   log "PM2 not found — skipping process manager. Install: sudo npm i -g pm2"
   log "Run API manually:  cd $ROOT/server && NODE_ENV=production node src/index.js"
-  log "Run worker: cd $ROOT/cron && NODE_ENV=production node src/entry-worker.js"
+  log "Run workers: cd $ROOT/cron && NODE_ENV=production node src/entry-worker-erc20.js  # and entry-worker-trc20.js"
   log "Run crons:   cd $ROOT/cron && NODE_ENV=production node src/entry-cron-1.js  # and entry-cron-2.js"
   exit 0
 fi
@@ -83,9 +83,9 @@ fi
 # ecosystem.config.cjs exactly (fork + instances:1) and fixes EADDRINUSE loops.
 # Remove this project’s PM2 names (incl. legacy single-cron app). Use `npm run pm2:resync` for `pm2 delete all`.
 log "PM2 restart from ecosystem.config.cjs (delete gateway apps, then start)"
-pm2 delete crypto-gateway-api crypto-gateway-worker crypto-gateway-cron-maintenance crypto-gateway-cron-deposit-full-scan crypto-gateway-cron-tron-sweep crypto-gateway-cron-1 crypto-gateway-cron-2 crypto-gateway-cron 2>/dev/null || true
+pm2 delete crypto-gateway-api crypto-gateway-worker crypto-gateway-worker-erc20 crypto-gateway-worker-trc20 crypto-gateway-cron-maintenance crypto-gateway-cron-deposit-full-scan crypto-gateway-cron-tron-sweep crypto-gateway-cron-1 crypto-gateway-cron-2 crypto-gateway-cron 2>/dev/null || true
 pm2 start ecosystem.config.cjs
 
 pm2 save 2>/dev/null || true
 
-log "Done. Check: pm2 status (api + worker + cron-maintenance + cron-deposit-full-scan + cron-tron-sweep online) && pm2 logs crypto-gateway-api --lines 50"
+log "Done. Check: pm2 status (api + worker-erc20 + worker-trc20 + cron-maintenance + cron-deposit-full-scan + cron-tron-sweep online) && pm2 logs crypto-gateway-api --lines 50"

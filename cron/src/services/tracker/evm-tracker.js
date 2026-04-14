@@ -1,25 +1,13 @@
 import { Chain } from "@prisma/client";
 import { ethers } from "ethers";
-import {
-  chainToRpcUrl,
-  chainToStaticNetwork,
-  isEvmChain,
-} from "crypto-payment-gateway/src/config/chains.js";
+import { isEvmChain } from "crypto-payment-gateway/src/config/chains.js";
 import { getErc20Contracts } from "crypto-payment-gateway/src/config/env.js";
-import {
-  walletAcceptsEvmErc20,
-  walletAcceptsEvmNative,
-} from "crypto-payment-gateway/src/config/payment-rails.js";
+import { walletAcceptsEvmErc20 } from "crypto-payment-gateway/src/config/payment-rails.js";
 import { re } from "crypto-payment-gateway/src/config/runtime-env.js";
-import { logger } from "crypto-payment-gateway/src/lib/logger.js";
 import {
   acquireOutboundRpcSlot,
   evmRpcBudgetKey,
 } from "crypto-payment-gateway/src/lib/network-rpc-rate-limit.js";
-import {
-  nativeDecimalsForChain,
-  nativeSymbolForChain,
-} from "crypto-payment-gateway/src/services/native-symbols.js";
 import { pickSingleDepositWallet } from "crypto-payment-gateway/src/lib/deposit-scan-dedupe.js";
 import {
   advanceScanner,
@@ -28,9 +16,11 @@ import {
   normalizeMatchAddress,
   upsertIncomingTransaction,
 } from "crypto-payment-gateway/src/services/payment/transaction-upsert.js";
+import { logger } from "crypto-payment-gateway/src/lib/logger.js";
 import { recordDepositScanPolledAddresses } from "crypto-payment-gateway/src/services/tracker/deposit-rail-metrics.js";
 
 const transferTopic = ethers.id("Transfer(address,address,uint256)");
+
 const erc20Iface = new ethers.Interface([
   "event Transfer(address indexed from, address indexed to, uint256 value)",
 ]);
@@ -40,7 +30,6 @@ function chainConfigKey(chain) {
 }
 
 /**
- * Etherscan API v2 `chainid` for deposit scanner (ETH + BNB only).
  * @param {import("@prisma/client").Chain} chain
  * @returns {number | null}
  */
@@ -78,15 +67,20 @@ function etherscanRowToLogLike(row) {
 }
 
 /**
- * Paginated Etherscan `module=logs&action=getLogs` for a single block (Transfer topic0 only).
- *
  * @param {import("@prisma/client").Chain} chain
  * @param {bigint} blockNum
  * @param {string} topic0
  * @param {string} budgetKey
+ * @param {string[] | null} [logAddresses] When set, log each HTTP getLogs start/end with these deposit wallet addresses.
  * @returns {Promise<Array<{ address: string, topics: string[], data: string, transactionHash: string, index: number }>>}
  */
-async function fetchTransferLogsViaEtherscan(chain, blockNum, topic0, budgetKey) {
+async function fetchTransferLogsViaEtherscan(
+  chain,
+  blockNum,
+  topic0,
+  budgetKey,
+  logAddresses = null,
+) {
   const apiKey = re.etherscanApiKey?.trim();
   const chainId = etherscanChainId(chain);
   if (!apiKey || chainId == null) return [];
@@ -96,45 +90,183 @@ async function fetchTransferLogsViaEtherscan(chain, blockNum, topic0, budgetKey)
   const out = [];
   const offset = 1000;
   const maxPages = 50;
+  const logAddrs = Array.isArray(logAddresses) ? logAddresses : null;
 
   for (let page = 1; page <= maxPages; page += 1) {
-    await acquireOutboundRpcSlot(budgetKey);
-    const u = new URL(base.includes("://") ? base : `https://${base}`);
-    u.searchParams.set("chainid", String(chainId));
-    u.searchParams.set("module", "logs");
-    u.searchParams.set("action", "getLogs");
-    u.searchParams.set("fromBlock", blockStr);
-    u.searchParams.set("toBlock", blockStr);
-    u.searchParams.set("topic0", topic0);
-    u.searchParams.set("page", String(page));
-    u.searchParams.set("offset", String(offset));
-    u.searchParams.set("apikey", apiKey);
+    const t0 = Date.now();
+    let http_status = /** @type {number | null} */ (null);
+    let page_ok = false;
+    let page_err = /** @type {string | null} */ (null);
+    let result_count = 0;
 
-    const res = await fetch(u.toString(), { method: "GET" });
-    if (!res.ok) {
-      throw new Error(`etherscan_http_${res.status}`);
+    if (logAddrs) {
+      const addrPart = logAddrs.join(",");
+      logger.info({
+        event: "explorer_api_etherscan",
+        phase: "start",
+        chain: String(chain),
+        api: "getLogs",
+        block: blockStr,
+        page,
+        addresses: logAddrs,
+        message: `ERC20: START API CALL (${String(chain)} block=${blockStr} page=${page} ${addrPart})`,
+      });
     }
-    /** @type {{ status?: string, message?: string, result?: unknown }} */
-    const j = await res.json();
-    if (j.status === "0") {
-      const msg = String(j.message ?? "").toLowerCase();
-      if (msg.includes("no records") || msg.includes("no transactions")) {
-        break;
+
+    try {
+      await acquireOutboundRpcSlot(budgetKey);
+      const u = new URL(base.includes("://") ? base : `https://${base}`);
+
+      u.searchParams.set("chainid", String(chainId));
+      u.searchParams.set("module", "logs");
+      u.searchParams.set("action", "getLogs");
+      u.searchParams.set("fromBlock", blockStr);
+      u.searchParams.set("toBlock", blockStr);
+      u.searchParams.set("topic0", topic0);
+      u.searchParams.set("page", String(page));
+      u.searchParams.set("offset", String(offset));
+      u.searchParams.set("apikey", apiKey);
+
+      const res = await fetch(u.toString(), { method: "GET" });
+      http_status = res.status;
+
+      if (!res.ok) {
+        throw new Error(`etherscan_http_${res.status}`);
       }
-      const errPart =
-        typeof j.result === "string" ? j.result : JSON.stringify(j.result);
-      throw new Error(`etherscan_${j.message ?? "error"}:${errPart}`);
-    }
-    const batch = Array.isArray(j.result) ? j.result : [];
-    for (const row of batch) {
-      if (row && typeof row === "object") {
-        out.push(etherscanRowToLogLike(/** @type {Record<string, unknown>} */ (row)));
+      /** @type {{ status?: string, message?: string, result?: unknown }} */
+      const j = await res.json();
+      if (j.status === "0") {
+        const msg = String(j.message ?? "").toLowerCase();
+        if (msg.includes("no records") || msg.includes("no transactions")) {
+          page_ok = true;
+          result_count = 0;
+          break;
+        }
+        const errPart =
+          typeof j.result === "string" ? j.result : JSON.stringify(j.result);
+        throw new Error(`etherscan_${j.message ?? "error"}:${errPart}`);
+      }
+      const batch = Array.isArray(j.result) ? j.result : [];
+      result_count = batch.length;
+      page_ok = true;
+      for (const row of batch) {
+        if (row && typeof row === "object") {
+          out.push(
+            etherscanRowToLogLike(/** @type {Record<string, unknown>} */ (row)),
+          );
+        }
+      }
+      if (batch.length < offset) break;
+    } catch (e) {
+      page_err = e instanceof Error ? e.message : String(e);
+      throw e;
+    } finally {
+      if (logAddrs) {
+        const duration_ms = Date.now() - t0;
+        const ok = page_err == null && page_ok;
+        const addrPart = logAddrs.join(",");
+        const errNote = page_err ? ` err=${page_err}` : "";
+        logger.info({
+          event: "explorer_api_etherscan",
+          phase: "end",
+          chain: String(chain),
+          api: "getLogs",
+          block: blockStr,
+          page,
+          addresses: logAddrs,
+          duration_ms,
+          http_status,
+          ok,
+          result_count,
+          ...(page_err ? { error: page_err } : {}),
+          message: `ERC20: END API CALL (${String(chain)} block=${blockStr} page=${page} ${addrPart}) (${duration_ms}ms)${errNote}`,
+        });
       }
     }
-    if (batch.length < offset) break;
   }
 
   return out;
+}
+
+/**
+ * @param {import("@prisma/client").Chain} chain
+ * @param {string} budgetKey
+ * @returns {Promise<bigint>}
+ */
+async function fetchLatestBlockNumberViaEtherscan(chain, budgetKey) {
+  const apiKey = re.etherscanApiKey?.trim();
+  const chainId = etherscanChainId(chain);
+  if (!apiKey || chainId == null) {
+    throw new Error("etherscan_blockNumber_missing_key_or_chain");
+  }
+  const base = re.etherscanApiBase.replace(/\/$/, "");
+  const t0 = Date.now();
+  let http_status = /** @type {number | null} */ (null);
+  let ok = false;
+  let errMsg = /** @type {string | null} */ (null);
+
+  logger.info({
+    event: "explorer_api_etherscan",
+    phase: "start",
+    chain: String(chain),
+    api: "eth_blockNumber",
+    addresses: [],
+    message: `ERC20: START API CALL (${String(chain)} eth_blockNumber)`,
+  });
+
+  try {
+    await acquireOutboundRpcSlot(budgetKey);
+    const u = new URL(base.includes("://") ? base : `https://${base}`);
+    u.searchParams.set("chainid", String(chainId));
+    u.searchParams.set("module", "proxy");
+    u.searchParams.set("action", "eth_blockNumber");
+    u.searchParams.set("apikey", apiKey);
+
+    const res = await fetch(u.toString(), { method: "GET" });
+    http_status = res.status;
+    if (!res.ok) {
+      throw new Error(`etherscan_blockNumber_http_${res.status}`);
+    }
+    /** @type {{ status?: string, message?: string, result?: unknown }} */
+    const j = await res.json();
+    if (String(j.status ?? "") === "0") {
+      const errPart =
+        typeof j.result === "string" ? j.result : JSON.stringify(j.result);
+      throw new Error(`etherscan_blockNumber_${j.message ?? "error"}:${errPart}`);
+    }
+    const raw = j.result;
+    if (typeof raw !== "string") {
+      throw new Error("etherscan_blockNumber_bad_result_type");
+    }
+    const s = raw.trim();
+    if (s.startsWith("0x") || s.startsWith("0X")) {
+      ok = true;
+      return BigInt(s);
+    }
+    if (/^\d+$/.test(s)) {
+      ok = true;
+      return BigInt(s);
+    }
+    throw new Error("etherscan_blockNumber_unparseable");
+  } catch (e) {
+    errMsg = e instanceof Error ? e.message : String(e);
+    throw e;
+  } finally {
+    const duration_ms = Date.now() - t0;
+    const errNote = errMsg ? ` err=${errMsg}` : "";
+    logger.info({
+      event: "explorer_api_etherscan",
+      phase: "end",
+      chain: String(chain),
+      api: "eth_blockNumber",
+      addresses: [],
+      duration_ms,
+      http_status,
+      ok: errMsg == null && ok,
+      ...(errMsg ? { error: errMsg } : {}),
+      message: `ERC20: END API CALL (${String(chain)} eth_blockNumber) (${duration_ms}ms)${errNote}`,
+    });
+  }
 }
 
 /**
@@ -159,24 +291,31 @@ function groupWalletsByNormalizedAddress(chain, wallets) {
 export async function scanEvmChain(chain, options = {}) {
   if (!isEvmChain(chain)) return;
 
-  const network = chainToStaticNetwork(chain);
-  const provider = new ethers.JsonRpcProvider(chainToRpcUrl(chain), network, {
-    staticNetwork: network,
-  });
   const budgetKey = evmRpcBudgetKey(chain);
-  await acquireOutboundRpcSlot(budgetKey);
-  const tip = BigInt(await provider.getBlockNumber());
-  let cursor = await getOrInitScannerBlock(chain, tip);
-  if (cursor >= tip) return;
+  if (!re.etherscanApiKey?.trim()) {
+    return;
+  }
 
-  const walletRows =
-    options.wallets ?? (await loadWalletsForChain(chain));
+  const walletRows = options.wallets ?? (await loadWalletsForChain(chain));
   if (walletRows.length === 0) {
-    await advanceScanner(chain, tip);
+    return;
+  }
+
+  let tip;
+  try {
+    tip = await fetchLatestBlockNumberViaEtherscan(chain, budgetKey);
+  } catch {
+    return;
+  }
+
+  let cursor = await getOrInitScannerBlock(chain, tip);
+
+  if (cursor >= tip) {
     return;
   }
 
   const uniqueAddrs = [...new Set(walletRows.map((w) => w.address))];
+
   recordDepositScanPolledAddresses(chain, uniqueAddrs);
 
   const byAddr = groupWalletsByNormalizedAddress(chain, walletRows);
@@ -187,97 +326,29 @@ export async function scanEvmChain(chain, options = {}) {
     erc20Map[addr.toLowerCase()] = meta;
   }
 
-  const maxBatch = 8n;
+  const maxBatch = BigInt(re.evmDepositScanMaxBlocksPerTick);
   const end = tip < cursor + maxBatch ? tip : cursor + maxBatch;
 
   for (let b = cursor + 1n; b <= end; b++) {
-    await acquireOutboundRpcSlot(budgetKey);
-    const block = await provider.getBlock(b, true);
-    if (!block) continue;
-
-    const txs = block.prefetchedTransactions;
-    if (txs.length === 0 && block.transactions.length > 0) {
-      logger.warn(
-        "evm block missing full transactions — native deposits skipped; use an RPC that supports eth_getBlockByNumber(full=true)",
-        { chain, block: b.toString() },
-      );
-    }
-
-    for (const tx of txs) {
-      if (!tx || tx.to == null) continue;
-      const to = normalizeMatchAddress(chain, tx.to);
-      const group = byAddr.get(to);
-      if (!group?.length) continue;
-      const val = tx.value ?? 0n;
-      if (val <= 0n) continue;
-
-      const sym = nativeSymbolForChain(chain);
-      const nativeMatches = group.filter((w) =>
-        walletAcceptsEvmNative(chain, w),
-      );
-      const w = pickSingleDepositWallet(nativeMatches, {
-        chain,
-        tx_hash: tx.hash,
-        block: b.toString(),
-        kind: "evm_native",
-      });
-      if (!w) continue;
-      await upsertIncomingTransaction({
-        walletId: w.id,
-        currency: w.currency,
-        network: w.network,
-        txHash: tx.hash,
-        fromAddress: tx.from ?? "",
-        toAddress: w.address,
-        amount: val.toString(),
-        tokenSymbol: sym,
-        tokenDecimals: nativeDecimalsForChain(chain),
-        chain,
-        confirmations: Number(tip - b + 1n),
-        blockNumber: b,
-        logIndex: -1,
-      });
-    }
-
     let logs = [];
     try {
-      await acquireOutboundRpcSlot(budgetKey);
-      logs = await provider.getLogs({
-        fromBlock: b,
-        toBlock: b,
-        topics: [transferTopic],
-      });
-    } catch (e) {
-      logger.warn("evm getLogs failed", { chain, block: b.toString(), err: String(e) });
-      if (re.etherscanApiKey?.trim()) {
-        try {
-          logs = await fetchTransferLogsViaEtherscan(
-            chain,
-            b,
-            transferTopic,
-            budgetKey,
-          );
-          if (logs.length > 0) {
-            logger.info("evm_get_logs_etherscan_fallback", {
-              chain,
-              block: b.toString(),
-              log_count: logs.length,
-            });
-          }
-        } catch (e2) {
-          logger.warn("evm_get_logs_etherscan_fallback_failed", {
-            chain,
-            block: b.toString(),
-            err: String(e2),
-          });
-        }
-      }
+      logs = await fetchTransferLogsViaEtherscan(
+        chain,
+        b,
+        transferTopic,
+        budgetKey,
+        uniqueAddrs,
+      );
+    } catch {
+      logs = [];
     }
 
     for (const log of logs) {
       const contract = log.address.toLowerCase();
       const meta = erc20Map[contract];
-      if (!meta) continue;
+      if (!meta) {
+        continue;
+      }
 
       let parsed = null;
       try {
@@ -285,10 +356,14 @@ export async function scanEvmChain(chain, options = {}) {
       } catch {
         continue;
       }
-      if (!parsed || parsed.name !== "Transfer") continue;
+      if (!parsed || parsed.name !== "Transfer") {
+        continue;
+      }
       const toAddr = normalizeMatchAddress(chain, String(parsed.args.to));
       const group = byAddr.get(toAddr);
-      if (!group?.length) continue;
+      if (!group?.length) {
+        continue;
+      }
       const amount = parsed.args.value;
       const tokenSym = String(meta.symbol).toUpperCase();
 
@@ -303,7 +378,9 @@ export async function scanEvmChain(chain, options = {}) {
         kind: "evm_erc20",
         token: tokenSym,
       });
-      if (!w) continue;
+      if (!w) {
+        continue;
+      }
       await upsertIncomingTransaction({
         walletId: w.id,
         currency: w.currency,

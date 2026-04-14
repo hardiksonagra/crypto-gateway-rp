@@ -1,29 +1,12 @@
 import { Chain } from "@prisma/client";
 
-/** Stable admin / validation order (all Prisma `Chain` values). */
-export const ADMIN_CHAIN_TOGGLE_ORDER = [
-  Chain.ETH,
-  Chain.BNB,
-  Chain.POLYGON,
-  Chain.ARBITRUM,
-  Chain.OPTIMISM,
-  Chain.TRON,
-  Chain.BTC,
-  Chain.TON,
-  Chain.SOLANA,
-];
+/** Admin “Supported chains” toggles — product is USDT·TRC20 + USDT·ERC20 only. */
+export const ADMIN_CHAIN_TOGGLE_ORDER = [Chain.ETH, Chain.TRON];
 
 /** @type {Record<string, { label: string, hint: string }>} */
 export const CHAIN_ADMIN_META = {
-  ETH: { label: "Ethereum", hint: "USDT ERC20, native ETH" },
-  BNB: { label: "BNB Chain", hint: "USDT BEP20" },
-  POLYGON: { label: "Polygon", hint: "EVM" },
-  ARBITRUM: { label: "Arbitrum", hint: "EVM" },
-  OPTIMISM: { label: "Optimism", hint: "EVM" },
-  TRON: { label: "TRON", hint: "USDT TRC20, TRX" },
-  BTC: { label: "Bitcoin", hint: "BTC deposits" },
-  TON: { label: "TON", hint: "USDT jetton" },
-  SOLANA: { label: "Solana", hint: "USDT SPL" },
+  ETH: { label: "Ethereum", hint: "USDT ERC20 deposits" },
+  TRON: { label: "TRON", hint: "USDT TRC20 deposits" },
 };
 
 const CHAIN_SET = new Set(Object.values(Chain));
@@ -132,13 +115,7 @@ export function normalizeChainEnabledStoredObject(p) {
  *
  * @type {readonly import("@prisma/client").Chain[]}
  */
-export const MERCHANT_PORTAL_PRODUCT_CHAINS = [
-  Chain.TRON,
-  Chain.SOLANA,
-  Chain.ETH,
-  Chain.BNB,
-  Chain.TON,
-];
+export const MERCHANT_PORTAL_PRODUCT_CHAINS = [Chain.TRON, Chain.ETH];
 
 /**
  * Legacy helper: product chains ∩ platform-on, optionally forced to TRON when `GATEWAY_TRON_USDT_ONLY`.

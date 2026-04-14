@@ -239,14 +239,12 @@ function envFallbackString(key) {
       return String(env.confirmationsEvm);
     case "CONFIRMATIONS_TRON":
       return String(env.confirmationsTron);
-    case "CONFIRMATIONS_BTC":
-      return String(env.confirmationsBtc);
-    case "CONFIRMATIONS_TON":
-      return String(env.confirmationsTon);
-    case "CONFIRMATIONS_SOLANA":
-      return String(env.confirmationsSolana);
-    case "WORKER_POLL_INTERVAL_MS":
-      return String(env.workerPollMs);
+    case "WORKER_POLL_INTERVAL_MS_ERC20":
+      return String(env.workerPollMsErc20);
+    case "WORKER_POLL_INTERVAL_MS_TRC20":
+      return String(env.workerPollMsTrc20);
+    case "EVM_DEPOSIT_SCAN_MAX_BLOCKS_PER_TICK":
+      return String(env.evmDepositScanMaxBlocksPerTick);
     case "WALLET_SCAN_TTL_MINUTES":
       return String(env.walletScanTtlMinutes);
     case "WALLET_ASSIGNMENT_HOLD_MINUTES":
@@ -261,16 +259,6 @@ function envFallbackString(key) {
       return env.workerLogRailCounts;
     case "DEPOSIT_SCANNER_TRON_ONLY":
       return env.depositScannerTronOnly ? "true" : "false";
-    case "RPC_ETH":
-      return env.rpcEth;
-    case "RPC_BNB":
-      return env.rpcBnb;
-    case "RPC_POLYGON":
-      return env.rpcPolygon;
-    case "RPC_ARBITRUM":
-      return env.rpcArbitrum;
-    case "RPC_OPTIMISM":
-      return env.rpcOptimism;
     case "ETHERSCAN_API_BASE":
       return env.etherscanApiBase ?? "";
     case "ETHERSCAN_API_KEY":
@@ -287,26 +275,10 @@ function envFallbackString(key) {
       return env.tronEventServer;
     case "TRON_API_KEY":
       return env.tronApiKey ?? "";
-    case "TON_API_BASE":
-      return env.tonApiBase;
-    case "TON_API_KEY":
-      return env.tonApiKey ?? "";
-    case "BTC_EXPLORER_API_BASE":
-      return env.btcExplorerApiBase;
-    case "SWEEP_MASTER_EVM":
-      return env.sweepMasterEvm ?? "";
     case "SWEEP_MASTER_TRON":
       return env.sweepMasterTron ?? "";
-    case "SWEEP_MASTER_TRX":
-      return env.sweepMasterTrx ?? "";
     case "SWEEP_MASTER_USDT_ETH":
       return env.sweepMasterUsdtEth ?? "";
-    case "SWEEP_MASTER_USDT_BNB":
-      return env.sweepMasterUsdtBnb ?? "";
-    case "SWEEP_MASTER_BTC":
-      return env.sweepMasterBtc ?? "";
-    case "SWEEP_MASTER_SOLANA":
-      return env.sweepMasterSolana ?? "";
     case "SWEEP_TRX_FUNDER_ADDRESS":
       return env.sweepTrxFunderAddress ?? "";
     case "SWEEP_TRX_TOPUP_SUN":
@@ -317,10 +289,6 @@ function envFallbackString(key) {
       return env.sweepTronAutoCronEnabled ? "true" : "false";
     case "SWEEP_TRON_AUTO_CRON_MINUTES":
       return String(env.sweepTronAutoCronMinutes);
-    case "SOLANA_RPC_URL":
-      return env.solanaRpcUrl;
-    case "SOLANA_USDT_MINT":
-      return env.solanaUsdtMint;
     case "GATEWAY_SANDBOX":
       return env.gatewaySandbox ? "true" : "false";
     case "GATEWAY_TRON_USDT_ONLY":
@@ -333,10 +301,6 @@ function envFallbackString(key) {
     }
     case "TRC20_CONTRACTS": {
       const raw = process.env.TRC20_CONTRACTS?.trim();
-      return raw && raw.length > 0 ? raw : "{}";
-    }
-    case "TON_JETTON_CONTRACTS": {
-      const raw = process.env.TON_JETTON_CONTRACTS?.trim();
       return raw && raw.length > 0 ? raw : "{}";
     }
     case "CHAIN_ENABLED":
@@ -358,6 +322,11 @@ function validateStoredValue(key, stored) {
     case "int": {
       const n = parseInt(s, 10);
       if (!Number.isFinite(n)) throw new Error(`${key}: invalid integer`);
+      if (key === "EVM_DEPOSIT_SCAN_MAX_BLOCKS_PER_TICK") {
+        if (n < 1 || n > 50) {
+          throw new Error(`${key}: must be between 1 and 50`);
+        }
+      }
       return String(n);
     }
     case "bool":

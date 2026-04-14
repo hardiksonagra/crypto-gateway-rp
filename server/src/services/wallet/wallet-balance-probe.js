@@ -1,10 +1,7 @@
 import { Chain } from "@prisma/client";
-import { Contract, JsonRpcProvider } from "ethers";
-import { getAssociatedTokenAddressSync, getAccount, TOKEN_PROGRAM_ID } from "@solana/spl-token";
-import { Connection, PublicKey } from "@solana/web3.js";
 import { getErc20Contracts } from "../../config/env.js";
 import { re } from "../../config/runtime-env.js";
-import { chainToRpcUrl, chainToStaticNetwork, isEvmChain } from "../../config/chains.js";
+import { isEvmChain } from "../../config/chains.js";
 import { walletAcceptsEvmErc20 } from "../../config/payment-rails.js";
 import { prisma } from "../../lib/prisma.js";
 import { isChainLiveForPlatform } from "../../lib/chain-enable.js";
@@ -14,46 +11,30 @@ import {
   acquireOutboundRpcSlot,
   evmRpcBudgetKey,
 } from "../../lib/network-rpc-rate-limit.js";
-import { postgresChainEnumHasSolana } from "../../lib/postgres-chain-enum-solana.js";
 import {
   tronFullNodeHostnameForLog,
   tronscanApiHostnameForLog,
 } from "../../lib/tron-node-client.js";
 import { readTronBalanceAtomicViaTronscan } from "../../lib/tronscan-account-balance.js";
+import {
+  etherscanApiHostnameForLog,
+  fetchErc20BalanceAtomicViaEtherscan,
+} from "../../lib/etherscan-client.js";
 import { pickUsdtTrc20Contract } from "../sweep/tron-usdt-sweep.js";
-
-const EVM_ERC20_ABI = ["function balanceOf(address account) view returns (uint256)"];
 
 /**
  * @param {import("@prisma/client").Chain} chain
  * @returns {{ address: string, decimals: number } | null}
  */
 function pickUsdtEvmContract(chain) {
-  if (chain === Chain.ETH) {
-    const raw = getErc20Contracts()[Chain.ETH] ?? {};
-    for (const [addr, meta] of Object.entries(raw)) {
-      if (String(meta?.symbol ?? "").toUpperCase() === "USDT") {
-        return { address: String(addr).trim(), decimals: Number(meta?.decimals) || 6 };
-      }
-    }
-    return { address: "0xdAC17F958D2ee523a2206206994597C13D831ec7", decimals: 6 };
-  }
-  if (chain === Chain.BNB) {
-    const raw = getErc20Contracts()[Chain.BNB] ?? {};
-    for (const [addr, meta] of Object.entries(raw)) {
-      if (String(meta?.symbol ?? "").toUpperCase() === "USDT") {
-        return { address: String(addr).trim(), decimals: Number(meta?.decimals) || 6 };
-      }
-    }
-    return { address: "0x55d398326f99059fF775485246999027B3197955", decimals: 6 };
-  }
-  const raw = getErc20Contracts()[chain] ?? {};
+  if (chain !== Chain.ETH) return null;
+  const raw = getErc20Contracts()[Chain.ETH] ?? {};
   for (const [addr, meta] of Object.entries(raw)) {
     if (String(meta?.symbol ?? "").toUpperCase() === "USDT") {
       return { address: String(addr).trim(), decimals: Number(meta?.decimals) || 6 };
     }
   }
-  return null;
+  return { address: "0xdAC17F958D2ee523a2206206994597C13D831ec7", decimals: 6 };
 }
 
 /**
@@ -90,12 +71,6 @@ export async function probeWalletOnChainBalance(w) {
       };
     }
 
-    if (w.chain === Chain.TRON && cur === "TRX" && net === "TRON") {
-      const atomic = await readTronBalanceAtomicViaTronscan(w.address, "TRX");
-      const human = formatAtomicAmountString(atomic, 6);
-      return { display: `${human} TRX`, atomic: atomic.toString(), error: null };
-    }
-
     if (isEvmChain(w.chain) && walletAcceptsEvmErc20(w.chain, w, "USDT")) {
       const token = pickUsdtEvmContract(w.chain);
       if (!token) {
@@ -105,51 +80,26 @@ export async function probeWalletOnChainBalance(w) {
           error: "no_usdt_contract_for_chain",
         };
       }
-      const provider = new JsonRpcProvider(
-        chainToRpcUrl(w.chain),
-        chainToStaticNetwork(w.chain),
-        { staticNetwork: true },
-      );
-      const contract = new Contract(token.address, EVM_ERC20_ABI, provider);
+      if (!re.etherscanApiKey?.trim()) {
+        return {
+          display: null,
+          atomic: null,
+          error: "etherscan_api_key_required_for_eth_usdt_balance",
+        };
+      }
       const key = evmRpcBudgetKey(w.chain);
-      await acquireOutboundRpcSlot(key);
-      const bal = await contract.balanceOf(w.address);
-      const atomic = BigInt(bal.toString());
+      const atomic = await fetchErc20BalanceAtomicViaEtherscan({
+        chainId: 1,
+        tokenContract: token.address,
+        walletAddress: w.address,
+        budgetKey: key,
+      });
       const human = formatAtomicAmountString(atomic, token.decimals);
       return {
         display: `${human} USDT`,
         atomic: atomic.toString(),
         error: null,
       };
-    }
-
-    if (
-      w.chain === Chain.SOLANA &&
-      cur === "USDT" &&
-      net === "SPL" &&
-      (await postgresChainEnumHasSolana())
-    ) {
-      const connection = new Connection(re.solanaRpcUrl.replace(/\/$/, ""), "confirmed");
-      const mint = new PublicKey(re.solanaUsdtMint.trim());
-      const owner = new PublicKey(w.address.trim());
-      const ata = getAssociatedTokenAddressSync(mint, owner, false, TOKEN_PROGRAM_ID);
-      await acquireOutboundRpcSlot("SOLANA");
-      try {
-        const acc = await getAccount(connection, ata);
-        const atomic = acc.amount;
-        const human = formatAtomicAmountString(atomic, 6);
-        return {
-          display: `${human} USDT`,
-          atomic: atomic.toString(),
-          error: null,
-        };
-      } catch (e) {
-        const msg = String(e);
-        if (msg.includes("could not find account") || msg.includes("TokenAccountNotFoundError")) {
-          return { display: "0 USDT", atomic: "0", error: null };
-        }
-        throw e;
-      }
     }
 
     return {
@@ -172,6 +122,12 @@ export async function probeWalletOnChainBalance(w) {
         tronscan_api_host: tronscanApiHostnameForLog(),
         tron_full_node_host: tronFullNodeHostnameForLog(),
         note: "TRON admin balance refresh uses TronScan /api/account (TRONSCAN_API_KEY)",
+      });
+    }
+    if (w.chain === Chain.ETH) {
+      Object.assign(base, {
+        etherscan_host: etherscanApiHostnameForLog(),
+        note: "ETH USDT admin balance uses Etherscan tokenbalance (ETHERSCAN_API_KEY)",
       });
     }
     logger.error("wallet_balance_probe_failed", base);

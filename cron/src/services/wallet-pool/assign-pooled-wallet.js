@@ -11,9 +11,6 @@ import { isChainLiveForPlatform } from "crypto-payment-gateway/src/lib/chain-ena
 import { nextScanExpiresAt } from "crypto-payment-gateway/src/lib/wallet-scan.js";
 import { deriveEvmAddress } from "crypto-payment-gateway/src/services/wallet/evm-wallet.js";
 import { deriveTronAddress } from "crypto-payment-gateway/src/services/wallet/tron-wallet.js";
-import { deriveBtcAddress } from "crypto-payment-gateway/src/services/wallet/btc-wallet.js";
-import { deriveTonAddress } from "crypto-payment-gateway/src/services/wallet/ton-wallet.js";
-import { deriveSolanaAddressBase58 } from "crypto-payment-gateway/src/services/wallet/solana-wallet.js";
 
 /** @typedef {import("@prisma/client").Prisma.TransactionClient} Tx */
 
@@ -278,12 +275,6 @@ async function createNewPooledWallet(tx, args) {
       address = deriveEvmAddress(derivationIndex);
     } else if (chain === Chain.TRON) {
       address = deriveTronAddress(derivationIndex, env.mnemonic);
-    } else if (chain === Chain.BTC) {
-      address = deriveBtcAddress(derivationIndex, env.mnemonic);
-    } else if (chain === Chain.TON) {
-      address = await deriveTonAddress(derivationIndex, env.mnemonic);
-    } else if (chain === Chain.SOLANA) {
-      address = deriveSolanaAddressBase58(derivationIndex, env.mnemonic);
     } else {
       throw new Error(`Unsupported chain: ${chain}`);
     }

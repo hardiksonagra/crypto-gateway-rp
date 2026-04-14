@@ -25,11 +25,10 @@ const devConsoleFormat = winston.format.combine(
         ? String(info.message)
         : "";
 
-    if (info.event === "worker_deposit_scan_tick" && msg) {
-      return `${ts} ${level}\n${msg}`;
-    }
-
-    if (info.event === "deposit_scan_addresses" && msg) {
+    if (
+      (msg.startsWith("TRC20:") || msg.startsWith("ERC20:")) &&
+      msg !== ""
+    ) {
       return `${ts} ${level} ${msg}`;
     }
 
@@ -45,8 +44,6 @@ const devConsoleFormat = winston.format.combine(
         ) {
           continue;
         }
-        if (key === "event" && info.event === "worker_deposit_scan_tick")
-          continue;
         const v = info[key];
         if (v === undefined) continue;
         const s =

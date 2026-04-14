@@ -3,6 +3,7 @@ import { TronWeb } from "tronweb";
 import { utils as tronUtils } from "tronweb";
 import { env, getTrc20Contracts } from "../../config/env.js";
 import { re } from "../../config/runtime-env.js";
+import { parseWalletDbId } from "../../lib/parse-wallet-db-id.js";
 import { prisma } from "../../lib/prisma.js";
 import { logger } from "../../lib/logger.js";
 import { acquireOutboundRpcSlot } from "../../lib/network-rpc-rate-limit.js";
@@ -252,10 +253,15 @@ export async function listTronUsdtSweepTargets() {
 }
 
 /**
- * @param {string} walletId
+ * @param {string | number} walletId
  * @returns {Promise<{ ok: true, skipped?: boolean, reason?: string, tx_hash?: string, amount_atomic?: string, from_address?: string, to_address?: string } | { ok: false, error: string, detail?: string }>}
  */
 export async function sweepTronUsdtOne(walletId) {
+  const wid = parseWalletDbId(walletId);
+  if (wid == null) {
+    return { ok: false, error: "WALLET_NOT_FOUND" };
+  }
+
   const master = re.sweepMasterTron?.trim();
   if (!master) {
     return { ok: false, error: "SWEEP_MASTER_TRON_NOT_SET" };
@@ -270,7 +276,7 @@ export async function sweepTronUsdtOne(walletId) {
 
   const wallet = await prisma.wallet.findFirst({
     where: {
-      id: walletId,
+      id: wid,
       chain: Chain.TRON,
       currency: "USDT",
       network: "TRC20",

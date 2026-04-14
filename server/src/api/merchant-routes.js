@@ -26,17 +26,11 @@ import { PORTAL_ROLE_MERCHANT } from "../constants/portal-role.js";
 import { logPanelMutations } from "../middleware/log-panel-mutations.js";
 import { parsePageQuery } from "../lib/pagination.js";
 import { ensureMerchantPortalEnvironmentConsistent } from "../lib/merchant-gateway-env.js";
-import {
-  computeMerchantBalances,
-  merchantBalanceForAsset,
-} from "../services/merchant-balance.js";
+import { computeMerchantBalances } from "../services/merchant-balance.js";
 import { buildAllPendingPreviews } from "../services/settlement-batch.js";
 import { proofPathForFileName } from "../lib/settlement-upload.js";
 import fs from "fs";
 import { re } from "../config/runtime-env.js";
-import { isEvmChain } from "../config/chains.js";
-import { nativeSymbolForChain } from "../services/native-symbols.js";
-import { sendEvmNativeFromMerchantPool } from "../services/withdraw/evm-native-withdraw.js";
 import { logger } from "../lib/logger.js";
 import { redeliverPaymentSuccessWebhook } from "../services/callback-service.js";
 import { parseDefaultChainsArray } from "../lib/default-chains.js";
@@ -49,7 +43,6 @@ import {
   parseSupportedDepositRailsInput,
   pickMerchantDefaultPair,
 } from "../lib/merchant-default-pair.js";
-import { ethers } from "ethers";
 import { generateApiKey, hashApiKey } from "../lib/api-key.js";
 import { encryptMerchantApiKey } from "../lib/merchant-api-key-cipher.js";
 
@@ -877,132 +870,11 @@ router.post("/api/v1/merchant/withdrawals", async (req, res) => {
     res.status(401).json({ error: "unauthorized" });
     return;
   }
-  const merchantGate = await prisma.merchant.findUnique({
-    where: { id: mid },
-    select: { id: true, liveGatewayEnabled: true },
+  res.status(501).json({
+    error: "merchant_withdraw_not_supported",
+    message:
+      "This gateway supports USDT·TRC20 and USDT·ERC20 deposits only; merchant API withdrawals are not enabled.",
   });
-  if (!merchantGate?.liveGatewayEnabled) {
-    res.status(403).json({
-      error: "live_gateway_disabled",
-      message:
-        "Withdrawals use live on-chain balances. Enable live gateway for your merchant (admin).",
-    });
-    return;
-  }
-  const merchInt = merchantGate.id;
-  const body = req.body ?? {};
-  const chainStr = body.chain?.trim();
-  const to = body.to_address?.trim();
-  const amountStr = body.amount?.trim();
-  const tokenSymbol = body.token_symbol?.trim();
-  if (!chainStr || !to || !amountStr || !tokenSymbol) {
-    res
-      .status(400)
-      .json({ error: "chain, to_address, amount, token_symbol required" });
-    return;
-  }
-  const CHAINS = new Set(Object.values(Chain));
-  if (!CHAINS.has(chainStr)) {
-    res.status(400).json({ error: "invalid chain" });
-    return;
-  }
-  const chain = chainStr;
-  const expectedNative = nativeSymbolForChain(chain);
-  if (tokenSymbol.toUpperCase() !== expectedNative.toUpperCase()) {
-    res.status(400).json({
-      error: "only_native_withdraw_supported",
-      expected_token_symbol: expectedNative,
-    });
-    return;
-  }
-  let amount;
-  try {
-    amount = BigInt(amountStr);
-  } catch {
-    res.status(400).json({ error: "invalid amount" });
-    return;
-  }
-  if (amount <= 0n) {
-    res.status(400).json({ error: "amount must be positive" });
-    return;
-  }
-
-  const available = await merchantBalanceForAsset(mid, chain, expectedNative);
-  if (available < amount) {
-    res.status(400).json({
-      error: "insufficient_balance",
-      available_raw: available.toString(),
-    });
-    return;
-  }
-
-  if (!isEvmChain(chain)) {
-    res.status(501).json({
-      error: "chain_withdraw_not_implemented",
-      detail: "EVM native withdrawals only in this release.",
-    });
-    return;
-  }
-
-  if (!ethers.isAddress(to)) {
-    res.status(400).json({ error: "invalid_evm_address" });
-    return;
-  }
-  const checksumTo = ethers.getAddress(to);
-
-  let wId;
-  try {
-    const row = await prisma.withdrawal.create({
-      data: {
-        merchantId: merchInt,
-        chain,
-        tokenSymbol: expectedNative,
-        toAddress: checksumTo,
-        amount: amountStr,
-        status: WithdrawalStatus.processing,
-      },
-    });
-    wId = row.id;
-    const { txHash, fromAddress } = await sendEvmNativeFromMerchantPool({
-      merchantId: merchInt,
-      chain,
-      toAddress: checksumTo,
-      amountWei: amount,
-    });
-    await prisma.withdrawal.update({
-      where: { id: wId },
-      data: { status: WithdrawalStatus.completed, txHash },
-    });
-    res.status(201).json({
-      id: wId,
-      status: WithdrawalStatus.completed,
-      tx_hash: txHash,
-      from_address: fromAddress,
-    });
-  } catch (e) {
-    const msg = String(e);
-    logger.error("merchant withdraw failed", { mid, err: msg });
-    if (wId) {
-      await prisma.withdrawal.updateMany({
-        where: { id: wId, merchantId: merchInt },
-        data: {
-          status: WithdrawalStatus.failed,
-          failureReason: msg.slice(0, 2000),
-        },
-      });
-    }
-    if (msg.includes("NO_FUNDED_WALLET")) {
-      res.status(409).json({
-        error: "no_onchain_liquidity",
-        detail:
-          "Virtual balance exists but no single deposit wallet on this chain has enough native coin plus gas. Sweep or consolidate first.",
-      });
-      return;
-    }
-    res
-      .status(500)
-      .json({ error: "withdraw_failed", detail: msg.slice(0, 500) });
-  }
 });
 
 router.patch("/api/v1/merchant/settings", async (req, res) => {

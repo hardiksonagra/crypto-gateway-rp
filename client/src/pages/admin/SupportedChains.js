@@ -107,7 +107,14 @@ export default function SupportedChains() {
       </p>
       <p className="mt-2 max-w-3xl text-sm text-white/55 text-pretty">
         Changes apply after save. Restart{" "}
-        <span className="font-mono text-white/80">crypto-gateway-worker</span> and deposit-scan crons so the
+        <span className="font-mono text-white/80">
+          crypto-gateway-worker-erc20
+        </span>{" "}
+        /{" "}
+        <span className="font-mono text-white/80">
+          crypto-gateway-worker-trc20
+        </span>{" "}
+        and deposit-scan crons so the
         scanner picks up updates immediately.
       </p>
 

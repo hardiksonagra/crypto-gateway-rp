@@ -5,6 +5,18 @@
  * @typedef {{ key: string, label: string, category: string, type: "string" | "int" | "bool" | "bool_tron_gateway" | "bigint" | "usdt6" | "json" | "comma_origins", sensitive?: boolean, hideFromAdminList?: boolean }} AppSettingDef
  */
 
+/**
+ * System settings **section titles** for deposit scanning (Admin UI groups by `category`).
+ * Convention: `Deposit scanner · shared` = all rails; `Deposit scanner · USDT·<network>` = one PM2 rail.
+ * When adding a new deposit rail: add a key here, add `WORKER_POLL_INTERVAL_MS_*` (or rail-specific keys),
+ * wire `re` / `env` / `envFallbackString`, add PM2 app + `cron/src/entry-worker-*.js`, and append defs under the new category (keep this block ordered: shared → ERC20 → TRC20 → future rails alphabetically by label).
+ */
+export const DEPOSIT_SCANNER_CATEGORIES = {
+  shared: "Deposit scanner · shared",
+  usdtErc20: "Deposit scanner · USDT·ERC20",
+  usdtTrc20: "Deposit scanner · USDT·TRC20",
+};
+
 /** @type {AppSettingDef[]} */
 export const APP_SETTING_DEFINITIONS = [
   {
@@ -88,75 +100,75 @@ export const APP_SETTING_DEFINITIONS = [
     category: "Confirmations",
     type: "int",
   },
-  {
-    key: "CONFIRMATIONS_BTC",
-    label: "BTC confirmations",
-    category: "Confirmations",
-    type: "int",
-  },
-  {
-    key: "CONFIRMATIONS_TON",
-    label: "TON confirmations",
-    category: "Confirmations",
-    type: "int",
-  },
-  {
-    key: "CONFIRMATIONS_SOLANA",
-    label: "Solana confirmations",
-    category: "Confirmations",
-    type: "int",
-  },
 
-  {
-    key: "WORKER_POLL_INTERVAL_MS",
-    label: "Deposit scanner poll interval (ms)",
-    category: "Scanner / worker",
-    type: "int",
-  },
   {
     key: "WALLET_SCAN_TTL_MINUTES",
     label: "Wallet scan TTL (minutes, 0 = none)",
-    category: "Scanner / worker",
+    category: DEPOSIT_SCANNER_CATEGORIES.shared,
     type: "int",
   },
   {
     key: "WALLET_ASSIGNMENT_HOLD_MINUTES",
     label: "Pooled address hold (minutes, 0 = until paid)",
-    category: "Scanner / worker",
+    category: DEPOSIT_SCANNER_CATEGORIES.shared,
     type: "int",
   },
   {
     key: "WALLET_POOL_HOLD_RELEASE_CRON_MINUTES",
     label: "Wallet pool hold release cron interval (minutes, 1–59)",
-    category: "Scanner / worker",
+    category: DEPOSIT_SCANNER_CATEGORIES.shared,
     type: "int",
   },
   {
     key: "LATE_DEPOSIT_RECHECK_HOURS",
     label:
       "Legacy: no longer used by worker (use DEPOSIT_FULL_SCAN_INTERVAL_HOURS + wallet TTL + rescan).",
-    category: "Scanner / worker",
+    category: DEPOSIT_SCANNER_CATEGORIES.shared,
     type: "int",
   },
   {
     key: "DEPOSIT_FULL_SCAN_INTERVAL_HOURS",
     label:
       "Full live-wallet deposit scan (hours, 0 = off). Runs once per interval from maintenance cron.",
-    category: "Scanner / worker",
+    category: DEPOSIT_SCANNER_CATEGORIES.shared,
     type: "int",
   },
   {
     key: "WORKER_LOG_RAIL_COUNTS",
     label:
-      "Worker deposit tick logs: rail counts + polled wallet addresses (off / nonzero / always)",
-    category: "Scanner / worker",
+      "Deposit tick logs: rail counts + polled addresses (off / nonzero / always)",
+    category: DEPOSIT_SCANNER_CATEGORIES.shared,
     type: "string",
+  },
+
+  {
+    key: "WORKER_POLL_INTERVAL_MS_ERC20",
+    label:
+      "Timer between ticks (ms, min 1000) — PM2 `crypto-gateway-worker-erc20`; each tick can take longer (Etherscan per block). Worker logs: `ERC20: START/END API CALL` lines.",
+    category: DEPOSIT_SCANNER_CATEGORIES.usdtErc20,
+    type: "int",
   },
   {
     key: "DEPOSIT_SCANNER_TRON_ONLY",
-    label: "Deposit scanner: TRON only (skip EVM + TON ticks)",
-    category: "Scanner / worker",
+    label:
+      "Only walk Ethereum blocks when at least one live ETH wallet exists (lighter when true)",
+    category: DEPOSIT_SCANNER_CATEGORIES.usdtErc20,
     type: "bool",
+  },
+  {
+    key: "EVM_DEPOSIT_SCAN_MAX_BLOCKS_PER_TICK",
+    label:
+      "Max Ethereum blocks per ERC20 tick (1–50; default 4). Each block = one Etherscan getLogs — lower = faster ticks, slower catch-up if behind tip.",
+    category: DEPOSIT_SCANNER_CATEGORIES.usdtErc20,
+    type: "int",
+  },
+
+  {
+    key: "WORKER_POLL_INTERVAL_MS_TRC20",
+    label:
+      "Timer between ticks (ms, min 1000) — PM2 `crypto-gateway-worker-trc20`; each tick can take longer (TronScan per address + callbacks). Worker logs: `TRC20: START/END API CALL` lines.",
+    category: DEPOSIT_SCANNER_CATEGORIES.usdtTrc20,
+    type: "int",
   },
   {
     key: "CHAIN_ENABLED",
@@ -165,37 +177,6 @@ export const APP_SETTING_DEFINITIONS = [
     category: "Supported chains",
     type: "json",
     hideFromAdminList: true,
-  },
-
-  {
-    key: "RPC_ETH",
-    label: "RPC · Ethereum",
-    category: "EVM RPC",
-    type: "string",
-  },
-  {
-    key: "RPC_BNB",
-    label: "RPC · BNB Chain",
-    category: "EVM RPC",
-    type: "string",
-  },
-  {
-    key: "RPC_POLYGON",
-    label: "RPC · Polygon",
-    category: "EVM RPC",
-    type: "string",
-  },
-  {
-    key: "RPC_ARBITRUM",
-    label: "RPC · Arbitrum",
-    category: "EVM RPC",
-    type: "string",
-  },
-  {
-    key: "RPC_OPTIMISM",
-    label: "RPC · Optimism",
-    category: "EVM RPC",
-    type: "string",
   },
 
   {
@@ -239,7 +220,7 @@ export const APP_SETTING_DEFINITIONS = [
 
   {
     key: "ETHERSCAN_API_BASE",
-    label: "Etherscan API v2 base URL (ERC20 deposit scan — getLogs fallback)",
+    label: "Etherscan API v2 base URL (USDT·ERC20 deposit scan + ETH USDT balance — getLogs / tokenbalance; no RPC_ETH)",
     category: "ERC20 · Etherscan",
     type: "string",
   },
@@ -253,65 +234,14 @@ export const APP_SETTING_DEFINITIONS = [
   },
 
   {
-    key: "TON_API_BASE",
-    label: "TON API base URL",
-    category: "TON",
-    type: "string",
-  },
-  {
-    key: "TON_API_KEY",
-    label: "TON API key",
-    category: "TON",
-    type: "string",
-    sensitive: true,
-  },
-
-  {
-    key: "BTC_EXPLORER_API_BASE",
-    label: "BTC explorer API base",
-    category: "Bitcoin",
-    type: "string",
-  },
-
-  {
-    key: "SWEEP_MASTER_EVM",
-    label: "Sweep master · native EVM",
-    category: "Sweep addresses",
-    type: "string",
-  },
-  {
     key: "SWEEP_MASTER_TRON",
     label: "Sweep master · TRON (USDT/TRC20)",
     category: "Sweep addresses",
     type: "string",
   },
   {
-    key: "SWEEP_MASTER_TRX",
-    label: "Sweep master · native TRX (optional)",
-    category: "Sweep addresses",
-    type: "string",
-  },
-  {
     key: "SWEEP_MASTER_USDT_ETH",
     label: "Sweep master · USDT ERC20",
-    category: "Sweep addresses",
-    type: "string",
-  },
-  {
-    key: "SWEEP_MASTER_USDT_BNB",
-    label: "Sweep master · USDT BEP20",
-    category: "Sweep addresses",
-    type: "string",
-  },
-  {
-    key: "SWEEP_MASTER_BTC",
-    label: "Sweep master · BTC",
-    category: "Sweep addresses",
-    type: "string",
-  },
-  {
-    key: "SWEEP_MASTER_SOLANA",
-    label: "Sweep master · Solana",
     category: "Sweep addresses",
     type: "string",
   },
@@ -348,19 +278,6 @@ export const APP_SETTING_DEFINITIONS = [
   },
 
   {
-    key: "SOLANA_RPC_URL",
-    label: "Solana JSON RPC",
-    category: "Solana",
-    type: "string",
-  },
-  {
-    key: "SOLANA_USDT_MINT",
-    label: "SPL USDT mint",
-    category: "Solana",
-    type: "string",
-  },
-
-  {
     key: "GATEWAY_SANDBOX",
     label: "Allow live API key for sandbox simulate-deposit",
     category: "Gateway",
@@ -368,11 +285,10 @@ export const APP_SETTING_DEFINITIONS = [
   },
   {
     key: "GATEWAY_TRON_USDT_ONLY",
-    label: "Gateway TRON·USDT only mode",
+    label: "Gateway accepts USDT·TRC20 only (hide other rails from API)",
     category: "Gateway",
     type: "bool_tron_gateway",
   },
-
   {
     key: "OUTBOUND_RPC_MAX_PER_SECOND",
     label: "Outbound RPC max per second (0 = off)",
@@ -389,12 +305,6 @@ export const APP_SETTING_DEFINITIONS = [
   {
     key: "TRC20_CONTRACTS",
     label: "TRC20 contract map (JSON)",
-    category: "Contract maps",
-    type: "json",
-  },
-  {
-    key: "TON_JETTON_CONTRACTS",
-    label: "TON jetton map (JSON)",
     category: "Contract maps",
     type: "json",
   },

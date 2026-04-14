@@ -166,6 +166,10 @@ export function createApp() {
   );
   // strict: false allows top-level JSON `null` / primitives (strict mode rejects them).
   const jsonParser = express.json({ limit: "512kb", strict: false });
+  const urlencodedParser = express.urlencoded({
+    extended: true,
+    limit: "512kb",
+  });
   app.use((req, res, next) => {
     if (["GET", "HEAD", "OPTIONS"].includes(req.method)) {
       return next();
@@ -178,7 +182,10 @@ export function createApp() {
       req.body = {};
       return next();
     }
-    return jsonParser(req, res, next);
+    return jsonParser(req, res, (err) => {
+      if (err) return next(err);
+      return urlencodedParser(req, res, next);
+    });
   });
 
   const dist = env.clientDistPath;

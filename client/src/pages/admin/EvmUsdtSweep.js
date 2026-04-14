@@ -5,7 +5,7 @@ import ConfirmModal from "../../components/ConfirmModal";
 import { BrandLoader } from "../../components/BrandLoader.js";
 
 /**
- * @param {{ chain: "ETH" | "BNB", title: string, masterEnv: string, networkLabel: string, sectionClassName?: string }} props
+ * @param {{ chain: "ETH", title: string, masterEnv: string, networkLabel: string, sectionClassName?: string }} props
  */
 function UsdtChainSweepPanel({ chain, title, masterEnv, networkLabel, sectionClassName = "mt-10" }) {
   const qc = useQueryClient();
@@ -57,7 +57,7 @@ function UsdtChainSweepPanel({ chain, title, masterEnv, networkLabel, sectionCla
         <span className="font-mono text-white/70">chain</span> = {chain}) to your main{" "}
         <span className="font-mono text-white/70">0x</span> address (
         <span className="font-mono text-sky-200/90">{masterEnv}</span>). Each deposit address must hold enough native{" "}
-        {chain === "ETH" ? "ETH" : "BNB"} for gas. USDT contract:{" "}
+        ETH for gas. USDT contract:{" "}
         <span className="break-all font-mono text-white/50">{data?.usdt_contract ?? "—"}</span>.
       </p>
 
@@ -239,8 +239,8 @@ export default function AdminEvmUsdtSweep() {
     <div className="w-full">
       <h1 className="font-display text-2xl font-semibold text-white">EVM USDT sweep</h1>
       <p className="mt-2 max-w-3xl text-sm leading-relaxed text-white/55">
-        Consolidate gateway deposit wallets for Ethereum and BNB Chain USDT into separate main addresses. Sandbox and
-        live wallets both appear in each table.
+        Consolidate gateway deposit wallets for Ethereum USDT (ERC20) into your main address. Sandbox and live wallets
+        both appear in the table.
       </p>
 
       <UsdtChainSweepPanel
@@ -249,13 +249,6 @@ export default function AdminEvmUsdtSweep() {
         masterEnv="SWEEP_MASTER_USDT_ETH"
         networkLabel="ERC20"
         sectionClassName="mt-10"
-      />
-      <UsdtChainSweepPanel
-        chain="BNB"
-        title="BNB Chain — USDT (BEP20)"
-        masterEnv="SWEEP_MASTER_USDT_BNB"
-        networkLabel="BEP20"
-        sectionClassName="mt-14 border-t border-white/10 pt-12"
       />
     </div>
   );

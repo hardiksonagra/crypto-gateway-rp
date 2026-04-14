@@ -97,8 +97,25 @@ export const re = {
     );
   },
 
-  get workerPollMs() {
-    return getResolvedInt("WORKER_POLL_INTERVAL_MS", () => env.workerPollMs);
+  get workerPollMsErc20() {
+    const n = getResolvedInt("WORKER_POLL_INTERVAL_MS_ERC20", () =>
+      env.workerPollMsErc20,
+    );
+    return n >= 1000 ? n : 1000;
+  },
+
+  get workerPollMsTrc20() {
+    const n = getResolvedInt("WORKER_POLL_INTERVAL_MS_TRC20", () =>
+      env.workerPollMsTrc20,
+    );
+    return n >= 1000 ? n : 1000;
+  },
+
+  get evmDepositScanMaxBlocksPerTick() {
+    const n = getResolvedInt("EVM_DEPOSIT_SCAN_MAX_BLOCKS_PER_TICK", () =>
+      env.evmDepositScanMaxBlocksPerTick,
+    );
+    return Math.min(50, Math.max(1, n));
   },
 
   get walletScanTtlMinutes() {
@@ -164,22 +181,6 @@ export const re = {
 
   get rpcEth() {
     return getResolvedString("RPC_ETH", () => env.rpcEth);
-  },
-
-  get rpcBnb() {
-    return getResolvedString("RPC_BNB", () => env.rpcBnb);
-  },
-
-  get rpcPolygon() {
-    return getResolvedString("RPC_POLYGON", () => env.rpcPolygon);
-  },
-
-  get rpcArbitrum() {
-    return getResolvedString("RPC_ARBITRUM", () => env.rpcArbitrum);
-  },
-
-  get rpcOptimism() {
-    return getResolvedString("RPC_OPTIMISM", () => env.rpcOptimism);
   },
 
   get etherscanApiBase() {
@@ -255,13 +256,6 @@ export const re = {
     );
   },
 
-  get sweepMasterTrx() {
-    return getResolvedString(
-      "SWEEP_MASTER_TRX",
-      () => env.sweepMasterTrx ?? "",
-    );
-  },
-
   get sweepMasterUsdtEth() {
     return getResolvedString(
       "SWEEP_MASTER_USDT_ETH",
@@ -269,24 +263,10 @@ export const re = {
     );
   },
 
-  get sweepMasterUsdtBnb() {
-    return getResolvedString(
-      "SWEEP_MASTER_USDT_BNB",
-      () => env.sweepMasterUsdtBnb ?? "",
-    );
-  },
-
   get sweepMasterBtc() {
     return getResolvedString(
       "SWEEP_MASTER_BTC",
       () => env.sweepMasterBtc ?? "",
-    );
-  },
-
-  get sweepMasterSolana() {
-    return getResolvedString(
-      "SWEEP_MASTER_SOLANA",
-      () => env.sweepMasterSolana ?? "",
     );
   },
 
@@ -322,23 +302,12 @@ export const re = {
     );
   },
 
-  get solanaRpcUrl() {
-    return getResolvedString("SOLANA_RPC_URL", () => env.solanaRpcUrl);
-  },
-
-  get solanaUsdtMint() {
-    return getResolvedString("SOLANA_USDT_MINT", () => env.solanaUsdtMint);
-  },
-
   get gatewaySandbox() {
     return getResolvedBool("GATEWAY_SANDBOX", () => env.gatewaySandbox);
   },
 
   get gatewayTronUsdtOnly() {
-    return getResolvedBoolTronGateway(
-      "GATEWAY_TRON_USDT_ONLY",
-      () => env.gatewayTronUsdtOnly,
-    );
+    return getResolvedBoolTronGateway("GATEWAY_TRON_USDT_ONLY", () => env.gatewayTronUsdtOnly);
   },
 
   get outboundRpcMaxPerSecond() {

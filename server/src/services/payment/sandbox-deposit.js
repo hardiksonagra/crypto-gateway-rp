@@ -2,7 +2,6 @@ import { randomBytes } from "node:crypto";
 import { Chain, MerchantGatewayEnv } from "@prisma/client";
 import { prisma } from "../../lib/prisma.js";
 import { confirmationsForChain } from "../../config/chains.js";
-import { nativeDecimalsForChain, nativeSymbolForChain } from "../native-symbols.js";
 import { upsertIncomingTransaction } from "./transaction-upsert.js";
 import { resolveWalletInternalId } from "../../lib/entity-internal-id.js";
 
@@ -11,18 +10,10 @@ import { resolveWalletInternalId } from "../../lib/entity-internal-id.js";
  * @returns {string}
  */
 function sandboxFromAddress(chain) {
-  switch (chain) {
-    case Chain.TRON:
-      return "TSANDBOX111111111111111111111";
-    case Chain.BTC:
-      return "1SandboxTest111111111111111111111";
-    case Chain.TON:
-      return "EQD__________________________________________0vo";
-    case Chain.SOLANA:
-      return "SoSANDBOX1111111111111111111111111111111111";
-    default:
-      return "0x0000000000000000000000000000000000000001";
+  if (chain === Chain.TRON) {
+    return "TSANDBOX111111111111111111111";
   }
+  return "0x0000000000000000000000000000000000000001";
 }
 
 /**
@@ -34,16 +25,7 @@ function tokenMetaForWallet(wallet) {
   if (c === "USDT") {
     return { tokenSymbol: "USDT", tokenDecimals: 6 };
   }
-  if (c === "TRX") {
-    return {
-      tokenSymbol: "TRX",
-      tokenDecimals: nativeDecimalsForChain(Chain.TRON),
-    };
-  }
-  return {
-    tokenSymbol: nativeSymbolForChain(wallet.chain),
-    tokenDecimals: nativeDecimalsForChain(wallet.chain),
-  };
+  throw new Error("SANDBOX_UNSUPPORTED_RAIL");
 }
 
 /**

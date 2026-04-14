@@ -30,4 +30,12 @@ alwaysApply: true
 - **Data deletion** in this product is **soft delete** by default: prefer flags such as `isActive: false`, `deletedAt`, or equivalent — **do not** hard-delete user/merchant (or similar) rows from the database unless there is an explicit exception and migration story.
 - For **destructive or irreversible UI actions** (including “delete” that maps to deactivation), use an **in-app modal** component. **Do not** use `window.alert`, `window.confirm`, or `window.prompt` for those flows.
 
+## Cron / deposit worker (per-network)
+
+- **Deposit scanning** is **one PM2 app per product rail** in production (e.g. `crypto-gateway-worker-erc20`, `crypto-gateway-worker-trc20`); poll keys follow `WORKER_POLL_INTERVAL_MS_*` in Admin under the matching **`Deposit scanner · USDT·…`** section. See `ecosystem.config.cjs` and `cron/src/entry-worker-*.js`.
+- **Combined dev / legacy:** `entry-worker.js` may still run **both** rails in one process (`startBlockchainWorker`); prefer split PM2 apps in production.
+- **Deposit scanner** Admin sections use **`Deposit scanner · shared`** (all rails) and **`Deposit scanner · USDT·<network>`** per rail (today ERC20 + TRC20). Add new rails via `DEPOSIT_SCANNER_CATEGORIES` + defs in `server/src/lib/app-settings-registry.js`, then `re` / `env` / `envFallbackString`, PM2 + `entry-worker-*.js`.
+- **Side effects** that must not run twice (e.g. callback retries): designate **one** worker process for them and document in `cron/src/services/tracker/worker.js`.
+- Adding a **new deposit network** implies: its **own** PM2 entry + interval key(s) + scan path — do not fold unrelated networks into one process without an explicit product decision.
+
 When editing this repo, align new changes with these rules even if legacy files still violate them.

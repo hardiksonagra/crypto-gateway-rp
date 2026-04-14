@@ -63,7 +63,7 @@ npm run pm2:resync   # or pm2 start ecosystem.config.cjs
 
 - Today `cron` depends on **`crypto-payment-gateway` via `file:../server`** in `cron/package.json`. On a **dedicated cron VM** you can still clone the **full monorepo** and run only PM2 entries for worker/cron, **or** later replace that dependency with a **private npm package** or `git+ssh` URL pointing at the server package.
 - Env: same DB and chain-related variables as production API (copy the relevant keys). `cron/src/bootstrap-runtime.js` loads repo-root `.env` if present, then `cron/.env` (later values override earlier ones).
-- Processes: `entry-worker.js`, `entry-cron-1.js` (maintenance), `entry-cron-2.js` (tron sweep), or `npm run start:cron:maintenance -w cron`, `start:cron:tron-sweep`, `start:worker -w cron`.
+- Processes: `entry-worker-erc20.js` + `entry-worker-trc20.js` (deposit scanners; or combined `entry-worker.js`), `entry-cron-1.js` (maintenance), `entry-cron-2.js` (tron sweep), or matching `npm run start:* -w cron` scripts.
 
 ## Adding another cron group (PM2)
 
