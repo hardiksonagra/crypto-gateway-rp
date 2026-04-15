@@ -13,6 +13,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export async function bootstrapCronRuntime() {
   dotenv.config({ path: path.resolve(__dirname, "../../.env") });
   dotenv.config({ path: path.resolve(__dirname, "../.env") });
+  const { syncActiveRowWithGeneratedPrismaClient } = await import(
+    "crypto-payment-gateway/src/lib/prisma.js",
+  );
+  await syncActiveRowWithGeneratedPrismaClient();
   const { loadAppSettingsFromDatabase } = await import(
     "crypto-payment-gateway/src/lib/app-settings-runtime.js",
   );

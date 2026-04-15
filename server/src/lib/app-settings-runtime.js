@@ -2,7 +2,6 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "./prisma.js";
 import { logger } from "./logger.js";
 import { env } from "../config/env.js";
-import { ACTIVE } from "./active-row.js";
 import {
   APP_SETTING_DEF_BY_KEY,
   APP_SETTING_DEFINITIONS,
@@ -12,6 +11,9 @@ import { pruneMerchantsAfterSupportedChainsChange } from "./prune-merchants-afte
 
 /** @type {Map<string, string>} */
 let cacheMap = new Map();
+
+/** AppSetting soft-delete scope only (never tied to mutable {@link ACTIVE}). */
+const APP_SETTING_NOT_DELETED = Object.freeze({ deletedAt: null });
 
 /**
  * `null` = not yet probed. When the deployed Prisma Client predates `AppSetting.deletedAt`,
@@ -38,7 +40,7 @@ function isPrismaAppSettingDeletedAtUnsupported(e) {
 async function detectAppSettingDeletedAtSupport() {
   if (appSettingsClientHasDeletedAt != null) return;
   try {
-    await prisma.appSetting.findFirst({ where: { ...ACTIVE } });
+    await prisma.appSetting.findFirst({ where: { ...APP_SETTING_NOT_DELETED } });
     appSettingsClientHasDeletedAt = true;
   } catch (e) {
     if (isPrismaAppSettingDeletedAtUnsupported(e)) {
@@ -60,7 +62,9 @@ async function detectAppSettingDeletedAtSupport() {
  */
 export async function findAppSettingFirst(where) {
   await detectAppSettingDeletedAtSupport();
-  const scope = appSettingsClientHasDeletedAt ? ACTIVE : {};
+  const scope = appSettingsClientHasDeletedAt
+    ? { ...APP_SETTING_NOT_DELETED }
+    : {};
   return prisma.appSetting.findFirst({ where: { ...where, ...scope } });
 }
 
@@ -237,7 +241,9 @@ function applyLoggerLevel() {
  */
 export async function upsertAppSettingKeyValue(key, value) {
   await detectAppSettingDeletedAtSupport();
-  const scope = appSettingsClientHasDeletedAt ? ACTIVE : {};
+  const scope = appSettingsClientHasDeletedAt
+    ? { ...APP_SETTING_NOT_DELETED }
+    : {};
   const active = await prisma.appSetting.findFirst({
     where: { key, ...scope },
     select: { id: true },
@@ -275,7 +281,7 @@ export async function softDeleteAppSettingKey(key) {
   await detectAppSettingDeletedAtSupport();
   if (appSettingsClientHasDeletedAt) {
     await prisma.appSetting.updateMany({
-      where: { key, ...ACTIVE },
+      where: { key, ...APP_SETTING_NOT_DELETED },
       data: { deletedAt: new Date() },
     });
     return;
@@ -286,7 +292,9 @@ export async function softDeleteAppSettingKey(key) {
 /** Legacy Admin keys (ms) → `WORKER_POLL_INTERVAL_SEC_*` (seconds). Idempotent. */
 async function migrateLegacyWorkerPollIntervalKeys() {
   await detectAppSettingDeletedAtSupport();
-  const scope = appSettingsClientHasDeletedAt ? ACTIVE : {};
+  const scope = appSettingsClientHasDeletedAt
+    ? { ...APP_SETTING_NOT_DELETED }
+    : {};
   const pairs = [
     ["WORKER_POLL_INTERVAL_MS_ERC20", "WORKER_POLL_INTERVAL_SEC_ERC20"],
     ["WORKER_POLL_INTERVAL_MS_TRC20", "WORKER_POLL_INTERVAL_SEC_TRC20"],
@@ -312,7 +320,9 @@ async function migrateLegacyWorkerPollIntervalKeys() {
 export async function loadAppSettingsFromDatabase() {
   await migrateLegacyWorkerPollIntervalKeys();
   await detectAppSettingDeletedAtSupport();
-  const scope = appSettingsClientHasDeletedAt ? ACTIVE : {};
+  const scope = appSettingsClientHasDeletedAt
+    ? { ...APP_SETTING_NOT_DELETED }
+    : {};
   const rows = await prisma.appSetting.findMany({ where: { ...scope } });
   cacheMap = new Map(rows.map((r) => [r.key, r.value]));
   applyLoggerLevel();

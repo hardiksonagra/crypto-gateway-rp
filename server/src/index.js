@@ -1,4 +1,9 @@
 async function main() {
+  const { syncActiveRowWithGeneratedPrismaClient } = await import(
+    "./lib/prisma.js",
+  );
+  await syncActiveRowWithGeneratedPrismaClient();
+
   const { loadAppSettingsFromDatabase } = await import(
     "./lib/app-settings-runtime.js",
   );
