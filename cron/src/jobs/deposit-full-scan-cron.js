@@ -1,4 +1,8 @@
-import { refreshAppSettingsCache } from "crypto-payment-gateway/src/lib/app-settings-runtime.js";
+import {
+  refreshAppSettingsCache,
+  upsertAppSettingKeyValue,
+} from "crypto-payment-gateway/src/lib/app-settings-runtime.js";
+import { ACTIVE } from "crypto-payment-gateway/src/lib/active-row.js";
 import { prisma } from "crypto-payment-gateway/src/lib/prisma.js";
 import { re } from "crypto-payment-gateway/src/config/runtime-env.js";
 import { logger } from "crypto-payment-gateway/src/lib/logger.js";
@@ -35,8 +39,8 @@ async function runMaybeFullDepositScan() {
     if (hours <= 0) return;
 
     const intervalMs = hours * 3600 * 1000;
-    const row = await prisma.appSetting.findUnique({
-      where: { key: LAST_AT_KEY },
+    const row = await prisma.appSetting.findFirst({
+      where: { key: LAST_AT_KEY, ...ACTIVE },
     });
     const lastMs = row?.value ? Date.parse(row.value) : NaN;
     const now = Date.now();
@@ -45,11 +49,7 @@ async function runMaybeFullDepositScan() {
     await runFullDepositScanPass();
 
     const iso = new Date().toISOString();
-    await prisma.appSetting.upsert({
-      where: { key: LAST_AT_KEY },
-      create: { key: LAST_AT_KEY, value: iso },
-      update: { value: iso },
-    });
+    await upsertAppSettingKeyValue(LAST_AT_KEY, iso);
   } catch (e) {
     logger.error("deposit_full_scan_cron_failed", { err: String(e) });
   }

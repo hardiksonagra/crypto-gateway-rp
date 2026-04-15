@@ -11,6 +11,7 @@ import { isChainLiveForPlatform } from "crypto-payment-gateway/src/lib/chain-ena
 import { nextScanExpiresAt } from "crypto-payment-gateway/src/lib/wallet-scan.js";
 import { deriveEvmAddress } from "crypto-payment-gateway/src/services/wallet/evm-wallet.js";
 import { deriveTronAddress } from "crypto-payment-gateway/src/services/wallet/tron-wallet.js";
+import { ACTIVE } from "crypto-payment-gateway/src/lib/active-row.js";
 
 /** @typedef {import("@prisma/client").Prisma.TransactionClient} Tx */
 
@@ -78,6 +79,7 @@ export async function assignPooledWalletForDeposit(tx, p) {
       currency,
       network,
       assignedUserId: userId,
+      ...ACTIVE,
     },
   });
   if (stillAssigned) {
@@ -195,6 +197,7 @@ async function tryPickFreePoolWallet(tx, args) {
         AND w2."chain" = ${chain}::"Chain"
         AND w2."currency" = ${currency}
         AND w2."network" = ${network}
+        AND w2."deleted_at" IS NULL
         AND (
           w2."assigned_user_id" IS NULL
           OR (w2."hold_expires_at" IS NOT NULL AND w2."hold_expires_at" < NOW())
@@ -203,6 +206,7 @@ async function tryPickFreePoolWallet(tx, args) {
         EXISTS (
           SELECT 1 FROM "transactions" t
           WHERE t."wallet_id" = w2."id" AND t."payer_user_id" = ${userId}
+            AND t."deleted_at" IS NULL
         ) DESC,
         w2."created_at" ASC
       FOR UPDATE SKIP LOCKED
@@ -213,7 +217,7 @@ async function tryPickFreePoolWallet(tx, args) {
   `;
   const row = /** @type {{ id: string }[]} */ (out)[0];
   if (!row?.id) return null;
-  return tx.wallet.findUnique({ where: { id: row.id } });
+  return tx.wallet.findFirst({ where: { id: row.id, ...ACTIVE } });
 }
 
 /**
@@ -226,13 +230,14 @@ async function nextDerivationIndex(tx, merchantId, environment, chain) {
         merchantId,
         environment,
         chain: { in: [...EVM_CHAINS] },
+        ...ACTIVE,
       },
       _max: { derivationIndex: true },
     });
     return (r._max.derivationIndex ?? -1) + 1;
   }
   const r = await tx.wallet.aggregate({
-    where: { merchantId, environment, chain },
+    where: { merchantId, environment, chain, ...ACTIVE },
     _max: { derivationIndex: true },
   });
   return (r._max.derivationIndex ?? -1) + 1;
@@ -254,7 +259,7 @@ async function createNewPooledWallet(tx, args) {
   } = args;
 
   const peerOnChain = await tx.wallet.findFirst({
-    where: { merchantId, environment, chain },
+    where: { merchantId, environment, chain, ...ACTIVE },
     orderBy: { createdAt: "asc" },
   });
 

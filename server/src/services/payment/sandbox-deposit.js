@@ -1,5 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { Chain, MerchantGatewayEnv } from "@prisma/client";
+import { ACTIVE } from "../../lib/active-row.js";
 import { prisma } from "../../lib/prisma.js";
 import { confirmationsForChain } from "../../config/chains.js";
 import { upsertIncomingTransaction } from "./transaction-upsert.js";
@@ -56,6 +57,7 @@ export async function simulateSandboxDeposit(input) {
       id: wid,
       merchantId: input.merchantId,
       environment: MerchantGatewayEnv.sandbox,
+      ...ACTIVE,
     },
   });
   if (!wallet) {
@@ -90,7 +92,7 @@ export async function simulateSandboxDeposit(input) {
   });
 
   const row = await prisma.transaction.findFirst({
-    where: { walletId: wallet.id, txHash },
+    where: { walletId: wallet.id, txHash, ...ACTIVE },
     select: { id: true },
   });
   if (!row) {

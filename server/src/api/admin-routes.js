@@ -29,7 +29,9 @@ import {
   applyAppSettingsPatch,
   buildAppSettingsAdminList,
   loadAppSettingsFromDatabase,
+  upsertAppSettingKeyValue,
 } from "../lib/app-settings-runtime.js";
+import { ACTIVE } from "../lib/active-row.js";
 import {
   ADMIN_CHAIN_TOGGLE_ORDER,
   CHAIN_ADMIN_META,
@@ -122,7 +124,7 @@ async function findMerchantByAdminRouteId(routeId) {
 async function findUserByAdminRouteId(routeId) {
   const w = userWhereFromRouteParam(routeId);
   if (!w) return null;
-  return prisma.user.findFirst({ where: w });
+  return prisma.user.findFirst({ where: { ...w, ...ACTIVE } });
 }
 
 /**
@@ -131,7 +133,7 @@ async function findUserByAdminRouteId(routeId) {
 async function findWalletByAdminRouteId(routeId) {
   const w = walletWhereFromRouteParam(routeId);
   if (!w) return null;
-  return prisma.wallet.findFirst({ where: w });
+  return prisma.wallet.findFirst({ where: { ...w, ...ACTIVE } });
 }
 
 router.use("/api/v1/admin", adminOnly, logPanelMutations("admin"));
@@ -183,26 +185,27 @@ router.get("/api/v1/admin/dashboard", async (req, res) => {
     prisma.merchant.count({
       where: { deletedAt: null },
     }),
-    prisma.user.count({ where: { environment: listEnv } }),
-    prisma.transaction.count({ where: txEnvWhere }),
+    prisma.user.count({ where: { environment: listEnv, ...ACTIVE } }),
+    prisma.transaction.count({ where: { ...txEnvWhere, ...ACTIVE } }),
     prisma.transaction.count({
-      where: { ...txEnvWhere, status: TxStatus.success },
+      where: { ...txEnvWhere, ...ACTIVE, status: TxStatus.success },
     }),
     prisma.transaction.count({
       where: {
         ...txEnvWhere,
+        ...ACTIVE,
         createdAt: { gte: since },
       },
     }),
-    prisma.wallet.count({ where: { environment: listEnv } }),
+    prisma.wallet.count({ where: { environment: listEnv, ...ACTIVE } }),
     prisma.transaction.groupBy({
       by: ["status"],
-      where: txEnvWhere,
+      where: { ...txEnvWhere, ...ACTIVE },
       _count: { _all: true },
     }),
     prisma.transaction.groupBy({
       by: ["chain"],
-      where: txEnvWhere,
+      where: { ...txEnvWhere, ...ACTIVE },
       _count: { _all: true },
     }),
     prisma.$queryRaw(
@@ -213,6 +216,8 @@ router.get("/api/v1/admin/dashboard", async (req, res) => {
         FROM transactions t
         INNER JOIN wallets w ON w.id = t.wallet_id
         WHERE w.environment = ${listEnv}::"MerchantGatewayEnv"
+          AND w.deleted_at IS NULL
+          AND t.deleted_at IS NULL
           AND t.created_at >= ${wideFrom}
         GROUP BY 1, 2
         ORDER BY 1, 2
@@ -531,6 +536,7 @@ router.get("/api/v1/admin/merchants", async (req, res) => {
         where: {
           merchantId: { in: ids },
           environment: MerchantGatewayEnv.live,
+          ...ACTIVE,
         },
         _count: { _all: true },
       }),
@@ -539,6 +545,7 @@ router.get("/api/v1/admin/merchants", async (req, res) => {
         where: {
           merchantId: { in: ids },
           environment: MerchantGatewayEnv.sandbox,
+          ...ACTIVE,
         },
         _count: { _all: true },
       }),
@@ -988,10 +995,18 @@ router.get("/api/v1/admin/merchants/:id", async (req, res) => {
   }
   const [endUsersLive, endUsersSandbox] = await Promise.all([
     prisma.user.count({
-      where: { merchantId: row.id, environment: MerchantGatewayEnv.live },
+      where: {
+        merchantId: row.id,
+        environment: MerchantGatewayEnv.live,
+        ...ACTIVE,
+      },
     }),
     prisma.user.count({
-      where: { merchantId: row.id, environment: MerchantGatewayEnv.sandbox },
+      where: {
+        merchantId: row.id,
+        environment: MerchantGatewayEnv.sandbox,
+        ...ACTIVE,
+      },
     }),
   ]);
   res.json({
@@ -1097,6 +1112,7 @@ router.get("/api/v1/admin/users", async (req, res) => {
     : null;
   const where = {
     environment: listEnv,
+    ...ACTIVE,
     ...(merchantId
       ? merchantClause
         ? { merchant: merchantClause }
@@ -1181,7 +1197,7 @@ router.get(
       return;
     }
     const u = await prisma.user.findFirst({
-      where: { AND: [uw, { environment: listEnv }] },
+      where: { ...uw, environment: listEnv, ...ACTIVE },
       select: { id: true, merchantId: true },
     });
     if (!u) {
@@ -1236,7 +1252,7 @@ router.get(
       return;
     }
     const u = await prisma.user.findFirst({
-      where: { AND: [uw, { environment: listEnv }] },
+      where: { ...uw, environment: listEnv, ...ACTIVE },
       select: { id: true, merchantId: true },
     });
     if (!u) {
@@ -1294,6 +1310,7 @@ router.get("/api/v1/admin/transactions", async (req, res) => {
     : null;
   const walletIs = {
     environment: listEnv,
+    ...ACTIVE,
     ...(merchantId
       ? txListMerch
         ? { merchant: txListMerch }
@@ -1307,6 +1324,7 @@ router.get("/api/v1/admin/transactions", async (req, res) => {
   };
 
   const where = {
+    ...ACTIVE,
     wallet: { is: walletIs },
     ...(qExtUser
       ? {
@@ -1314,6 +1332,7 @@ router.get("/api/v1/admin/transactions", async (req, res) => {
             {
               payerUser: {
                 is: {
+                  ...ACTIVE,
                   externalUserId: { contains: qExtUser, mode: "insensitive" },
                   ...(merchantId
                     ? txListMerch
@@ -1504,6 +1523,7 @@ router.get("/api/v1/admin/wallets", async (req, res) => {
     ? merchantWhereFromRouteParam(merchantId)
     : null;
   const where = {
+    ...ACTIVE,
     ...(merchantId
       ? walletMerchantClause
         ? { merchant: walletMerchantClause }
@@ -1517,6 +1537,7 @@ router.get("/api/v1/admin/wallets", async (req, res) => {
             {
               assignedUser: {
                 is: {
+                  ...ACTIVE,
                   OR: [
                     {
                       externalUserId: { contains: q, mode: "insensitive" },
@@ -1750,6 +1771,7 @@ router.get("/api/v1/admin/withdrawals", async (req, res) => {
     ? merchantWhereFromRouteParam(merchantId)
     : null;
   const where = {
+    ...ACTIVE,
     ...(merchantId
       ? wdMerch
         ? { merchant: wdMerch }
@@ -2106,7 +2128,7 @@ router.get("/api/v1/admin/settlements", async (req, res) => {
   const merchantId = resolved.merchant.id;
   /** Admin settlements are live gateway only (no sandbox payouts). */
   const environment = MerchantGatewayEnv.live;
-  const where = { merchantId, environment };
+  const where = { merchantId, environment, ...ACTIVE };
   const [total, rows] = await Promise.all([
     prisma.merchantSettlement.count({ where }),
     prisma.merchantSettlement.findMany({
@@ -2331,7 +2353,7 @@ router.get("/api/v1/admin/settlements/:id/proof", async (req, res) => {
     return;
   }
   const row = await prisma.merchantSettlement.findFirst({
-    where: sw,
+    where: { ...sw, ...ACTIVE },
     select: { proofFileName: true },
   });
   if (!row?.proofFileName) {
@@ -2363,11 +2385,7 @@ router.get("/api/v1/admin/supported-chains", (_req, res) => {
 router.put("/api/v1/admin/supported-chains", async (req, res) => {
   try {
     const value = serializeChainEnabledFromAdminInput(req.body ?? {});
-    await prisma.appSetting.upsert({
-      where: { key: "CHAIN_ENABLED" },
-      create: { key: "CHAIN_ENABLED", value },
-      update: { value },
-    });
+    await upsertAppSettingKeyValue("CHAIN_ENABLED", value);
     await loadAppSettingsFromDatabase();
     const prune = await pruneMerchantsAfterSupportedChainsChange();
     logger.info("supported-chains update: pruned merchants", prune);

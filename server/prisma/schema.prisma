@@ -109,7 +109,7 @@ model Merchant {
 model MerchantSettlement {
   id                    Int                @id @default(autoincrement())
   merchantId            Int                @map("merchant_id")
-  merchant              Merchant           @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  merchant              Merchant           @relation(fields: [merchantId], references: [id], onDelete: Restrict)
   environment           MerchantGatewayEnv @map("environment")
   chain                 Chain
   tokenSymbol           String             @map("token_symbol")
@@ -125,35 +125,39 @@ model MerchantSettlement {
   createdByAdmin        Admin?             @relation("SettlementCreatedBy", fields: [createdByAdminId], references: [id], onDelete: SetNull)
   transactionCount      Int                @default(0) @map("transaction_count")
   createdAt             DateTime           @default(now()) @map("created_at")
+  deletedAt             DateTime?          @map("deleted_at")
 
   settledTransactions Transaction[]
 
   @@index([merchantId, environment, createdAt(sort: Desc)])
+  @@index([deletedAt])
   @@map("merchant_settlements")
 }
 
 model User {
   id             Int       @id @default(autoincrement())
   merchantId     Int       @map("merchant_id")
-  merchant       Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  merchant       Merchant @relation(fields: [merchantId], references: [id], onDelete: Restrict)
   externalUserId String    @map("external_user_id")
   environment    MerchantGatewayEnv @default(live) @map("environment")
   accountIndex   Int       @unique @default(autoincrement()) @map("account_index")
   createdAt      DateTime  @default(now()) @map("created_at")
+  deletedAt      DateTime? @map("deleted_at")
 
   assignedWallets Wallet[] @relation("WalletPoolAssignment")
   payerTransactions Transaction[]
   assignmentEvents WalletAssignmentEvent[]
 
-  @@unique([merchantId, externalUserId, environment])
+  @@index([merchantId, externalUserId, environment])
   @@index([merchantId, environment])
+  @@index([deletedAt])
   @@map("users")
 }
 
 model Wallet {
   id        Int @id @default(autoincrement())
   merchantId Int @map("merchant_id")
-  merchant   Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  merchant   Merchant @relation(fields: [merchantId], references: [id], onDelete: Restrict)
   environment MerchantGatewayEnv @map("environment")
   address   String
   chain     Chain
@@ -177,11 +181,12 @@ model Wallet {
   cachedBalanceAtomic   String?   @map("cached_balance_atomic") @db.VarChar(128)
   cachedBalanceError    String?   @map("cached_balance_error") @db.VarChar(512)
   cachedBalanceUpdatedAt DateTime? @map("cached_balance_updated_at")
+  deletedAt DateTime? @map("deleted_at")
 
   transactions Transaction[]
   assignmentEvents WalletAssignmentEvent[]
 
-  @@unique([merchantId, environment, chain, currency, network, address])
+  @@index([merchantId, environment, chain, currency, network, address])
   @@index([merchantId, environment, chain, currency, network])
   @@index([assignedUserId])
   @@index([holdExpiresAt])
@@ -189,6 +194,7 @@ model Wallet {
   @@index([address])
   @@index([scanExpiresAt])
   @@index([depositScanSingleTickRequested])
+  @@index([deletedAt])
   @@map("wallets")
 }
 
@@ -206,13 +212,15 @@ model WalletAssignmentEvent {
   /// Merchant checkout / order id from gateway body; copied to `Transaction.transaction_id` on new deposit rows.
   referenceTransactionId String? @map("reference_transaction_id") @db.VarChar(256)
   createdAt   DateTime @default(now()) @map("created_at")
+  deletedAt DateTime? @map("deleted_at")
 
-  wallet   Wallet    @relation(fields: [walletId], references: [id], onDelete: Cascade)
-  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  wallet   Wallet    @relation(fields: [walletId], references: [id], onDelete: Restrict)
+  user     User      @relation(fields: [userId], references: [id], onDelete: Restrict)
+  merchant Merchant @relation(fields: [merchantId], references: [id], onDelete: Restrict)
 
   @@index([userId, createdAt])
   @@index([merchantId, environment])
+  @@index([deletedAt])
   @@map("wallet_assignment_events")
 }
 
@@ -243,11 +251,12 @@ model Transaction {
   referenceTransactionId String? @map("transaction_id") @db.VarChar(256)
   createdAt           DateTime  @default(now()) @map("created_at")
   updatedAt           DateTime  @updatedAt @map("updated_at")
+  deletedAt           DateTime? @map("deleted_at")
   /// When set, this deposit was included in a batch settlement payout.
   merchantSettlementId Int?  @map("merchant_settlement_id")
   merchantSettlement   MerchantSettlement? @relation(fields: [merchantSettlementId], references: [id], onDelete: SetNull)
 
-  wallet Wallet @relation(fields: [walletId], references: [id], onDelete: Cascade)
+  wallet Wallet @relation(fields: [walletId], references: [id], onDelete: Restrict)
 
   /// One row per on-chain event: same `tx_hash` cannot repeat for the same `chain` + `log_index` (TRON uses -1).
   @@unique([chain, txHash, logIndex], name: "tx_chain_log_unique")
@@ -259,13 +268,14 @@ model Transaction {
   @@index([walletId, createdAt(sort: Desc)])
   @@index([walletId, depositSessionKey])
   @@index([referenceTransactionId])
+  @@index([deletedAt])
   @@map("transactions")
 }
 
 model Withdrawal {
   id            Int              @id @default(autoincrement())
   merchantId    Int              @map("merchant_id")
-  merchant      Merchant        @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  merchant      Merchant        @relation(fields: [merchantId], references: [id], onDelete: Restrict)
   chain         Chain
   tokenSymbol   String           @map("token_symbol")
   toAddress     String           @map("to_address")
@@ -275,8 +285,10 @@ model Withdrawal {
   failureReason String?          @map("failure_reason") @db.Text
   createdAt     DateTime         @default(now()) @map("created_at")
   updatedAt     DateTime         @updatedAt @map("updated_at")
+  deletedAt     DateTime?        @map("deleted_at")
 
   @@index([merchantId, createdAt])
+  @@index([deletedAt])
   @@map("withdrawals")
 }
 
@@ -296,10 +308,12 @@ model AuditLog {
   requestPath    String?  @map("request_path") @db.Text
   ipAddress      String?  @map("ip_address")
   metadata       Json     @default("{}")
+  deletedAt      DateTime? @map("deleted_at")
 
   @@index([createdAt])
   @@index([merchantId])
   @@index([source, action])
+  @@index([deletedAt])
   @@map("audit_logs")
 }
 
@@ -319,11 +333,13 @@ model PanelAuditLog {
   summary            String   @db.Text
   metadata           Json     @default("{}")
   ipAddress          String?  @map("ip_address")
+  deletedAt          DateTime? @map("deleted_at")
 
   @@index([createdAt])
   @@index([panel])
   @@index([actorId])
   @@index([targetMerchantId])
+  @@index([deletedAt])
   @@map("panel_audit_logs")
 }
 
@@ -335,18 +351,23 @@ model ScannerState {
   chain     Chain
   lastBlock BigInt   @default(0) @map("last_block")
   updatedAt DateTime @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
 
-  @@unique([currency, network])
+  @@index([currency, network])
   @@index([chain])
+  @@index([deletedAt])
   @@map("scanner_state")
 }
 
 /// Key/value overrides for operational config; values win over process env when present.
 model AppSetting {
   id        Int      @id @default(autoincrement())
-  key       String   @unique
+  key       String
   value     String   @db.Text
   updatedAt DateTime @updatedAt @map("updated_at")
+  deletedAt DateTime? @map("deleted_at")
 
+  @@index([key])
+  @@index([deletedAt])
   @@map("app_settings")
 }

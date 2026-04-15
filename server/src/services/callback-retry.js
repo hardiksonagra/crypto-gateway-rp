@@ -1,4 +1,5 @@
 import { TxStatus } from "@prisma/client";
+import { ACTIVE } from "../lib/active-row.js";
 import { prisma } from "../lib/prisma.js";
 import { logger } from "../lib/logger.js";
 import { notifyPaymentSuccess } from "./callback-service.js";
@@ -17,10 +18,16 @@ export async function retryStuckSuccessCallbacks(limit = 30) {
   const minAgo = new Date(Date.now() - CALLBACK_RETRY_MIN_INTERVAL_MS);
   const rows = await prisma.transaction.findMany({
     where: {
+      ...ACTIVE,
       status: TxStatus.success,
       callbackDeliveredAt: null,
       callbackAttemptCount: { lt: MAX_AUTO_CALLBACK_ATTEMPTS },
-      wallet: { merchant: { callbackUrl: { not: null } } },
+      wallet: {
+        is: {
+          ...ACTIVE,
+          merchant: { ...ACTIVE, callbackUrl: { not: null } },
+        },
+      },
       OR: [{ callbackAttemptCount: 0 }, { callbackLastAttemptAt: { lte: minAgo } }],
     },
     select: { id: true },

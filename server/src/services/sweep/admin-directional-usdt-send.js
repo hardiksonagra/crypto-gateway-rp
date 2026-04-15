@@ -1,6 +1,7 @@
 import { Chain } from "@prisma/client";
 import { ethers } from "ethers";
 import { utils as tronUtils } from "tronweb";
+import { ACTIVE } from "../../lib/active-row.js";
 import { prisma } from "../../lib/prisma.js";
 import { sweepEvmUsdtOne } from "./evm-usdt-sweep.js";
 import { sweepTronUsdtOne } from "./tron-usdt-sweep.js";
@@ -41,6 +42,7 @@ export async function adminDirectionalUsdtSend(p) {
       currency: "USDT",
       network: "ERC20",
       address: { equals: from, mode: "insensitive" },
+      ...ACTIVE,
     },
     select: { id: true, address: true },
   });
@@ -50,6 +52,7 @@ export async function adminDirectionalUsdtSend(p) {
       chain: Chain.TRON,
       currency: "USDT",
       network: "TRC20",
+      ...ACTIVE,
     },
     select: { id: true, address: true },
   });

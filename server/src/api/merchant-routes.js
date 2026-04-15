@@ -10,6 +10,7 @@ import {
   reactivateWalletDepositScan,
   walletScanTtlMinutes,
 } from "../lib/wallet-scan.js";
+import { ACTIVE } from "../lib/active-row.js";
 import { prisma } from "../lib/prisma.js";
 import {
   aggregateWalletTxStats,
@@ -185,8 +186,8 @@ router.get("/api/v1/merchant/dashboard", async (req, res) => {
 
   const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
   const [merchRates, recent, users, txs] = await Promise.all([
-    prisma.merchant.findUnique({
-      where: { id: mid },
+    prisma.merchant.findFirst({
+      where: { id: mid, ...ACTIVE },
       select: {
         mdrPercent: true,
         settlementRatePercent: true,
@@ -196,7 +197,10 @@ router.get("/api/v1/merchant/dashboard", async (req, res) => {
     }),
     prisma.transaction.findMany({
       where: {
-        wallet: { merchantId: mid, environment },
+        ...ACTIVE,
+        wallet: {
+          is: { merchantId: mid, environment, ...ACTIVE },
+        },
         createdAt: { gte: since },
       },
       orderBy: { createdAt: "desc" },
@@ -206,10 +210,13 @@ router.get("/api/v1/merchant/dashboard", async (req, res) => {
       },
     }),
     prisma.user.count({
-      where: { merchantId: mid, environment },
+      where: { merchantId: mid, environment, ...ACTIVE },
     }),
     prisma.transaction.count({
-      where: { wallet: { merchantId: mid, environment } },
+      where: {
+        ...ACTIVE,
+        wallet: { is: { merchantId: mid, environment, ...ACTIVE } },
+      },
     }),
   ]);
   if (!merchRates) {
@@ -276,6 +283,7 @@ router.get("/api/v1/merchant/users", async (req, res) => {
   const where = {
     merchantId: mid,
     environment,
+    ...ACTIVE,
     ...(q
       ? {
           OR: [
@@ -352,7 +360,7 @@ router.get(
       return;
     }
     const owns = await prisma.user.findFirst({
-      where: { AND: [uw, { merchantId: mid, environment }] },
+      where: { ...uw, merchantId: mid, environment, ...ACTIVE },
       select: { id: true },
     });
     if (!owns) {
@@ -408,7 +416,7 @@ router.get(
       return;
     }
     const owns = await prisma.user.findFirst({
-      where: { AND: [uw, { merchantId: mid, environment }] },
+      where: { ...uw, merchantId: mid, environment, ...ACTIVE },
       select: { id: true },
     });
     if (!owns) {
@@ -446,6 +454,7 @@ router.get("/api/v1/merchant/wallets", async (req, res) => {
   const where = {
     merchantId: mid,
     environment,
+    ...ACTIVE,
     ...(q
       ? {
           OR: [
@@ -453,7 +462,10 @@ router.get("/api/v1/merchant/wallets", async (req, res) => {
             { address: { contains: q, mode: "insensitive" } },
             {
               assignedUser: {
-                externalUserId: { contains: q, mode: "insensitive" },
+                is: {
+                  ...ACTIVE,
+                  externalUserId: { contains: q, mode: "insensitive" },
+                },
               },
             },
           ],
@@ -534,7 +546,7 @@ router.get(
       return;
     }
     const owns = await prisma.wallet.findFirst({
-      where: { AND: [ww, { merchantId: mid, environment }] },
+      where: { ...ww, merchantId: mid, environment, ...ACTIVE },
       select: { id: true },
     });
     if (!owns) {
@@ -593,7 +605,10 @@ router.post(
     }
     const owns = await prisma.wallet.findFirst({
       where: {
-        AND: [ww, { merchantId: mid, environment: MerchantGatewayEnv.live }],
+        ...ww,
+        merchantId: mid,
+        environment: MerchantGatewayEnv.live,
+        ...ACTIVE,
       },
       select: { id: true },
     });
@@ -663,10 +678,12 @@ router.get("/api/v1/merchant/transactions", async (req, res) => {
       : "";
 
   const where = {
+    ...ACTIVE,
     wallet: {
       is: {
         merchantId: mid,
         environment,
+        ...ACTIVE,
       },
     },
     ...(qUser
@@ -675,6 +692,7 @@ router.get("/api/v1/merchant/transactions", async (req, res) => {
             {
               payerUser: {
                 is: {
+                  ...ACTIVE,
                   merchantId: mid,
                   externalUserId: { contains: qUser, mode: "insensitive" },
                 },
@@ -685,8 +703,10 @@ router.get("/api/v1/merchant/transactions", async (req, res) => {
                 is: {
                   merchantId: mid,
                   environment,
+                  ...ACTIVE,
                   assignedUser: {
                     is: {
+                      ...ACTIVE,
                       externalUserId: { contains: qUser, mode: "insensitive" },
                     },
                   },
@@ -838,6 +858,7 @@ router.get("/api/v1/merchant/withdrawals", async (req, res) => {
 
   const where = {
     merchantId: mid,
+    ...ACTIVE,
     ...(chain && CHAIN_SET.has(chain) ? { chain } : {}),
     ...(status && Object.values(WithdrawalStatus).includes(status)
       ? { status }
@@ -884,8 +905,8 @@ router.patch("/api/v1/merchant/settings", async (req, res) => {
     return;
   }
   const body = req.body ?? {};
-  const existing = await prisma.merchant.findUnique({
-    where: { id: mid },
+  const existing = await prisma.merchant.findFirst({
+    where: { id: mid, ...ACTIVE },
     select: {
       defaultChains: true,
       defaultCurrency: true,
@@ -999,8 +1020,8 @@ router.get("/api/v1/merchant/settlements/pending-preview", async (req, res) => {
     return;
   }
   const { environment } = gate;
-  const merchRates = await prisma.merchant.findUnique({
-    where: { id: mid },
+  const merchRates = await prisma.merchant.findFirst({
+    where: { id: mid, ...ACTIVE },
     select: {
       id: true,
       mdrPercent: true,
@@ -1046,7 +1067,7 @@ router.get("/api/v1/merchant/settlements", async (req, res) => {
   }
   const { environment } = gate;
   const { skip, take, page, pageSize } = parsePageQuery(req.query);
-  const where = { merchantId: mid, environment };
+  const where = { merchantId: mid, environment, ...ACTIVE };
   const [total, rows] = await Promise.all([
     prisma.merchantSettlement.count({ where }),
     prisma.merchantSettlement.findMany({
@@ -1098,7 +1119,7 @@ router.get("/api/v1/merchant/settlements/:id/proof", async (req, res) => {
     return;
   }
   const row = await prisma.merchantSettlement.findFirst({
-    where: { AND: [sw, { merchantId: mid }] },
+    where: { ...sw, merchantId: mid, ...ACTIVE },
     select: { proofFileName: true },
   });
   if (!row?.proofFileName) {

@@ -2,6 +2,7 @@ import { Chain, MerchantGatewayEnv } from "@prisma/client";
 import { utils as tronUtils } from "tronweb";
 import { env } from "../../config/env.js";
 import { re } from "../../config/runtime-env.js";
+import { ACTIVE } from "../../lib/active-row.js";
 import { logger } from "../../lib/logger.js";
 import { prisma } from "../../lib/prisma.js";
 import { acquireOutboundRpcSlot } from "../../lib/network-rpc-rate-limit.js";
@@ -342,6 +343,7 @@ export async function runAutomatedTronUsdtSweepRound() {
       currency: "USDT",
       network: "TRC20",
       environment: MerchantGatewayEnv.live,
+      ...ACTIVE,
     },
     orderBy: { createdAt: "asc" },
     select: { id: true, address: true, derivationIndex: true },

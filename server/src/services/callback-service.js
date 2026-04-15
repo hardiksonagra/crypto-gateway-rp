@@ -1,6 +1,7 @@
 import axios from "axios";
 import { TxStatus } from "@prisma/client";
 import { formatAtomicAmountString } from "../lib/format-atomic-amount.js";
+import { ACTIVE } from "../lib/active-row.js";
 import { prisma } from "../lib/prisma.js";
 import { logger } from "../lib/logger.js";
 import { logPaymentSuccessCallback, writeAuditLog } from "./audit-log.js";
@@ -66,8 +67,8 @@ export async function notifyPaymentSuccess(txId) {
     logger.warn("callback skip: tx not found", { txId });
     return;
   }
-  const tx = await prisma.transaction.findUnique({
-    where: { id: tid },
+  const tx = await prisma.transaction.findFirst({
+    where: { id: tid, ...ACTIVE },
     include: {
       wallet: { include: { merchant: true } },
       payerUser: { include: { merchant: true } },
@@ -112,6 +113,7 @@ export async function notifyPaymentSuccess(txId) {
   const claimed = await prisma.transaction.updateMany({
     where: {
       id: tid,
+      ...ACTIVE,
       status: TxStatus.success,
       callbackDeliveredAt: null,
       callbackAttemptCount: { lt: MAX_AUTO_CALLBACK_ATTEMPTS },
@@ -138,8 +140,8 @@ export async function notifyPaymentSuccess(txId) {
       headers: { "Content-Type": "application/json", "X-Webhook-Event": "payment.success" },
       validateStatus: (s) => s >= 200 && s < 300,
     });
-    await prisma.transaction.update({
-      where: { id: tid },
+    await prisma.transaction.updateMany({
+      where: { id: tid, ...ACTIVE },
       data: { callbackDeliveredAt: new Date() },
     });
     logger.info("callback delivered", { txId, url });
@@ -242,8 +244,8 @@ async function executeRedeliverPaymentSuccess(tx, audit) {
       validateStatus: (s) => s >= 200 && s < 300,
     });
     if (!tx.callbackDeliveredAt) {
-      await prisma.transaction.update({
-        where: { id: txId },
+      await prisma.transaction.updateMany({
+        where: { id: txId, ...ACTIVE },
         data: { callbackDeliveredAt: new Date() },
       });
     }
@@ -318,7 +320,9 @@ export async function redeliverPaymentSuccessWebhook(txId, merchantId, audit = {
   }
   const tx = await prisma.transaction.findFirst({
     where: {
-      AND: [txw, { wallet: { merchantId: mid } }],
+      ...txw,
+      ...ACTIVE,
+      wallet: { is: { merchantId: mid, ...ACTIVE } },
     },
     include: {
       wallet: { include: { merchant: true } },
@@ -349,7 +353,7 @@ export async function redeliverPaymentSuccessWebhookAdmin(txId, audit = {}) {
     return { ok: false, code: "transaction_not_found" };
   }
   const tx = await prisma.transaction.findFirst({
-    where: txw,
+    where: { ...txw, ...ACTIVE },
     include: {
       wallet: { include: { merchant: true } },
       payerUser: { include: { merchant: true } },

@@ -1,6 +1,7 @@
 import { Chain } from "@prisma/client";
 import { re } from "../../config/runtime-env.js";
 import { parseWalletDbId } from "../../lib/parse-wallet-db-id.js";
+import { ACTIVE } from "../../lib/active-row.js";
 import { prisma } from "../../lib/prisma.js";
 import {
   pickUsdtTokenAddress,
@@ -64,6 +65,7 @@ const sweepWalletInclude = {
 export async function listUnifiedSweepTargets() {
   const rows = await prisma.wallet.findMany({
     where: {
+      ...ACTIVE,
       OR: [
         { chain: Chain.TRON, currency: "USDT", network: "TRC20" },
         { chain: Chain.ETH, currency: "USDT", network: "ERC20" },
@@ -125,7 +127,7 @@ export async function sweepUnifiedOne(walletId) {
     return { ok: false, error: "WALLET_NOT_FOUND" };
   }
   const wallet = await prisma.wallet.findFirst({
-    where: { id: wid },
+    where: { id: wid, ...ACTIVE },
     select: { id: true, chain: true, currency: true, network: true },
   });
 

@@ -4,6 +4,7 @@ import { env, getErc20Contracts } from "../../config/env.js";
 import { re } from "../../config/runtime-env.js";
 import { chainToRpcUrl, chainToStaticNetwork } from "../../config/chains.js";
 import { parseWalletDbId } from "../../lib/parse-wallet-db-id.js";
+import { ACTIVE } from "../../lib/active-row.js";
 import { prisma } from "../../lib/prisma.js";
 import { logger } from "../../lib/logger.js";
 import {
@@ -60,6 +61,7 @@ export async function listEvmUsdtSweepTargets(chain) {
       chain,
       currency: "USDT",
       network,
+      ...ACTIVE,
     },
     orderBy: { createdAt: "asc" },
     include: {
@@ -150,6 +152,7 @@ export async function sweepEvmUsdtOne(walletId, chain, opts = {}) {
       chain,
       currency: "USDT",
       network,
+      ...ACTIVE,
     },
   });
 

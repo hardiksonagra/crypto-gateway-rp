@@ -2,6 +2,7 @@ import { Router } from "express";
 import { Chain, TxStatus } from "@prisma/client";
 import { formatAtomicAmountString } from "../lib/format-atomic-amount.js";
 import { prisma } from "../lib/prisma.js";
+import { ACTIVE } from "../lib/active-row.js";
 import { env } from "../config/env.js";
 import { re } from "../config/runtime-env.js";
 import { assignPooledWalletForDeposit } from "../services/wallet/wallet-service.js";
@@ -96,8 +97,8 @@ router.get("/api/v1/gateway/payment-session/:token/poll", async (req, res) => {
       res.status(410).json({ error: "payment_link_invalid_or_expired" });
       return;
     }
-    const w = await prisma.wallet.findUnique({
-      where: { id: wid },
+    const w = await prisma.wallet.findFirst({
+      where: { id: wid, ...ACTIVE },
       select: { id: true },
     });
     if (!w) {
@@ -111,6 +112,7 @@ router.get("/api/v1/gateway/payment-session/:token/poll", async (req, res) => {
           walletId: wid,
           status: TxStatus.success,
           depositSessionKey: v.depositSessionKey,
+          ...ACTIVE,
         },
         select: { id: true },
       });
@@ -121,6 +123,7 @@ router.get("/api/v1/gateway/payment-session/:token/poll", async (req, res) => {
         where: {
           walletId: wid,
           status: TxStatus.success,
+          ...ACTIVE,
           ...(since ? { updatedAt: { gte: since } } : {}),
         },
         select: { id: true },
@@ -151,8 +154,8 @@ router.get("/api/v1/gateway/payment-session/:token", async (req, res) => {
       res.status(410).json({ error: "payment_link_invalid_or_expired" });
       return;
     }
-    const w = await prisma.wallet.findUnique({
-      where: { id: wid },
+    const w = await prisma.wallet.findFirst({
+      where: { id: wid, ...ACTIVE },
       select: {
         address: true,
         chain: true,
@@ -348,13 +351,12 @@ router.post("/api/v1/gateway/deposit-address", async (req, res) => {
       }
     }
 
-    let u = await prisma.user.findUnique({
+    let u = await prisma.user.findFirst({
       where: {
-        merchantId_externalUserId_environment: {
-          merchantId: merchant.id,
-          externalUserId,
-          environment: gwEnv,
-        },
+        merchantId: merchant.id,
+        externalUserId,
+        environment: gwEnv,
+        ...ACTIVE,
       },
     });
     let createdNewUser = false;
@@ -377,7 +379,8 @@ router.post("/api/v1/gateway/deposit-address", async (req, res) => {
           /** After max auto attempts, allow new deposit addresses; merchant can fix webhook and resend later. */
           callbackAttemptCount: { lt: MAX_AUTO_CALLBACK_ATTEMPTS },
           payerUserId: u.id,
-          wallet: { merchantId: merchant.id, environment: gwEnv },
+          ...ACTIVE,
+          wallet: { merchantId: merchant.id, environment: gwEnv, ...ACTIVE },
         },
         select: { id: true },
       });
@@ -844,7 +847,9 @@ router.get("/api/v1/gateway/transactions", async (req, res) => {
 
   const txs = await prisma.transaction.findMany({
     where: {
+      ...ACTIVE,
       wallet: {
+        ...ACTIVE,
         address: walletAddressFilter,
         ...(chainFilter ? { chain: chainFilter } : {}),
         ...(currencyF && networkF

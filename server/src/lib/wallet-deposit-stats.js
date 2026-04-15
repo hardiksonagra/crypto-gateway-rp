@@ -1,4 +1,5 @@
 import { Prisma } from "@prisma/client";
+import { ACTIVE } from "./active-row.js";
 import { prisma } from "./prisma.js";
 import { formatAtomicAmountString } from "./format-atomic-amount.js";
 
@@ -40,6 +41,7 @@ export async function aggregateWalletTxStats(walletIds) {
         COUNT(DISTINCT t.payer_user_id) FILTER (WHERE t.payer_user_id IS NOT NULL)::int AS "distinctPayers"
       FROM "transactions" t
       WHERE t.wallet_id IN (${Prisma.join(unique)})
+        AND t.deleted_at IS NULL
       GROUP BY t.wallet_id
     `,
     prisma.$queryRaw`
@@ -50,6 +52,7 @@ export async function aggregateWalletTxStats(walletIds) {
         SUM(t.amount::numeric)::text AS "sumAmount"
       FROM "transactions" t
       WHERE t.wallet_id IN (${Prisma.join(unique)})
+        AND t.deleted_at IS NULL
         AND t.status = 'success'
       GROUP BY t.wallet_id, t.token_symbol, t.token_decimals
     `,
@@ -124,9 +127,10 @@ export async function loadWalletDepositActivity(walletId, limit) {
         COUNT(DISTINCT payer_user_id) FILTER (WHERE payer_user_id IS NOT NULL)::int AS "distinct_payers"
       FROM "transactions"
       WHERE wallet_id = ${walletId}
+        AND deleted_at IS NULL
     `,
     prisma.transaction.findMany({
-      where: { walletId },
+      where: { walletId, ...ACTIVE },
       orderBy: { createdAt: "desc" },
       take: capped,
       select: {

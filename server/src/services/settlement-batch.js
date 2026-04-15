@@ -1,4 +1,5 @@
 import { TxStatus } from "@prisma/client";
+import { ACTIVE } from "../lib/active-row.js";
 import { prisma } from "../lib/prisma.js";
 import {
   resolveAdminInternalId,
@@ -48,12 +49,13 @@ export async function loadUnsettledSuccessTransactions(
 
   return txc.transaction.findMany({
     where: {
+      ...ACTIVE,
       status: TxStatus.success,
       merchantSettlementId: null,
       chain,
       tokenSymbol,
       tokenDecimals,
-      wallet: { merchantId, environment },
+      wallet: { is: { merchantId, environment, ...ACTIVE } },
       ...(cutoff ? { createdAt: { lt: cutoff } } : {}),
     },
     select: { id: true, amount: true, createdAt: true },
@@ -144,6 +146,8 @@ export async function buildAllPendingPreviews(merchantId, environment, merchantR
       INNER JOIN wallets w ON w.id = t.wallet_id
       WHERE t.status = 'success'::"TxStatus"
         AND t.merchant_settlement_id IS NULL
+        AND t.deleted_at IS NULL
+        AND w.deleted_at IS NULL
         AND w.merchant_id = ${merchantId}
         AND w.environment = ${environment}::"MerchantGatewayEnv"
         AND t.created_at < ${cutoff}
@@ -156,6 +160,8 @@ export async function buildAllPendingPreviews(merchantId, environment, merchantR
       INNER JOIN wallets w ON w.id = t.wallet_id
       WHERE t.status = 'success'::"TxStatus"
         AND t.merchant_settlement_id IS NULL
+        AND t.deleted_at IS NULL
+        AND w.deleted_at IS NULL
         AND w.merchant_id = ${merchantId}
         AND w.environment = ${environment}::"MerchantGatewayEnv"
       GROUP BY t.chain, t.token_symbol, t.token_decimals
@@ -317,7 +323,7 @@ export async function executeBatchSettlement({
     });
 
     await txc.transaction.updateMany({
-      where: { id: { in: txs.map((t) => t.id) } },
+      where: { id: { in: txs.map((t) => t.id) }, ...ACTIVE },
       data: { merchantSettlementId: row.id },
     });
 

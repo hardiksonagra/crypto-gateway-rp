@@ -4,6 +4,7 @@ import { utils as tronUtils } from "tronweb";
 import { env, getTrc20Contracts } from "../../config/env.js";
 import { re } from "../../config/runtime-env.js";
 import { parseWalletDbId } from "../../lib/parse-wallet-db-id.js";
+import { ACTIVE } from "../../lib/active-row.js";
 import { prisma } from "../../lib/prisma.js";
 import { logger } from "../../lib/logger.js";
 import { acquireOutboundRpcSlot } from "../../lib/network-rpc-rate-limit.js";
@@ -227,6 +228,7 @@ export async function listTronUsdtSweepTargets() {
       chain: Chain.TRON,
       currency: "USDT",
       network: "TRC20",
+      ...ACTIVE,
     },
     orderBy: { createdAt: "asc" },
     include: {
@@ -301,6 +303,7 @@ export async function sweepTronUsdtOne(walletId, opts = {}) {
       chain: Chain.TRON,
       currency: "USDT",
       network: "TRC20",
+      ...ACTIVE,
     },
   });
 

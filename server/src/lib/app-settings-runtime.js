@@ -1,6 +1,7 @@
 import { prisma } from "./prisma.js";
 import { logger } from "./logger.js";
 import { env } from "../config/env.js";
+import { ACTIVE } from "./active-row.js";
 import {
   APP_SETTING_DEF_BY_KEY,
   APP_SETTING_DEFINITIONS,
@@ -177,6 +178,48 @@ function applyLoggerLevel() {
   }
 }
 
+/**
+ * Upsert by business `key` respecting soft-delete (partial unique on active keys in DB).
+ * @param {string} key
+ * @param {string} value
+ */
+export async function upsertAppSettingKeyValue(key, value) {
+  const active = await prisma.appSetting.findFirst({
+    where: { key, ...ACTIVE },
+    select: { id: true },
+  });
+  if (active) {
+    await prisma.appSetting.update({
+      where: { id: active.id },
+      data: { value, deletedAt: null },
+    });
+    return;
+  }
+  const tomb = await prisma.appSetting.findFirst({
+    where: { key, deletedAt: { not: null } },
+    orderBy: { id: "desc" },
+    select: { id: true },
+  });
+  if (tomb) {
+    await prisma.appSetting.update({
+      where: { id: tomb.id },
+      data: { value, deletedAt: null },
+    });
+    return;
+  }
+  await prisma.appSetting.create({ data: { key, value } });
+}
+
+/**
+ * @param {string} key
+ */
+export async function softDeleteAppSettingKey(key) {
+  await prisma.appSetting.updateMany({
+    where: { key, ...ACTIVE },
+    data: { deletedAt: new Date() },
+  });
+}
+
 /** Legacy Admin keys (ms) → `WORKER_POLL_INTERVAL_SEC_*` (seconds). Idempotent. */
 async function migrateLegacyWorkerPollIntervalKeys() {
   const pairs = [
@@ -184,27 +227,26 @@ async function migrateLegacyWorkerPollIntervalKeys() {
     ["WORKER_POLL_INTERVAL_MS_TRC20", "WORKER_POLL_INTERVAL_SEC_TRC20"],
   ];
   for (const [oldKey, newKey] of pairs) {
-    const oldRow = await prisma.appSetting.findUnique({ where: { key: oldKey } });
+    const oldRow = await prisma.appSetting.findFirst({
+      where: { key: oldKey },
+      orderBy: { id: "desc" },
+    });
     if (!oldRow?.value?.trim()) continue;
-    const newRow = await prisma.appSetting.findUnique({ where: { key: newKey } });
-    if (newRow?.value?.trim()) continue;
+    const newActive = await prisma.appSetting.findFirst({
+      where: { key: newKey, ...ACTIVE },
+    });
+    if (newActive?.value?.trim()) continue;
     const ms = parseInt(oldRow.value.trim(), 10);
     if (!Number.isFinite(ms) || ms < 1) continue;
     const sec = Math.max(1, Math.ceil(ms / 1000));
-    await prisma.$transaction([
-      prisma.appSetting.upsert({
-        where: { key: newKey },
-        create: { key: newKey, value: String(sec) },
-        update: { value: String(sec) },
-      }),
-      prisma.appSetting.deleteMany({ where: { key: oldKey } }),
-    ]);
+    await upsertAppSettingKeyValue(newKey, String(sec));
+    await softDeleteAppSettingKey(oldKey);
   }
 }
 
 export async function loadAppSettingsFromDatabase() {
   await migrateLegacyWorkerPollIntervalKeys();
-  const rows = await prisma.appSetting.findMany();
+  const rows = await prisma.appSetting.findMany({ where: { ...ACTIVE } });
   cacheMap = new Map(rows.map((r) => [r.key, r.value]));
   applyLoggerLevel();
 }
@@ -482,15 +524,9 @@ export async function upsertAppSettingsFromCurrentEnv() {
   }
 
   if (ops.length > 0) {
-    await prisma.$transaction(
-      ops.map((op) =>
-        prisma.appSetting.upsert({
-          where: { key: op.key },
-          create: { key: op.key, value: op.value },
-          update: { value: op.value },
-        }),
-      ),
-    );
+    for (const op of ops) {
+      await upsertAppSettingKeyValue(op.key, op.value);
+    }
   }
 
   await loadAppSettingsFromDatabase();
@@ -628,17 +664,13 @@ export async function applyAppSettingsPatch(patch) {
   }
 
   if (ops.length > 0) {
-    await prisma.$transaction(
-      ops.map((op) =>
-        op.type === "delete"
-          ? prisma.appSetting.deleteMany({ where: { key: op.key } })
-          : prisma.appSetting.upsert({
-              where: { key: op.key },
-              create: { key: op.key, value: op.value ?? "" },
-              update: { value: op.value ?? "" },
-            }),
-      ),
-    );
+    for (const op of ops) {
+      if (op.type === "delete") {
+        await softDeleteAppSettingKey(op.key);
+      } else {
+        await upsertAppSettingKeyValue(op.key, op.value ?? "");
+      }
+    }
   }
 
   await loadAppSettingsFromDatabase();

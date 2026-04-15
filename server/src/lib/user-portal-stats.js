@@ -1,4 +1,5 @@
 import { Prisma } from "@prisma/client";
+import { ACTIVE } from "./active-row.js";
 import { prisma } from "./prisma.js";
 import { formatAtomicAmountString } from "./format-atomic-amount.js";
 
@@ -38,6 +39,7 @@ export async function batchUserAssignmentStats(userIds) {
         COUNT(DISTINCT e.wallet_id)::int AS "distinct_wallets"
       FROM "wallet_assignment_events" e
       WHERE e.user_id IN (${Prisma.join(unique)})
+        AND e.deleted_at IS NULL
       GROUP BY e.user_id
     `;
 
@@ -72,6 +74,7 @@ export async function batchUserPayerTxStats(userIds) {
       COUNT(*) FILTER (WHERE t.status = 'success')::int AS "success_tx"
     FROM "transactions" t
     WHERE t.payer_user_id IN (${Prisma.join(unique)})
+      AND t.deleted_at IS NULL
     GROUP BY t.payer_user_id
   `;
 
@@ -93,7 +96,7 @@ export async function loadUserAssignmentHistory(userId, limit) {
   const capped = Math.min(Math.max(1, Math.floor(limit)), 500);
   try {
     const rows = await prisma.walletAssignmentEvent.findMany({
-      where: { userId },
+      where: { userId, ...ACTIVE },
       orderBy: { createdAt: "desc" },
       take: capped,
       include: {
@@ -138,9 +141,10 @@ export async function loadUserPayerDepositHistory(userId, limit) {
         COUNT(*) FILTER (WHERE t.status = 'success')::int AS "success_all"
       FROM "transactions" t
       WHERE t.payer_user_id = ${userId}
+        AND t.deleted_at IS NULL
     `,
     prisma.transaction.findMany({
-      where: { payerUserId: userId },
+      where: { payerUserId: userId, ...ACTIVE },
       orderBy: { createdAt: "desc" },
       take: capped,
       include: {

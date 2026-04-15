@@ -1,4 +1,5 @@
 import { prisma } from "./prisma.js";
+import { ACTIVE } from "./active-row.js";
 
 /**
  * Prisma `where` fragment `{ id: n }` from JWT `sub` or route param (digits only).
@@ -62,16 +63,16 @@ export function scannerStateWhereFromRouteParam(raw) {
  */
 export async function resolveMerchantInternalId(opaque) {
   if (typeof opaque === "number" && Number.isInteger(opaque) && opaque >= 1) {
-    const row = await prisma.merchant.findUnique({
-      where: { id: opaque },
+    const row = await prisma.merchant.findFirst({
+      where: { id: opaque, ...ACTIVE },
       select: { id: true },
     });
     return row?.id ?? null;
   }
   const w = merchantWhereFromRouteParam(opaque);
   if (!w) return null;
-  const row = await prisma.merchant.findUnique({
-    where: w,
+  const row = await prisma.merchant.findFirst({
+    where: { ...w, ...ACTIVE },
     select: { id: true },
   });
   return row?.id ?? null;
@@ -83,16 +84,16 @@ export async function resolveMerchantInternalId(opaque) {
  */
 export async function resolveAdminInternalId(opaque) {
   if (typeof opaque === "number" && Number.isInteger(opaque) && opaque >= 1) {
-    const row = await prisma.admin.findUnique({
-      where: { id: opaque },
+    const row = await prisma.admin.findFirst({
+      where: { id: opaque, ...ACTIVE },
       select: { id: true },
     });
     return row?.id ?? null;
   }
   const w = merchantWhereFromRouteParam(opaque);
   if (!w) return null;
-  const row = await prisma.admin.findUnique({
-    where: w,
+  const row = await prisma.admin.findFirst({
+    where: { ...w, ...ACTIVE },
     select: { id: true },
   });
   return row?.id ?? null;
@@ -117,6 +118,7 @@ export async function resolveUserScopedInternalId(
       ...w,
       merchantId: merchantInternalId,
       environment,
+      ...ACTIVE,
     },
     select: { id: true },
   });
@@ -129,8 +131,8 @@ export async function resolveUserScopedInternalId(
 export async function resolveWalletInternalId(rawWalletId) {
   const w = walletWhereFromRouteParam(String(rawWalletId ?? ""));
   if (!w) return null;
-  const row = await prisma.wallet.findUnique({
-    where: w,
+  const row = await prisma.wallet.findFirst({
+    where: { ...w, ...ACTIVE },
     select: { id: true },
   });
   return row?.id ?? null;
@@ -145,16 +147,16 @@ export async function resolveTransactionInternalId(txOpaque) {
     Number.isInteger(txOpaque) &&
     txOpaque >= 1
   ) {
-    const row = await prisma.transaction.findUnique({
-      where: { id: txOpaque },
+    const row = await prisma.transaction.findFirst({
+      where: { id: txOpaque, ...ACTIVE },
       select: { id: true },
     });
     return row?.id ?? null;
   }
   const w = transactionWhereFromRouteParam(String(txOpaque ?? ""));
   if (!w) return null;
-  const row = await prisma.transaction.findUnique({
-    where: w,
+  const row = await prisma.transaction.findFirst({
+    where: { ...w, ...ACTIVE },
     select: { id: true },
   });
   return row?.id ?? null;

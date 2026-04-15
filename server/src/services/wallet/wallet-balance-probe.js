@@ -3,6 +3,7 @@ import { getErc20Contracts } from "../../config/env.js";
 import { re } from "../../config/runtime-env.js";
 import { isEvmChain } from "../../config/chains.js";
 import { walletAcceptsEvmErc20 } from "../../config/payment-rails.js";
+import { ACTIVE } from "../../lib/active-row.js";
 import { prisma } from "../../lib/prisma.js";
 import { isChainLiveForPlatform } from "../../lib/chain-enable.js";
 import { logger } from "../../lib/logger.js";
@@ -146,6 +147,7 @@ export async function probeWalletOnChainBalance(w) {
  */
 export async function refreshAllWalletCachedBalances() {
   const rows = await prisma.wallet.findMany({
+    where: { ...ACTIVE },
     orderBy: { createdAt: "desc" },
     select: {
       id: true,

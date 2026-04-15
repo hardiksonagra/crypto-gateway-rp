@@ -36,6 +36,8 @@ export async function computeMerchantBalances(
     FROM "transactions" t
     INNER JOIN "wallets" w ON w.id = t.wallet_id
     WHERE t.status = 'success'
+      AND t.deleted_at IS NULL
+      AND w.deleted_at IS NULL
       AND w.merchant_id = ${merchantId}
       AND w.environment = ${environment}::"MerchantGatewayEnv"
     GROUP BY t.chain, t.token_symbol, t.token_decimals
@@ -64,6 +66,7 @@ export async function computeMerchantBalances(
         SUM(w.amount::numeric)::text AS "sumAmount"
       FROM "withdrawals" w
       WHERE w.merchant_id = ${merchantId}
+        AND w.deleted_at IS NULL
         AND w.status = 'completed'::"WithdrawalStatus"
       GROUP BY w.chain, w.token_symbol
     `;
@@ -89,6 +92,7 @@ export async function computeMerchantBalances(
       SUM(ms.net_amount::numeric)::text AS "sumAmount"
     FROM "merchant_settlements" ms
     WHERE ms.merchant_id = ${merchantId}
+      AND ms.deleted_at IS NULL
       AND ms.environment = ${environment}::"MerchantGatewayEnv"
     GROUP BY ms.chain, ms.token_symbol, ms.token_decimals
   `;

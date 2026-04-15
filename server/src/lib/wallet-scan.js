@@ -1,3 +1,4 @@
+import { ACTIVE } from "./active-row.js";
 import { prisma } from "./prisma.js";
 import { re } from "../config/runtime-env.js";
 import { resolveWalletInternalId } from "./entity-internal-id.js";
@@ -64,8 +65,8 @@ export async function reactivateWalletDepositScan(walletIdRaw, opts = {}) {
     /** @type {any} */ (e).code = "WALLET_NOT_FOUND";
     throw e;
   }
-  const w = await prisma.wallet.findUnique({
-    where: { id: walletId },
+  const w = await prisma.wallet.findFirst({
+    where: { id: walletId, ...ACTIVE },
     select: { merchantId: true },
   });
   if (!w) {

@@ -1,3 +1,4 @@
+import { ACTIVE } from "crypto-payment-gateway/src/lib/active-row.js";
 import { prisma } from "crypto-payment-gateway/src/lib/prisma.js";
 import { resolveWalletInternalId } from "crypto-payment-gateway/src/lib/entity-internal-id.js";
 
@@ -15,7 +16,7 @@ export async function releaseWalletAfterDepositSuccess(walletId) {
       : await resolveWalletInternalId(String(walletId ?? ""));
   if (wid == null) return;
   await prisma.wallet.updateMany({
-    where: { id: wid },
+    where: { id: wid, ...ACTIVE },
     data: {
       assignedUserId: null,
       holdExpiresAt: null,
@@ -36,6 +37,7 @@ export async function releaseExpiredPoolHolds() {
     where: {
       assignedUserId: { not: null },
       holdExpiresAt: { lt: new Date() },
+      ...ACTIVE,
     },
     data: {
       assignedUserId: null,

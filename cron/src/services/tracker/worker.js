@@ -2,6 +2,7 @@ import { Chain, MerchantGatewayEnv } from "@prisma/client";
 import { SCANNED_EVM_CHAINS } from "crypto-payment-gateway/src/config/chains.js";
 import { re } from "crypto-payment-gateway/src/config/runtime-env.js";
 import { loadAppSettingsFromDatabase } from "crypto-payment-gateway/src/lib/app-settings-runtime.js";
+import { ACTIVE } from "crypto-payment-gateway/src/lib/active-row.js";
 import { prisma } from "crypto-payment-gateway/src/lib/prisma.js";
 import { loadWalletsForChain } from "crypto-payment-gateway/src/services/payment/transaction-upsert.js";
 import {
@@ -62,6 +63,7 @@ async function clearDepositSingleTickForChain(chain) {
       chain,
       environment: MerchantGatewayEnv.live,
       depositScanSingleTickRequested: true,
+      ...ACTIVE,
     },
     data: { depositScanSingleTickRequested: false },
   });

@@ -11,6 +11,7 @@
 import { Chain, MerchantGatewayEnv, TxStatus } from "@prisma/client";
 import { utils } from "tronweb";
 import { prisma } from "../../lib/prisma.js";
+import { ACTIVE } from "../../lib/active-row.js";
 import { logger } from "../../lib/logger.js";
 import { confirmationsForChain } from "../../config/chains.js";
 import { SCANNER_STATE_ROWS_BY_CHAIN } from "../../config/payment-rails.js";
@@ -92,8 +93,8 @@ export async function upsertIncomingTransaction(input) {
 
   let payerUserIdForCreate = input.payerUserId ?? null;
   if (!hadRowBefore && payerUserIdForCreate == null) {
-    const w = await prisma.wallet.findUnique({
-      where: { id: walletInternalId },
+    const w = await prisma.wallet.findFirst({
+      where: { id: walletInternalId, ...ACTIVE },
       select: { assignedUserId: true },
     });
     payerUserIdForCreate = w?.assignedUserId ?? null;
@@ -174,6 +175,7 @@ export async function loadWalletsForChain(chain) {
       chain,
       environment: MerchantGatewayEnv.live,
       ...liveWorkerWalletScanFilter(),
+      ...ACTIVE,
     },
     select: {
       id: true,
@@ -191,7 +193,7 @@ export async function loadWalletsForChain(chain) {
  */
 export async function loadAllLiveWalletsForChain(chain) {
   return prisma.wallet.findMany({
-    where: { chain, environment: MerchantGatewayEnv.live },
+    where: { chain, environment: MerchantGatewayEnv.live, ...ACTIVE },
     select: {
       id: true,
       address: true,
@@ -237,7 +239,9 @@ export async function getOrInitScannerBlock(chain, tip) {
     return tip > 12n ? tip - 12n : 0n;
   }
 
-  let rows = await prisma.scannerState.findMany({ where: { chain } });
+  let rows = await prisma.scannerState.findMany({
+    where: { chain, ...ACTIVE },
+  });
   if (rows.length === 0) {
     const warm = tip > 12n ? tip - 12n : 0n;
     await prisma.$transaction(
@@ -247,7 +251,7 @@ export async function getOrInitScannerBlock(chain, tip) {
         }),
       ),
     );
-    rows = await prisma.scannerState.findMany({ where: { chain } });
+    rows = await prisma.scannerState.findMany({ where: { chain, ...ACTIVE } });
   }
 
   const minBlock = rows.reduce(
@@ -258,7 +262,7 @@ export async function getOrInitScannerBlock(chain, tip) {
   if (minBlock === 0n && tip > 0n) {
     const warm = tip > 100n ? tip - 100n : 0n;
     await prisma.scannerState.updateMany({
-      where: { chain },
+      where: { chain, ...ACTIVE },
       data: { lastBlock: warm },
     });
     return warm;
@@ -272,7 +276,7 @@ export async function getOrInitScannerBlock(chain, tip) {
  */
 export async function advanceScanner(chain, block) {
   await prisma.scannerState.updateMany({
-    where: { chain },
+    where: { chain, ...ACTIVE },
     data: { lastBlock: block },
   });
 }
