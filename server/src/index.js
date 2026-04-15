@@ -1,4 +1,7 @@
 async function main() {
+  // Loads `.env` (see `config/env.js`) before Prisma `$connect` — required for `DATABASE_URL`.
+  await import("./config/env.js");
+
   const { syncActiveRowWithGeneratedPrismaClient } = await import(
     "./lib/prisma.js",
   );
@@ -10,7 +13,7 @@ async function main() {
   await loadAppSettingsFromDatabase();
 
   const { createApp } = await import("./app.js");
-  const { env } = await import("./config/env.js");
+  const { env } = await import("./config/env.js"); // same module as first import
   const { logger } = await import("./lib/logger.js");
 
   const app = createApp();
