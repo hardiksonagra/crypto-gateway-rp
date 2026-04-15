@@ -18,6 +18,8 @@ import {
   upsertIncomingTransaction,
 } from "crypto-payment-gateway/src/services/payment/transaction-upsert.js";
 import { logger } from "crypto-payment-gateway/src/lib/logger.js";
+import { runWithConcurrencyMap } from "crypto-payment-gateway/src/lib/run-with-concurrency.js";
+import { effectiveDepositScannerMaxPerSecond } from "crypto-payment-gateway/src/lib/network-rpc-rate-limit.js";
 import { recordDepositScanPolledAddresses } from "crypto-payment-gateway/src/services/tracker/deposit-rail-metrics.js";
 
 const transferTopic = ethers.id("Transfer(address,address,uint256)");
@@ -38,6 +40,29 @@ function etherscanChainId(chain) {
   if (chain === Chain.ETH) return 1;
   if (chain === Chain.BNB) return 56;
   return null;
+}
+
+/** Max deposit addresses listed per explorer log object (remainder in count only). */
+const EXPLORER_LOG_MONITORED_ADDR_MAX = 40;
+
+/**
+ * Structured `addresses` for deposit-scanner Etherscan logs (not sent on `getLogs` URL).
+ *
+ * @param {string[] | null | undefined} addrs
+ * @returns {Record<string, unknown>}
+ */
+function monitoredDepositAddressesLogFields(addrs) {
+  if (!addrs?.length) {
+    return { addresses: [], monitored_address_count: 0 };
+  }
+  const truncated = addrs.length > EXPLORER_LOG_MONITORED_ADDR_MAX;
+  return {
+    addresses: truncated
+      ? addrs.slice(0, EXPLORER_LOG_MONITORED_ADDR_MAX)
+      : [...addrs],
+    monitored_address_count: addrs.length,
+    ...(truncated ? { address_list_truncated: true } : {}),
+  };
 }
 
 /**
@@ -72,7 +97,7 @@ function etherscanRowToLogLike(row) {
  * @param {bigint} blockNum
  * @param {string} topic0
  * @param {string} budgetKey
- * @param {string[] | null} [logAddresses] When set, log each HTTP getLogs start/end with these deposit wallet addresses.
+ * @param {string[]} monitoredDepositAddresses Unique live deposit wallet addresses (log only).
  * @returns {Promise<Array<{ address: string, topics: string[], data: string, transactionHash: string, index: number }>>}
  */
 async function fetchTransferLogsViaEtherscan(
@@ -80,7 +105,7 @@ async function fetchTransferLogsViaEtherscan(
   blockNum,
   topic0,
   budgetKey,
-  logAddresses = null,
+  monitoredDepositAddresses,
 ) {
   const apiKey = re.etherscanApiKey?.trim();
   const chainId = etherscanChainId(chain);
@@ -91,7 +116,8 @@ async function fetchTransferLogsViaEtherscan(
   const out = [];
   const offset = 1000;
   const maxPages = 50;
-  const logAddrs = Array.isArray(logAddresses) ? logAddresses : null;
+  const pathLabel = "/api (module=logs&action=getLogs)";
+  const addrLog = monitoredDepositAddressesLogFields(monitoredDepositAddresses);
 
   for (let page = 1; page <= maxPages; page += 1) {
     const t0 = Date.now();
@@ -100,23 +126,7 @@ async function fetchTransferLogsViaEtherscan(
     let page_err = /** @type {string | null} */ (null);
     let result_count = 0;
 
-    if (logAddrs) {
-      const addrPart = logAddrs.join(",");
-      logger.info({
-        event: "explorer_api_etherscan",
-        phase: "start",
-        chain: String(chain),
-        api: "getLogs",
-        block: blockStr,
-        page,
-        addresses: logAddrs,
-        message: `ERC20: START API CALL (${String(chain)} block=${blockStr} page=${page} ${addrPart})`,
-      });
-    }
-
     try {
-      await acquireDepositScannerApiSlot("erc20");
-      await acquireOutboundRpcSlot(budgetKey);
       const u = new URL(base.includes("://") ? base : `https://${base}`);
 
       u.searchParams.set("chainid", String(chainId));
@@ -129,6 +139,19 @@ async function fetchTransferLogsViaEtherscan(
       u.searchParams.set("offset", String(offset));
       u.searchParams.set("apikey", apiKey);
 
+      logger.info({
+        event: "explorer_api_etherscan",
+        phase: "start",
+        chain: String(chain),
+        block: blockStr,
+        page,
+        path: pathLabel,
+        ...addrLog,
+        message: `ERC20: START API CALL (${String(chain)} block=${blockStr} page=${page} monitored=${addrLog.monitored_address_count})`,
+      });
+
+      await acquireDepositScannerApiSlot("erc20");
+      await acquireOutboundRpcSlot(budgetKey);
       const res = await fetch(u.toString(), { method: "GET" });
       http_status = res.status;
 
@@ -163,27 +186,26 @@ async function fetchTransferLogsViaEtherscan(
       page_err = e instanceof Error ? e.message : String(e);
       throw e;
     } finally {
-      if (logAddrs) {
-        const duration_ms = Date.now() - t0;
-        const ok = page_err == null && page_ok;
-        const addrPart = logAddrs.join(",");
-        const errNote = page_err ? ` err=${page_err}` : "";
-        logger.info({
-          event: "explorer_api_etherscan",
-          phase: "end",
-          chain: String(chain),
-          api: "getLogs",
-          block: blockStr,
-          page,
-          addresses: logAddrs,
-          duration_ms,
-          http_status,
-          ok,
-          result_count,
-          ...(page_err ? { error: page_err } : {}),
-          message: `ERC20: END API CALL (${String(chain)} block=${blockStr} page=${page} ${addrPart}) (${duration_ms}ms)${errNote}`,
-        });
-      }
+      const duration_ms = Date.now() - t0;
+      const ok = page_err == null && page_ok;
+      const errNote = page_err ? ` err=${page_err}` : "";
+      const endNote =
+        ok || http_status == null ? "" : ` fail http=${http_status}`;
+      logger.info({
+        event: "explorer_api_etherscan",
+        phase: "end",
+        chain: String(chain),
+        block: blockStr,
+        page,
+        path: pathLabel,
+        ...addrLog,
+        duration_ms,
+        http_status,
+        ok,
+        result_count,
+        ...(page_err ? { error: page_err } : {}),
+        message: `ERC20: END API CALL (${String(chain)} block=${blockStr} page=${page} monitored=${addrLog.monitored_address_count}) (${duration_ms}ms)${endNote}${errNote}`,
+      });
     }
   }
 
@@ -193,9 +215,14 @@ async function fetchTransferLogsViaEtherscan(
 /**
  * @param {import("@prisma/client").Chain} chain
  * @param {string} budgetKey
+ * @param {string[]} monitoredDepositAddresses Unique live deposit wallet addresses (log only).
  * @returns {Promise<bigint>}
  */
-async function fetchLatestBlockNumberViaEtherscan(chain, budgetKey) {
+async function fetchLatestBlockNumberViaEtherscan(
+  chain,
+  budgetKey,
+  monitoredDepositAddresses,
+) {
   const apiKey = re.etherscanApiKey?.trim();
   const chainId = etherscanChainId(chain);
   if (!apiKey || chainId == null) {
@@ -207,23 +234,26 @@ async function fetchLatestBlockNumberViaEtherscan(chain, budgetKey) {
   let ok = false;
   let errMsg = /** @type {string | null} */ (null);
 
-  logger.info({
-    event: "explorer_api_etherscan",
-    phase: "start",
-    chain: String(chain),
-    api: "eth_blockNumber",
-    addresses: [],
-    message: `ERC20: START API CALL (${String(chain)} eth_blockNumber)`,
-  });
-
   try {
-    await acquireDepositScannerApiSlot("erc20");
-    await acquireOutboundRpcSlot(budgetKey);
     const u = new URL(base.includes("://") ? base : `https://${base}`);
     u.searchParams.set("chainid", String(chainId));
     u.searchParams.set("module", "proxy");
     u.searchParams.set("action", "eth_blockNumber");
     u.searchParams.set("apikey", apiKey);
+
+    const pathLabel = "/api (module=proxy&action=eth_blockNumber)";
+    const addrLog = monitoredDepositAddressesLogFields(monitoredDepositAddresses);
+    logger.info({
+      event: "explorer_api_etherscan",
+      phase: "start",
+      chain: String(chain),
+      path: pathLabel,
+      ...addrLog,
+      message: `ERC20: START API CALL (${String(chain)} eth_blockNumber monitored=${addrLog.monitored_address_count})`,
+    });
+
+    await acquireDepositScannerApiSlot("erc20");
+    await acquireOutboundRpcSlot(budgetKey);
 
     const res = await fetch(u.toString(), { method: "GET" });
     http_status = res.status;
@@ -257,17 +287,20 @@ async function fetchLatestBlockNumberViaEtherscan(chain, budgetKey) {
   } finally {
     const duration_ms = Date.now() - t0;
     const errNote = errMsg ? ` err=${errMsg}` : "";
+    const pathLabelEnd = "/api (module=proxy&action=eth_blockNumber)";
+    const addrLogEnd =
+      monitoredDepositAddressesLogFields(monitoredDepositAddresses);
     logger.info({
       event: "explorer_api_etherscan",
       phase: "end",
       chain: String(chain),
-      api: "eth_blockNumber",
-      addresses: [],
+      path: pathLabelEnd,
+      ...addrLogEnd,
       duration_ms,
       http_status,
       ok: errMsg == null && ok,
       ...(errMsg ? { error: errMsg } : {}),
-      message: `ERC20: END API CALL (${String(chain)} eth_blockNumber) (${duration_ms}ms)${errNote}`,
+      message: `ERC20: END API CALL (${String(chain)} eth_blockNumber monitored=${addrLogEnd.monitored_address_count}) (${duration_ms}ms)${errNote}`,
     });
   }
 }
@@ -304,9 +337,11 @@ export async function scanEvmChain(chain, options = {}) {
     return;
   }
 
+  const uniqueAddrs = [...new Set(walletRows.map((w) => w.address))];
+
   let tip;
   try {
-    tip = await fetchLatestBlockNumberViaEtherscan(chain, budgetKey);
+    tip = await fetchLatestBlockNumberViaEtherscan(chain, budgetKey, uniqueAddrs);
   } catch {
     return;
   }
@@ -316,8 +351,6 @@ export async function scanEvmChain(chain, options = {}) {
   if (cursor >= tip) {
     return;
   }
-
-  const uniqueAddrs = [...new Set(walletRows.map((w) => w.address))];
 
   recordDepositScanPolledAddresses(chain, uniqueAddrs);
 
@@ -332,20 +365,38 @@ export async function scanEvmChain(chain, options = {}) {
   const maxBatch = BigInt(re.evmDepositScanMaxBlocksPerTick);
   const end = tip < cursor + maxBatch ? tip : cursor + maxBatch;
 
+  /** @type {bigint[]} */
+  const blockNums = [];
   for (let b = cursor + 1n; b <= end; b++) {
-    let logs = [];
-    try {
-      logs = await fetchTransferLogsViaEtherscan(
-        chain,
-        b,
-        transferTopic,
-        budgetKey,
-        uniqueAddrs,
-      );
-    } catch {
-      logs = [];
-    }
+    blockNums.push(b);
+  }
 
+  const cap = effectiveDepositScannerMaxPerSecond("erc20");
+  const parallel = Math.min(cap, blockNums.length);
+
+  const blockResults = await runWithConcurrencyMap(
+    blockNums,
+    parallel,
+    async (b) => {
+      let logs = [];
+      try {
+        logs = await fetchTransferLogsViaEtherscan(
+          chain,
+          b,
+          transferTopic,
+          budgetKey,
+          uniqueAddrs,
+        );
+      } catch {
+        logs = [];
+      }
+      return { b, logs };
+    },
+  );
+
+  blockResults.sort((a, z) => (a.b < z.b ? -1 : a.b > z.b ? 1 : 0));
+
+  for (const { b, logs } of blockResults) {
     for (const log of logs) {
       const contract = log.address.toLowerCase();
       const meta = erc20Map[contract];

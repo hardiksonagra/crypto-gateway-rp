@@ -16,6 +16,21 @@ import { ACTIVE } from "crypto-payment-gateway/src/lib/active-row.js";
 /** @typedef {import("@prisma/client").Prisma.TransactionClient} Tx */
 
 /** @param {unknown} e */
+function isUniqueWalletBusinessKeyError(e) {
+  const err =
+    /** @type {{ code?: string, message?: string }} */ (
+      e && typeof e === "object" ? e : {}
+    );
+  if (err.code === "P2002") return true;
+  const msg = String(err.message ?? "");
+  return (
+    msg.includes("Unique constraint") ||
+    msg.includes("unique constraint") ||
+    msg.includes("duplicate key value")
+  );
+}
+
+/** @param {unknown} e */
 function isWalletAssignmentTableMissingError(e) {
   const err =
     /** @type {{ code?: string, message?: string, meta?: { code?: string, message?: string } }} */ (
@@ -108,42 +123,44 @@ export async function assignPooledWalletForDeposit(tx, p) {
       wallet = picked;
       source = "pool_pick";
     } else {
-      try {
-        wallet = await createNewPooledWallet(tx, {
-          merchantId,
-          environment,
-          userId,
-          chain,
-          currency,
-          network,
-          holdUntil,
-          scanAt,
-        });
-        source = "new_wallet";
-      } catch (e) {
-        const msg = String(e);
-        if (
-          !msg.includes("Unique constraint") &&
-          !msg.includes("unique constraint")
-        )
-          throw e;
-        picked = await tryPickFreePoolWallet(tx, pickArgs);
-        if (picked) {
-          wallet = picked;
-          source = "pool_pick";
-        } else {
-          wallet = await createNewPooledWallet(tx, {
-            merchantId,
-            environment,
-            userId,
-            chain,
-            currency,
-            network,
-            holdUntil,
-            scanAt,
-          });
+      /**
+       * `wallet.create()` unique violation aborts the whole Postgres transaction unless we
+       * roll back to a savepoint first; otherwise the follow-up `tryPickFreePoolWallet` `$queryRaw`
+       * hits `25P02` (transaction is aborted).
+       */
+      const createArgs = {
+        merchantId,
+        environment,
+        userId,
+        chain,
+        currency,
+        network,
+        holdUntil,
+        scanAt,
+      };
+      const maxCreateAttempts = 4;
+      for (let attempt = 0; attempt < maxCreateAttempts; attempt += 1) {
+        const sp = `pool_wallet_assign_${attempt}`;
+        await tx.$executeRawUnsafe(`SAVEPOINT ${sp}`);
+        try {
+          wallet = await createNewPooledWallet(tx, createArgs);
+          await tx.$executeRawUnsafe(`RELEASE SAVEPOINT ${sp}`);
           source = "new_wallet";
+          break;
+        } catch (e) {
+          await tx.$executeRawUnsafe(`ROLLBACK TO SAVEPOINT ${sp}`);
+          await tx.$executeRawUnsafe(`RELEASE SAVEPOINT ${sp}`);
+          if (!isUniqueWalletBusinessKeyError(e)) throw e;
+          picked = await tryPickFreePoolWallet(tx, pickArgs);
+          if (picked) {
+            wallet = picked;
+            source = "pool_pick";
+            break;
+          }
         }
+      }
+      if (!wallet) {
+        throw new Error("POOL_WALLET_ASSIGN_EXHAUSTED_RETRIES");
       }
     }
   }
@@ -258,31 +275,24 @@ async function createNewPooledWallet(tx, args) {
     scanAt,
   } = args;
 
-  const peerOnChain = await tx.wallet.findFirst({
-    where: { merchantId, environment, chain, ...ACTIVE },
-    orderBy: { createdAt: "asc" },
-  });
-
+  /**
+   * New pool rows must each get a **distinct** `(merchant, env, chain, currency, network, address)`
+   * (partial unique on active wallets). Reusing the first EVM row’s address for a second row always
+   * collides — TRC20 avoids this by deriving a new address per row; EVM must do the same here.
+   */
+  const derivationIndex = await nextDerivationIndex(
+    tx,
+    merchantId,
+    environment,
+    chain,
+  );
   let address;
-  let derivationIndex;
-
-  if (isEvmChain(chain) && peerOnChain) {
-    address = peerOnChain.address;
-    derivationIndex = peerOnChain.derivationIndex;
+  if (isEvmChain(chain)) {
+    address = deriveEvmAddress(derivationIndex);
+  } else if (chain === Chain.TRON) {
+    address = deriveTronAddress(derivationIndex, env.mnemonic);
   } else {
-    derivationIndex = await nextDerivationIndex(
-      tx,
-      merchantId,
-      environment,
-      chain,
-    );
-    if (isEvmChain(chain)) {
-      address = deriveEvmAddress(derivationIndex);
-    } else if (chain === Chain.TRON) {
-      address = deriveTronAddress(derivationIndex, env.mnemonic);
-    } else {
-      throw new Error(`Unsupported chain: ${chain}`);
-    }
+    throw new Error(`Unsupported chain: ${chain}`);
   }
 
   return tx.wallet.create({

@@ -14,6 +14,8 @@ import {
   upsertIncomingTransaction,
 } from "crypto-payment-gateway/src/services/payment/transaction-upsert.js";
 import { logger } from "crypto-payment-gateway/src/lib/logger.js";
+import { runWithConcurrency } from "crypto-payment-gateway/src/lib/run-with-concurrency.js";
+import { effectiveDepositScannerMaxPerSecond } from "crypto-payment-gateway/src/lib/network-rpc-rate-limit.js";
 import { recordDepositScanPolledAddresses } from "crypto-payment-gateway/src/services/tracker/deposit-rail-metrics.js";
 import { pickUsdtTrc20Contract } from "crypto-payment-gateway/src/services/sweep/tron-usdt-sweep.js";
 
@@ -125,9 +127,11 @@ export async function scanTronChain(options = {}) {
     }
   }
 
-  for (const { address, usdtTargets } of work) {
+  const cap = effectiveDepositScannerMaxPerSecond("trc20");
+  const parallel = cap > 0 ? cap : 1;
+  await runWithConcurrency(work, parallel, async ({ address, usdtTargets }) => {
     await ingestTrc20ViaTronscan(base, address, usdtTargets, chain, trc20Map);
-  }
+  });
   recordDepositScanPolledAddresses(
     Chain.TRON,
     work.map((w) => w.address),

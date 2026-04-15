@@ -151,7 +151,7 @@ export const APP_SETTING_DEFINITIONS = [
   {
     key: "DEPOSIT_SCANNER_API_MAX_PER_SECOND_ERC20",
     label:
-      "Third-party API cap for this rail only (Etherscan): max HTTP calls per rolling 1 second across all ERC20 deposit scanner requests. `0` = no rail-specific cap (still subject to General → `OUTBOUND_RPC_MAX_PER_SECOND` per `EVM_<chain>`). Example: `5` ≈ five getLogs/blockNumber calls per second, so 20 calls spread over ~4s inside one tick.",
+      "Etherscan deposit poll: max **parallel block** fetches per tick and max **HTTP starts** per rolling 1s (includes `eth_blockNumber` + `getLogs`). Blocks are **sorted by height** before `advanceScanner`. **`0` = internal default 3/sec** (Etherscan free-tier safe); set `4`+ only if your API plan allows higher burst.",
     category: DEPOSIT_SCANNER_CATEGORIES.usdtErc20,
     type: "int",
   },
@@ -180,7 +180,7 @@ export const APP_SETTING_DEFINITIONS = [
   {
     key: "DEPOSIT_SCANNER_API_MAX_PER_SECOND_TRC20",
     label:
-      "Third-party API cap for this rail only (TronScan): max HTTP calls per rolling 1 second for TRC20 deposit address polling. `0` = no rail-specific cap (still subject to General → `OUTBOUND_RPC_MAX_PER_SECOND` for `TRON`). Example: `5` with 20 live addresses ≈ five TronScan calls per second (~4s to finish one full pass).",
+      "TronScan deposit poll: max **parallel** TronScan HTTP calls per tick, and max **starts** per rolling 1s (same number). Example `5` = up to five addresses queried at once; `acquireDepositScannerApiSlot` still spaces starts to respect the cap. `0` = sequential one-address-at-a-time (rail-specific cap off; `OUTBOUND_RPC_MAX_PER_SECOND` for `TRON` still applies).",
     category: DEPOSIT_SCANNER_CATEGORIES.usdtTrc20,
     type: "int",
   },

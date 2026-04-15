@@ -1,6 +1,29 @@
 import { re } from "../config/runtime-env.js";
 
 /**
+ * When `DEPOSIT_SCANNER_API_MAX_PER_SECOND_ERC20` is unset / 0, Etherscan-style APIs still need a
+ * conservative cap — otherwise `eth_blockNumber` + parallel `getLogs` exceed free-tier **3/sec** and
+ * return `Max calls per sec rate limit reached`.
+ */
+const ETHERSCAN_DEPOSIT_SCANNER_DEFAULT_MAX_PER_SEC = 3;
+
+/**
+ * Rolling-1s cap used by {@link acquireDepositScannerApiSlot} and ERC20 parallel block count.
+ *
+ * @param {"erc20" | "trc20"} rail
+ * @returns {number} `0` = no deposit-scanner cap for this rail (Tron only; ERC20 uses default above).
+ */
+export function effectiveDepositScannerMaxPerSecond(rail) {
+  const raw =
+    rail === "erc20"
+      ? re.depositScannerApiMaxPerSecondErc20
+      : re.depositScannerApiMaxPerSecondTrc20;
+  if (raw > 0) return raw;
+  if (rail === "erc20") return ETHERSCAN_DEPOSIT_SCANNER_DEFAULT_MAX_PER_SEC;
+  return 0;
+}
+
+/**
  * Limits HTTP/RPC calls per upstream “network” (chain/provider bucket) so TronGrid, EVM RPC, etc.
  * stay under provider caps. Waits instead of failing — integrators are unaffected.
  *
@@ -65,10 +88,7 @@ export async function acquireOutboundRpcSlot(key) {
  * @param {"erc20" | "trc20"} rail
  */
 export async function acquireDepositScannerApiSlot(rail) {
-  const max =
-    rail === "erc20"
-      ? re.depositScannerApiMaxPerSecondErc20
-      : re.depositScannerApiMaxPerSecondTrc20;
+  const max = effectiveDepositScannerMaxPerSecond(rail);
   if (max <= 0) return;
 
   async function waitForDepositScannerSlot() {
