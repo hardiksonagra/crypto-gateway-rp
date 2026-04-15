@@ -117,16 +117,34 @@ export const env = {
   confirmationsTon: intEnv("CONFIRMATIONS_TON", 2),
   confirmationsSolana: intEnv("CONFIRMATIONS_SOLANA", 1),
 
-  /** USDT·ERC20 (Ethereum) deposit worker poll interval (ms). Admin: `WORKER_POLL_INTERVAL_MS_ERC20`. */
-  workerPollMsErc20: intEnv(
-    "WORKER_POLL_INTERVAL_MS_ERC20",
-    intEnv("WORKER_POLL_INTERVAL_MS", 8000),
-  ),
-  /** USDT·TRC20 (TRON) deposit worker poll interval (ms). Admin: `WORKER_POLL_INTERVAL_MS_TRC20`. */
-  workerPollMsTrc20: intEnv(
-    "WORKER_POLL_INTERVAL_MS_TRC20",
-    intEnv("WORKER_POLL_INTERVAL_MS", 8000),
-  ),
+  /**
+   * USDT·ERC20 deposit worker poll interval (ms) after resolving env.
+   * Prefer `WORKER_POLL_INTERVAL_SEC_ERC20` (seconds); else legacy `WORKER_POLL_INTERVAL_MS_ERC20` / `WORKER_POLL_INTERVAL_MS`.
+   * Admin / DB: `WORKER_POLL_INTERVAL_SEC_ERC20` (seconds).
+   */
+  workerPollMsErc20: (() => {
+    const sec = intEnv("WORKER_POLL_INTERVAL_SEC_ERC20", 0);
+    if (sec >= 1) return Math.max(1000, sec * 1000);
+    const ms = intEnv(
+      "WORKER_POLL_INTERVAL_MS_ERC20",
+      intEnv("WORKER_POLL_INTERVAL_MS", 8000),
+    );
+    return ms >= 1000 ? ms : 1000;
+  })(),
+  /**
+   * USDT·TRC20 deposit worker poll interval (ms) after resolving env.
+   * Prefer `WORKER_POLL_INTERVAL_SEC_TRC20`; else legacy MS env vars (same pattern as ERC20).
+   * Admin / DB: `WORKER_POLL_INTERVAL_SEC_TRC20` (seconds).
+   */
+  workerPollMsTrc20: (() => {
+    const sec = intEnv("WORKER_POLL_INTERVAL_SEC_TRC20", 0);
+    if (sec >= 1) return Math.max(1000, sec * 1000);
+    const ms = intEnv(
+      "WORKER_POLL_INTERVAL_MS_TRC20",
+      intEnv("WORKER_POLL_INTERVAL_MS", 8000),
+    );
+    return ms >= 1000 ? ms : 1000;
+  })(),
   /**
    * ERC20 deposit scanner: max Ethereum blocks per worker tick (each block = Etherscan getLogs, sequential).
    * Lower = shorter `tick_duration_ms` per tick; higher = faster catch-up behind chain tip. Admin: `EVM_DEPOSIT_SCAN_MAX_BLOCKS_PER_TICK`.
@@ -288,6 +306,23 @@ export const env = {
    * `0` = disable limiting. Requests wait (queue) instead of returning errors to integrators.
    */
   outboundRpcMaxPerSecond: intEnv("OUTBOUND_RPC_MAX_PER_SECOND", 125),
+
+  /**
+   * Deposit scanner only (Etherscan getLogs / eth_blockNumber): max HTTP calls per rolling 1s, all EVM chains share one bucket.
+   * `0` = use only `OUTBOUND_RPC_MAX_PER_SECOND` for those calls. Admin: `DEPOSIT_SCANNER_API_MAX_PER_SECOND_ERC20`.
+   */
+  depositScannerApiMaxPerSecondErc20: intEnv(
+    "DEPOSIT_SCANNER_API_MAX_PER_SECOND_ERC20",
+    0,
+  ),
+  /**
+   * Deposit scanner only (TronScan token transfers): max HTTP calls per rolling 1s for TRC20 tick.
+   * `0` = use only `OUTBOUND_RPC_MAX_PER_SECOND`. Admin: `DEPOSIT_SCANNER_API_MAX_PER_SECOND_TRC20`.
+   */
+  depositScannerApiMaxPerSecondTrc20: intEnv(
+    "DEPOSIT_SCANNER_API_MAX_PER_SECOND_TRC20",
+    0,
+  ),
 
   /**
    * Absolute or cwd-relative path to Vite `client/dist`. If unset, uses monorepo `client/dist` when it exists.

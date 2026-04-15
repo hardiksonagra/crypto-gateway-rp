@@ -254,17 +254,38 @@ export async function listTronUsdtSweepTargets() {
 
 /**
  * @param {string | number} walletId
+ * @param {{ to_address?: string }} [opts] When `to_address` is set, send full USDT balance there (admin tool). Otherwise send to `SWEEP_MASTER_TRON`.
  * @returns {Promise<{ ok: true, skipped?: boolean, reason?: string, tx_hash?: string, amount_atomic?: string, from_address?: string, to_address?: string } | { ok: false, error: string, detail?: string }>}
  */
-export async function sweepTronUsdtOne(walletId) {
+export async function sweepTronUsdtOne(walletId, opts = {}) {
   const wid = parseWalletDbId(walletId);
   if (wid == null) {
     return { ok: false, error: "WALLET_NOT_FOUND" };
   }
 
-  const master = re.sweepMasterTron?.trim();
-  if (!master) {
-    return { ok: false, error: "SWEEP_MASTER_TRON_NOT_SET" };
+  const toOverride =
+    typeof opts.to_address === "string" ? opts.to_address.trim() : "";
+  const master = re.sweepMasterTron?.trim() ?? "";
+  const recipient = toOverride || master;
+  if (!recipient) {
+    return {
+      ok: false,
+      error: "NO_RECIPIENT",
+      detail:
+        "Set SWEEP_MASTER_TRON for default consolidate, or pass to_address for a one-off send.",
+    };
+  }
+
+  if (toOverride) {
+    try {
+      tronUtils.address.toHex(toOverride);
+    } catch {
+      return {
+        ok: false,
+        error: "INVALID_TO_ADDRESS",
+        detail: "to_address is not a valid TRON address",
+      };
+    }
   }
 
   let contractAddr;
@@ -287,8 +308,8 @@ export async function sweepTronUsdtOne(walletId) {
     return { ok: false, error: "WALLET_NOT_FOUND" };
   }
 
-  if (tronAddrEq(wallet.address, master)) {
-    return { ok: false, error: "SOURCE_IS_MASTER" };
+  if (tronAddrEq(wallet.address, recipient)) {
+    return { ok: false, error: "SOURCE_IS_DESTINATION" };
   }
 
   const pkHex = deriveTronPrivateKeyHex(wallet.derivationIndex, env.mnemonic);
@@ -318,7 +339,7 @@ export async function sweepTronUsdtOne(walletId) {
 
   return sweepTronUsdtTransferFullBalanceFromDepositWallet(
     wallet,
-    master,
+    recipient,
     contractAddr,
   );
 }
@@ -403,16 +424,16 @@ export async function readTronUsdtBalanceAtomicForWallet(wallet, contractAddr) {
 }
 
 /**
- * Full USDT·TRC20 balance from deposit wallet → master.
+ * Full USDT·TRC20 balance from deposit wallet → recipient (sweep master or admin override).
  * TRX requirement is computed dynamically ({@link estimateTrxSunRequiredForTrc20Transfer}).
  *
  * @param {{ id: string, address: string, derivationIndex: number }} wallet
- * @param {string} master
+ * @param {string} recipient Base58 TRON receive address (historically sweep master; may be any valid recipient).
  * @param {string} contractAddr
  */
 export async function sweepTronUsdtTransferFullBalanceFromDepositWallet(
   wallet,
-  master,
+  recipient,
   contractAddr,
 ) {
   const pkHex = deriveTronPrivateKeyHex(wallet.derivationIndex, env.mnemonic);
@@ -454,7 +475,7 @@ export async function sweepTronUsdtTransferFullBalanceFromDepositWallet(
     tw,
     wallet.address,
     contractAddr,
-    master,
+    recipient,
     amount,
   );
 
@@ -471,7 +492,7 @@ export async function sweepTronUsdtTransferFullBalanceFromDepositWallet(
   await acquireOutboundRpcSlot("TRON");
   let txId;
   try {
-    txId = await contract.transfer(master, amount.toString()).send({
+    txId = await contract.transfer(recipient, amount.toString()).send({
       feeLimit: 150_000_000,
       shouldPollResponse: true,
     });
@@ -486,7 +507,7 @@ export async function sweepTronUsdtTransferFullBalanceFromDepositWallet(
   logger.info("tron usdt swept", {
     walletId: wallet.id,
     from: wallet.address,
-    to: master,
+    to: recipient,
     amount: amount.toString(),
     tx: txId,
   });
@@ -496,7 +517,7 @@ export async function sweepTronUsdtTransferFullBalanceFromDepositWallet(
     tx_hash: typeof txId === "string" ? txId : String(txId),
     amount_atomic: amount.toString(),
     from_address: wallet.address,
-    to_address: master,
+    to_address: recipient,
   };
 }
 

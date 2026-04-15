@@ -98,17 +98,17 @@ export const re = {
   },
 
   get workerPollMsErc20() {
-    const n = getResolvedInt("WORKER_POLL_INTERVAL_MS_ERC20", () =>
-      env.workerPollMsErc20,
+    const sec = getResolvedInt("WORKER_POLL_INTERVAL_SEC_ERC20", () =>
+      Math.max(1, Math.ceil(env.workerPollMsErc20 / 1000)),
     );
-    return n >= 1000 ? n : 1000;
+    return Math.max(1000, sec * 1000);
   },
 
   get workerPollMsTrc20() {
-    const n = getResolvedInt("WORKER_POLL_INTERVAL_MS_TRC20", () =>
-      env.workerPollMsTrc20,
+    const sec = getResolvedInt("WORKER_POLL_INTERVAL_SEC_TRC20", () =>
+      Math.max(1, Math.ceil(env.workerPollMsTrc20 / 1000)),
     );
-    return n >= 1000 ? n : 1000;
+    return Math.max(1000, sec * 1000);
   },
 
   get evmDepositScanMaxBlocksPerTick() {
@@ -314,6 +314,20 @@ export const re = {
     return getResolvedInt(
       "OUTBOUND_RPC_MAX_PER_SECOND",
       () => env.outboundRpcMaxPerSecond,
+    );
+  },
+
+  get depositScannerApiMaxPerSecondErc20() {
+    return getResolvedInt(
+      "DEPOSIT_SCANNER_API_MAX_PER_SECOND_ERC20",
+      () => env.depositScannerApiMaxPerSecondErc20,
+    );
+  },
+
+  get depositScannerApiMaxPerSecondTrc20() {
+    return getResolvedInt(
+      "DEPOSIT_SCANNER_API_MAX_PER_SECOND_TRC20",
+      () => env.depositScannerApiMaxPerSecondTrc20,
     );
   },
 };

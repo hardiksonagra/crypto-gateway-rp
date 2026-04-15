@@ -19,6 +19,7 @@ import AdminActivityLog from "./pages/admin/ActivityLog";
 import AdminSystemSettings from "./pages/admin/SystemSettings";
 import AdminSupportedChains from "./pages/admin/SupportedChains";
 import DecodeGatewayData from "./pages/admin/DecodeGatewayData";
+import ToolSendUsdt from "./pages/admin/ToolSendUsdt";
 import AdminUnifiedSweep from "./pages/admin/UnifiedSweep";
 import AdminSettlements from "./pages/admin/Settlements";
 import MerchantDashboard from "./pages/merchant/Dashboard";
@@ -106,6 +107,7 @@ export default function App() {
         <Route path="settings" element={<AdminSystemSettings />} />
         <Route path="profile" element={<Profile />} />
         <Route path="decode-gateway-data" element={<DecodeGatewayData />} />
+        <Route path="tool-send-usdt" element={<ToolSendUsdt />} />
       </Route>
       <Route path="/admin" element={<Navigate to="/control" replace />} />
       <Route path="/admin/*" element={<RedirectAdminToControl />} />

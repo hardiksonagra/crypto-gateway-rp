@@ -8,7 +8,7 @@ import {
 
 startBlockchainWorker();
 logger.info("blockchain deposit / transaction tracker started (combined worker)", {
-  note: "Both ERC20 + TRC20 rails in one process; each rail has its own work queue so a long TRC20 tick (sweep/callbacks) does not delay ERC20 polling. Production PM2: prefer crypto-gateway-worker-erc20 + crypto-gateway-worker-trc20. Poll: WORKER_POLL_INTERVAL_MS_ERC20 / WORKER_POLL_INTERVAL_MS_TRC20. Restart to apply ms. Full deposit scan: crypto-gateway-cron-deposit-full-scan",
+  note: "Both ERC20 + TRC20 rails in one process; each rail has its own work queue so a long TRC20 tick (sweep/callbacks) does not delay ERC20 polling. Production PM2: prefer crypto-gateway-worker-erc20 + crypto-gateway-worker-trc20. Poll: WORKER_POLL_INTERVAL_SEC_ERC20 / WORKER_POLL_INTERVAL_SEC_TRC20 (seconds in Admin; restart workers to apply). Full deposit scan: crypto-gateway-cron-deposit-full-scan",
   tron_deposit_scan: "tronscan",
   deposit_scanner_tron_only: re.depositScannerTronOnly,
   tronscan_key_configured: Boolean(re.tronscanApiKey?.trim()),

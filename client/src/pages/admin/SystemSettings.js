@@ -281,7 +281,7 @@ export default function SystemSettings() {
         <span className="font-mono text-white/80">
           crypto-gateway-cron-tron-sweep
         </span>{" "}
-        if you change ERC20/TRC20 scanner poll intervals or other cron-only behavior.
+        if you change ERC20/TRC20 scanner poll intervals (seconds) or other cron-only behavior.
       </p>
 
       <div className="glass mt-8 w-full rounded-2xl p-6 lg:p-8">

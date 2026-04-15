@@ -9,7 +9,7 @@ startErc20DepositWorker();
 logger.info("deposit worker (ERC20) started", {
   app: "crypto-gateway-worker-erc20",
   poll_ms: re.workerPollMsErc20,
-  setting: "WORKER_POLL_INTERVAL_MS_ERC20",
+  setting: "WORKER_POLL_INTERVAL_SEC_ERC20",
 });
 
 function shutdown(signal) {

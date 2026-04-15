@@ -3,8 +3,8 @@
  *
  * Apps:
  * - `crypto-gateway-api` — HTTP + static client (no timers).
- * - `crypto-gateway-worker-erc20` — USDT·ERC20 deposit scan (`WORKER_POLL_INTERVAL_MS_ERC20`).
- * - `crypto-gateway-worker-trc20` — USDT·TRC20 deposit scan + callback retries (`WORKER_POLL_INTERVAL_MS_TRC20`).
+ * - `crypto-gateway-worker-erc20` — USDT·ERC20 deposit scan (`WORKER_POLL_INTERVAL_SEC_ERC20`, seconds).
+ * - `crypto-gateway-worker-trc20` — USDT·TRC20 deposit scan + callback retries (`WORKER_POLL_INTERVAL_SEC_TRC20`, seconds).
  * - (Optional) `crypto-gateway-worker` — both rails in one process (`entry-worker.js`); prefer the split apps above in production.
  * - `crypto-gateway-cron-maintenance` — heartbeat + wallet-pool expired holds.
  * - `crypto-gateway-cron-deposit-full-scan` — periodic full live-wallet deposit scan (`DEPOSIT_FULL_SCAN_INTERVAL_HOURS`).

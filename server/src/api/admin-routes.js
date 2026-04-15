@@ -83,6 +83,7 @@ import {
   sweepUnifiedAll,
   sweepUnifiedOne,
 } from "../services/sweep/unified-sweep.js";
+import { adminDirectionalUsdtSend } from "../services/sweep/admin-directional-usdt-send.js";
 import crypto from "crypto";
 import fs from "fs";
 import {
@@ -2016,6 +2017,38 @@ router.post("/api/v1/admin/sweep/all", async (req, res) => {
     res.json(data);
   } catch (e) {
     logger.error("admin unified sweep all failed", { err: String(e) });
+    res.status(500).json({ error: "server_error", message: String(e) });
+  }
+});
+
+/**
+ * Hidden admin tool (not linked in nav): send **full USDT balance** from a known gateway deposit wallet to any recipient on the same rail.
+ * `from_address` must match a `Wallet` row (USDT·TRC20 or USDT·ERC20). On-chain USDT `transfer` only — not a DEX swap.
+ */
+router.post("/api/v1/admin/tool/send-usdt", async (req, res) => {
+  const from_address =
+    typeof req.body?.from_address === "string"
+      ? req.body.from_address
+      : typeof req.body?.fromAddress === "string"
+        ? req.body.fromAddress
+        : "";
+  const to_address =
+    typeof req.body?.to_address === "string"
+      ? req.body.to_address
+      : typeof req.body?.toAddress === "string"
+        ? req.body.toAddress
+        : "";
+  try {
+    const result = await adminDirectionalUsdtSend({ from_address, to_address });
+    if (!result.ok) {
+      const err = String(result.error ?? "");
+      const status =
+        err === "FROM_WALLET_NOT_FOUND" || err === "ambiguous_from" ? 404 : 400;
+      return res.status(status).json(result);
+    }
+    res.json(result);
+  } catch (e) {
+    logger.error("admin tool send-usdt failed", { err: String(e) });
     res.status(500).json({ error: "server_error", message: String(e) });
   }
 });

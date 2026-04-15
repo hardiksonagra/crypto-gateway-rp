@@ -3,7 +3,10 @@ import { utils } from "tronweb";
 import { confirmationsForChain } from "crypto-payment-gateway/src/config/chains.js";
 import { getTrc20Contracts } from "crypto-payment-gateway/src/config/env.js";
 import { re } from "crypto-payment-gateway/src/config/runtime-env.js";
-import { acquireOutboundRpcSlot } from "crypto-payment-gateway/src/lib/network-rpc-rate-limit.js";
+import {
+  acquireDepositScannerApiSlot,
+  acquireOutboundRpcSlot,
+} from "crypto-payment-gateway/src/lib/network-rpc-rate-limit.js";
 import { getTronscanFetchHeaders } from "crypto-payment-gateway/src/lib/tron-node-client.js";
 import { pickSingleDepositWallet } from "crypto-payment-gateway/src/lib/deposit-scan-dedupe.js";
 import {
@@ -155,6 +158,7 @@ async function ingestTrc20ViaTronscan(base, address, targets, chain, trc20Map) {
     message: `TRC20: START API CALL (${address})`,
   });
   try {
+    await acquireDepositScannerApiSlot("trc20");
     await acquireOutboundRpcSlot("TRON");
     const res = await fetch(url, { headers: getTronscanFetchHeaders() });
     const text = await res.text();

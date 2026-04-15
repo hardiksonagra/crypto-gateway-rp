@@ -138,7 +138,7 @@ export async function runTronDepositTick() {
   });
 }
 
-/** PM2 `crypto-gateway-worker-erc20` — poll interval `WORKER_POLL_INTERVAL_MS_ERC20` (e.g. 4000 ms). */
+/** PM2 `crypto-gateway-worker-erc20` — poll interval `WORKER_POLL_INTERVAL_SEC_ERC20` (seconds; e.g. 4 → 4000 ms). */
 export function startErc20DepositWorker() {
   if (evmTimer) return;
   const ms = re.workerPollMsErc20;
@@ -153,7 +153,7 @@ export function stopErc20DepositWorker() {
   evmTimer = null;
 }
 
-/** PM2 `crypto-gateway-worker-trc20` — poll interval `WORKER_POLL_INTERVAL_MS_TRC20` (e.g. 3000 ms). */
+/** PM2 `crypto-gateway-worker-trc20` — poll interval `WORKER_POLL_INTERVAL_SEC_TRC20` (seconds; e.g. 3 → 3000 ms). */
 export function startTrc20DepositWorker() {
   if (tronTimer) return;
   const ms = re.workerPollMsTrc20;

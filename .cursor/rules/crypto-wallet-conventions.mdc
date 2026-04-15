@@ -32,7 +32,8 @@ alwaysApply: true
 
 ## Cron / deposit worker (per-network)
 
-- **Deposit scanning** is **one PM2 app per product rail** in production (e.g. `crypto-gateway-worker-erc20`, `crypto-gateway-worker-trc20`); poll keys follow `WORKER_POLL_INTERVAL_MS_*` in Admin under the matching **`Deposit scanner · USDT·…`** section. See `ecosystem.config.cjs` and `cron/src/entry-worker-*.js`.
+- **Deposit scanning** is **one PM2 app per product rail** in production (e.g. `crypto-gateway-worker-erc20`, `crypto-gateway-worker-trc20`); poll keys follow `WORKER_POLL_INTERVAL_SEC_*` (seconds) in Admin under the matching **`Deposit scanner · USDT·…`** section. See `ecosystem.config.cjs` and `cron/src/entry-worker-*.js`.
+- **Third-party explorer caps (per rail):** `DEPOSIT_SCANNER_API_MAX_PER_SECOND_ERC20` / `DEPOSIT_SCANNER_API_MAX_PER_SECOND_TRC20` (rolling 1s, `0` = off) throttle Etherscan / TronScan HTTP from deposit trackers only; `OUTBOUND_RPC_MAX_PER_SECOND` still applies per bucket after that (`acquireDepositScannerApiSlot` then `acquireOutboundRpcSlot` in `cron/src/services/tracker/*-tracker.js`).
 - **Combined dev / legacy:** `entry-worker.js` may still run **both** rails in one process (`startBlockchainWorker`); prefer split PM2 apps in production.
 - **Deposit scanner** Admin sections use **`Deposit scanner · shared`** (all rails) and **`Deposit scanner · USDT·<network>`** per rail (today ERC20 + TRC20). Add new rails via `DEPOSIT_SCANNER_CATEGORIES` + defs in `server/src/lib/app-settings-registry.js`, then `re` / `env` / `envFallbackString`, PM2 + `entry-worker-*.js`.
 - **Side effects** that must not run twice (e.g. callback retries): designate **one** worker process for them and document in `cron/src/services/tracker/worker.js`.

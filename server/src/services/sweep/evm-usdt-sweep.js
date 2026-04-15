@@ -91,8 +91,9 @@ export async function listEvmUsdtSweepTargets(chain) {
 /**
  * @param {string | number} walletId
  * @param {import("@prisma/client").Chain} chain
+ * @param {{ to_address?: string }} [opts] When `to_address` is set, send full USDT balance there (admin tool). Otherwise send to `SWEEP_MASTER_USDT_ETH`.
  */
-export async function sweepEvmUsdtOne(walletId, chain) {
+export async function sweepEvmUsdtOne(walletId, chain, opts = {}) {
   if (chain !== Chain.ETH) {
     return { ok: false, error: "UNSUPPORTED_CHAIN" };
   }
@@ -111,12 +112,29 @@ export async function sweepEvmUsdtOne(walletId, chain) {
     };
   }
 
-  const master = masterForChain(chain);
-  if (!master) {
-    return {
-      ok: false,
-      error: "SWEEP_MASTER_USDT_ETH_NOT_SET",
-    };
+  const toOverride =
+    typeof opts.to_address === "string" ? opts.to_address.trim() : "";
+  /** @type {string} */
+  let recipient;
+  if (toOverride) {
+    try {
+      recipient = ethers.getAddress(toOverride);
+    } catch {
+      return {
+        ok: false,
+        error: "INVALID_TO_ADDRESS",
+        detail: "to_address is not a valid Ethereum address",
+      };
+    }
+  } else {
+    const master = masterForChain(chain);
+    if (!master) {
+      return {
+        ok: false,
+        error: "SWEEP_MASTER_USDT_ETH_NOT_SET",
+      };
+    }
+    recipient = ethers.getAddress(master);
   }
 
   const tokenAddr = pickUsdtTokenAddress(chain);
@@ -139,8 +157,8 @@ export async function sweepEvmUsdtOne(walletId, chain) {
     return { ok: false, error: "WALLET_NOT_FOUND" };
   }
 
-  if (wallet.address.toLowerCase() === master.toLowerCase()) {
-    return { ok: false, error: "SOURCE_IS_MASTER" };
+  if (wallet.address.toLowerCase() === recipient.toLowerCase()) {
+    return { ok: false, error: "SOURCE_IS_DESTINATION" };
   }
 
   const path = `m/44'/60'/0'/0/${wallet.derivationIndex}`;
@@ -186,7 +204,7 @@ export async function sweepEvmUsdtOne(walletId, chain) {
   await acquireOutboundRpcSlot(budgetKey);
   let gasLimit;
   try {
-    gasLimit = await usdt.transfer.estimateGas(master, bal);
+    gasLimit = await usdt.transfer.estimateGas(recipient, bal);
   } catch (e) {
     gasLimit = 120_000n;
     logger.warn("evm usdt sweep: estimateGas failed, using default", {
@@ -209,7 +227,7 @@ export async function sweepEvmUsdtOne(walletId, chain) {
   let tx;
   try {
     await acquireOutboundRpcSlot(budgetKey);
-    tx = await usdt.transfer(master, bal);
+    tx = await usdt.transfer(recipient, bal);
     await acquireOutboundRpcSlot(budgetKey);
     const receipt = await tx.wait(1);
     if (!receipt?.status) {
@@ -228,7 +246,7 @@ export async function sweepEvmUsdtOne(walletId, chain) {
     walletId,
     chain,
     from: wallet.address,
-    to: master,
+    to: recipient,
     amount: bal.toString(),
     tx: tx.hash,
   });
@@ -238,7 +256,7 @@ export async function sweepEvmUsdtOne(walletId, chain) {
     tx_hash: tx.hash,
     amount_atomic: bal.toString(),
     from_address: wallet.address,
-    to_address: ethers.getAddress(master),
+    to_address: recipient,
   };
 }
 

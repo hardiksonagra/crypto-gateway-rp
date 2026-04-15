@@ -12,6 +12,11 @@ const tailByKey = new Map();
 /** @type {Map<RpcBudgetKey, number[]>} */
 const timestampsByKey = new Map();
 
+/** @type {Map<"erc20" | "trc20", Promise<void>>} */
+const depositScannerTailByRail = new Map();
+/** @type {Map<"erc20" | "trc20", number[]>} */
+const depositScannerStampsByRail = new Map();
+
 /**
  * @param {RpcBudgetKey} key
  */
@@ -45,6 +50,46 @@ export async function acquireOutboundRpcSlot(key) {
   const done = prev.then(() => waitForSlot(key));
   tailByKey.set(
     key,
+    done.then(
+      () => {},
+      () => {},
+    ),
+  );
+  await done;
+}
+
+/**
+ * Rolling 1s cap for **deposit scanner** explorer calls only (separate from sweep / other RPC).
+ * When the configured max is `0`, this is a no-op (use `acquireOutboundRpcSlot` alone if enabled).
+ *
+ * @param {"erc20" | "trc20"} rail
+ */
+export async function acquireDepositScannerApiSlot(rail) {
+  const max =
+    rail === "erc20"
+      ? re.depositScannerApiMaxPerSecondErc20
+      : re.depositScannerApiMaxPerSecondTrc20;
+  if (max <= 0) return;
+
+  async function waitForDepositScannerSlot() {
+    while (true) {
+      const now = Date.now();
+      let stamps = depositScannerStampsByRail.get(rail) ?? [];
+      stamps = stamps.filter((t) => now - t < 1000);
+      if (stamps.length < max) {
+        stamps.push(now);
+        depositScannerStampsByRail.set(rail, stamps);
+        return;
+      }
+      const waitMs = 1000 - (now - stamps[0]) + 1;
+      await new Promise((r) => setTimeout(r, Math.max(1, waitMs)));
+    }
+  }
+
+  const prev = depositScannerTailByRail.get(rail) ?? Promise.resolve();
+  const done = prev.then(() => waitForDepositScannerSlot());
+  depositScannerTailByRail.set(
+    rail,
     done.then(
       () => {},
       () => {},

@@ -9,7 +9,7 @@ startTrc20DepositWorker();
 logger.info("deposit worker (TRC20) started", {
   app: "crypto-gateway-worker-trc20",
   poll_ms: re.workerPollMsTrc20,
-  setting: "WORKER_POLL_INTERVAL_MS_TRC20",
+  setting: "WORKER_POLL_INTERVAL_SEC_TRC20",
   note: "Sweep stub + success-callback retries run on this process only (avoid duplicate work vs ERC20 worker).",
 });
 

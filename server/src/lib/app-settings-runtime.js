@@ -177,7 +177,33 @@ function applyLoggerLevel() {
   }
 }
 
+/** Legacy Admin keys (ms) → `WORKER_POLL_INTERVAL_SEC_*` (seconds). Idempotent. */
+async function migrateLegacyWorkerPollIntervalKeys() {
+  const pairs = [
+    ["WORKER_POLL_INTERVAL_MS_ERC20", "WORKER_POLL_INTERVAL_SEC_ERC20"],
+    ["WORKER_POLL_INTERVAL_MS_TRC20", "WORKER_POLL_INTERVAL_SEC_TRC20"],
+  ];
+  for (const [oldKey, newKey] of pairs) {
+    const oldRow = await prisma.appSetting.findUnique({ where: { key: oldKey } });
+    if (!oldRow?.value?.trim()) continue;
+    const newRow = await prisma.appSetting.findUnique({ where: { key: newKey } });
+    if (newRow?.value?.trim()) continue;
+    const ms = parseInt(oldRow.value.trim(), 10);
+    if (!Number.isFinite(ms) || ms < 1) continue;
+    const sec = Math.max(1, Math.ceil(ms / 1000));
+    await prisma.$transaction([
+      prisma.appSetting.upsert({
+        where: { key: newKey },
+        create: { key: newKey, value: String(sec) },
+        update: { value: String(sec) },
+      }),
+      prisma.appSetting.deleteMany({ where: { key: oldKey } }),
+    ]);
+  }
+}
+
 export async function loadAppSettingsFromDatabase() {
+  await migrateLegacyWorkerPollIntervalKeys();
   const rows = await prisma.appSetting.findMany();
   cacheMap = new Map(rows.map((r) => [r.key, r.value]));
   applyLoggerLevel();
@@ -239,10 +265,14 @@ function envFallbackString(key) {
       return String(env.confirmationsEvm);
     case "CONFIRMATIONS_TRON":
       return String(env.confirmationsTron);
-    case "WORKER_POLL_INTERVAL_MS_ERC20":
-      return String(env.workerPollMsErc20);
-    case "WORKER_POLL_INTERVAL_MS_TRC20":
-      return String(env.workerPollMsTrc20);
+    case "WORKER_POLL_INTERVAL_SEC_ERC20":
+      return String(Math.max(1, Math.ceil(env.workerPollMsErc20 / 1000)));
+    case "DEPOSIT_SCANNER_API_MAX_PER_SECOND_ERC20":
+      return String(env.depositScannerApiMaxPerSecondErc20);
+    case "WORKER_POLL_INTERVAL_SEC_TRC20":
+      return String(Math.max(1, Math.ceil(env.workerPollMsTrc20 / 1000)));
+    case "DEPOSIT_SCANNER_API_MAX_PER_SECOND_TRC20":
+      return String(env.depositScannerApiMaxPerSecondTrc20);
     case "EVM_DEPOSIT_SCAN_MAX_BLOCKS_PER_TICK":
       return String(env.evmDepositScanMaxBlocksPerTick);
     case "WALLET_SCAN_TTL_MINUTES":
@@ -325,6 +355,25 @@ function validateStoredValue(key, stored) {
       if (key === "EVM_DEPOSIT_SCAN_MAX_BLOCKS_PER_TICK") {
         if (n < 1 || n > 50) {
           throw new Error(`${key}: must be between 1 and 50`);
+        }
+      }
+      if (
+        key === "WORKER_POLL_INTERVAL_SEC_ERC20" ||
+        key === "WORKER_POLL_INTERVAL_SEC_TRC20"
+      ) {
+        if (n < 1) {
+          throw new Error(`${key}: must be at least 1 second`);
+        }
+      }
+      if (
+        key === "DEPOSIT_SCANNER_API_MAX_PER_SECOND_ERC20" ||
+        key === "DEPOSIT_SCANNER_API_MAX_PER_SECOND_TRC20"
+      ) {
+        if (n < 0) {
+          throw new Error(`${key}: must be 0 (unlimited rail cap) or >= 1`);
+        }
+        if (n > 500) {
+          throw new Error(`${key}: must be at most 500`);
         }
       }
       return String(n);

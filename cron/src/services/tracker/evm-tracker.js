@@ -5,6 +5,7 @@ import { getErc20Contracts } from "crypto-payment-gateway/src/config/env.js";
 import { walletAcceptsEvmErc20 } from "crypto-payment-gateway/src/config/payment-rails.js";
 import { re } from "crypto-payment-gateway/src/config/runtime-env.js";
 import {
+  acquireDepositScannerApiSlot,
   acquireOutboundRpcSlot,
   evmRpcBudgetKey,
 } from "crypto-payment-gateway/src/lib/network-rpc-rate-limit.js";
@@ -114,6 +115,7 @@ async function fetchTransferLogsViaEtherscan(
     }
 
     try {
+      await acquireDepositScannerApiSlot("erc20");
       await acquireOutboundRpcSlot(budgetKey);
       const u = new URL(base.includes("://") ? base : `https://${base}`);
 
@@ -215,6 +217,7 @@ async function fetchLatestBlockNumberViaEtherscan(chain, budgetKey) {
   });
 
   try {
+    await acquireDepositScannerApiSlot("erc20");
     await acquireOutboundRpcSlot(budgetKey);
     const u = new URL(base.includes("://") ? base : `https://${base}`);
     u.searchParams.set("chainid", String(chainId));
