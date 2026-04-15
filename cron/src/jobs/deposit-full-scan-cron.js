@@ -1,9 +1,8 @@
 import {
+  findAppSettingFirst,
   refreshAppSettingsCache,
   upsertAppSettingKeyValue,
 } from "crypto-payment-gateway/src/lib/app-settings-runtime.js";
-import { ACTIVE } from "crypto-payment-gateway/src/lib/active-row.js";
-import { prisma } from "crypto-payment-gateway/src/lib/prisma.js";
 import { re } from "crypto-payment-gateway/src/config/runtime-env.js";
 import { logger } from "crypto-payment-gateway/src/lib/logger.js";
 import { runFullDepositScanPass } from "../services/deposit-full-scan-pass.js";
@@ -39,9 +38,7 @@ async function runMaybeFullDepositScan() {
     if (hours <= 0) return;
 
     const intervalMs = hours * 3600 * 1000;
-    const row = await prisma.appSetting.findFirst({
-      where: { key: LAST_AT_KEY, ...ACTIVE },
-    });
+    const row = await findAppSettingFirst({ key: LAST_AT_KEY });
     const lastMs = row?.value ? Date.parse(row.value) : NaN;
     const now = Date.now();
     if (Number.isFinite(lastMs) && now - lastMs < intervalMs) return;
