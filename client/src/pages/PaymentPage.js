@@ -16,6 +16,20 @@ function formatCountdown(totalSec) {
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
+/**
+ * @param {unknown} d
+ * @returns {d is Record<string, unknown>}
+ */
+function isValidPaymentSessionPayload(d) {
+  if (!d || typeof d !== "object") return false;
+  const o = /** @type {Record<string, unknown>} */ (d);
+  const addr = typeof o.address === "string" ? o.address.trim() : "";
+  const chain = typeof o.chain === "string" ? o.chain.trim() : "";
+  const currency = typeof o.currency === "string" ? o.currency.trim() : "";
+  const network = typeof o.network === "string" ? o.network.trim() : "";
+  return Boolean(addr && chain && currency && network);
+}
+
 export default function PaymentPage() {
   const { token } = useParams();
   const [session, setSession] = useState(null);
@@ -52,12 +66,34 @@ export default function PaymentPage() {
             `/api/v1/gateway/payment-session/${encodeURIComponent(token)}`,
           ),
         );
-        const data = await res.json().catch(() => ({}));
+        const text = await res.text();
+        let data = {};
         if (!res.ok) {
+          try {
+            data = JSON.parse(text);
+          } catch {
+            /* ignore */
+          }
           throw new Error(
             typeof data?.error === "string"
               ? data.error
               : "Could not load payment details.",
+          );
+        }
+        try {
+          data = JSON.parse(text);
+        } catch {
+          const head = text.trimStart().slice(0, 20).toLowerCase();
+          if (head.startsWith("<!doctype") || head.startsWith("<html")) {
+            throw new Error(
+              "Payment API URL is not configured for this site. Rebuild the client with VITE_API_ORIGIN set to your public API base URL (no trailing slash), e.g. https://api.cryptovapay.com — see docs/split-services.md — then redeploy the portal.",
+            );
+          }
+          throw new Error("Could not load payment details.");
+        }
+        if (!isValidPaymentSessionPayload(data)) {
+          throw new Error(
+            "Invalid payment session response. Check that VITE_API_ORIGIN points at the gateway API, not the static portal host.",
           );
         }
         if (!cancelled) setSession(data);
