@@ -17,6 +17,9 @@ export const DEPOSIT_SCANNER_CATEGORIES = {
   usdtTrc20: "Deposit scanner · USDT·TRC20",
 };
 
+/** Fixed-amount checkout expiry (maintenance cron + `server/src/services/checkout-session-expiry.js`). */
+export const CHECKOUT_SETTINGS_CATEGORY = "Checkout · abandoned fixed-amount";
+
 /** @type {AppSettingDef[]} */
 export const APP_SETTING_DEFINITIONS = [
   {
@@ -117,6 +120,20 @@ export const APP_SETTING_DEFINITIONS = [
     key: "WALLET_POOL_HOLD_RELEASE_CRON_MINUTES",
     label: "Wallet pool hold release cron interval (minutes, 1–59)",
     category: DEPOSIT_SCANNER_CATEGORIES.shared,
+    type: "int",
+  },
+  {
+    key: "CHECKOUT_CREATED_EXPIRY_HOURS",
+    label:
+      "Expire unpaid `created` checkout placeholder after N hours (1–8760); then `failed` webhook",
+    category: CHECKOUT_SETTINGS_CATEGORY,
+    type: "int",
+  },
+  {
+    key: "CHECKOUT_EXPIRY_CRON_MINUTES",
+    label:
+      "Run stale-checkout pass every N minutes (1–59); PM2 `crypto-gateway-cron-maintenance` (restart to apply)",
+    category: CHECKOUT_SETTINGS_CATEGORY,
     type: "int",
   },
   {

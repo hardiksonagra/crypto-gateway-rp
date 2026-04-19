@@ -137,6 +137,52 @@ export function logPaymentUnderpaidCallback(p) {
  * @param {string | null} [p.actorAdminId]
  * @param {string | null} [p.actorMerchantEmail]
  */
+/**
+ * @param {object} p
+ * @param {string} p.merchantId
+ * @param {string} p.transactionId
+ * @param {string | null} p.url
+ * @param {Record<string, unknown>} p.requestBody
+ * @param {boolean} p.ok
+ * @param {number | null} [p.httpStatus]
+ * @param {string | null} [p.responseSnippet]
+ * @param {"auto" | "skipped"} p.trigger
+ */
+export function logPaymentFailedCallback(p) {
+  const actorType = "system";
+  const summary =
+    p.trigger === "skipped"
+      ? `Payment webhook (status=failed) skipped (no URL) for tx ${p.transactionId}`
+      : p.ok
+        ? `Payment webhook delivered (HTTP ${p.httpStatus ?? "?"}) — tx ${p.transactionId} (status=failed)`
+        : `Payment webhook failed — tx ${p.transactionId} (status=failed)`;
+
+  writeAuditLog({
+    source: "callback",
+    action:
+      p.trigger === "skipped"
+        ? "callback.payment_failed_skipped"
+        : p.ok
+          ? "callback.payment_failed_delivered"
+          : "callback.payment_failed_failed",
+    merchantId: p.merchantId,
+    actorType,
+    actorId: null,
+    actorEmail: null,
+    summary,
+    metadata: {
+      transaction_id: p.transactionId,
+      trigger: p.trigger,
+      webhook_url: p.url,
+      x_webhook_event: "payment",
+      request_body: p.requestBody,
+      ok: p.ok,
+      http_status: p.httpStatus ?? null,
+      response_snippet: p.responseSnippet,
+    },
+  });
+}
+
 export function logPaymentSuccessCallback(p) {
   const actorType =
     p.trigger === "admin_redeliver"

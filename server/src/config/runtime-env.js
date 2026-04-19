@@ -139,6 +139,22 @@ export const re = {
     );
   },
 
+  get checkoutCreatedExpiryHours() {
+    const n = getResolvedInt(
+      "CHECKOUT_CREATED_EXPIRY_HOURS",
+      () => env.checkoutCreatedExpiryHours,
+    );
+    return Math.min(8760, Math.max(1, n));
+  },
+
+  get checkoutExpiryCronMinutes() {
+    const n = getResolvedInt(
+      "CHECKOUT_EXPIRY_CRON_MINUTES",
+      () => env.checkoutExpiryCronMinutes,
+    );
+    return Math.min(59, Math.max(1, n));
+  },
+
   get lateDepositRecheckHours() {
     return getResolvedInt(
       "LATE_DEPOSIT_RECHECK_HOURS",

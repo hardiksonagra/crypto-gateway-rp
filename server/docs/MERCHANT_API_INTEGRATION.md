@@ -178,7 +178,7 @@ POST /api/v1/gateway/deposit-address
 
 **200** — always includes `address`, `chain`, `currency`, `network`, numeric `wallet_id`, `user_id`, `merchant_id`, `created_new_user`, `gateway_environment`, `payment_link` (hosted checkout URL for this assignment), `deposit_scan_expires_at`, `deposit_scan_ttl_minutes`, `reservation_expires_at`, and `redirect_url` (echo, may be `null`).
 
-When `amount` was sent and parsed, the response also includes `expected_amount_atomic` and `expected_amount_decimal` (human-readable for display). The gateway also inserts a **`transactions` row** with `status: "created"` (placeholder `amount` `0`, synthetic `tx_hash` until the first on-chain credit for that checkout session arrives, then that placeholder is removed).
+When `amount` was sent and parsed, the response also includes `expected_amount_atomic` and `expected_amount_decimal` (human-readable for display). The gateway also inserts a **`transactions` row** with `status: "created"` (placeholder `amount` `0`, synthetic `tx_hash` until the first on-chain credit for that checkout session arrives, then that placeholder is removed). If the payer never sends funds and the placeholder stays `created` longer than **`CHECKOUT_CREATED_EXPIRY_HOURS`** (default **24**, `.env` or Admin → System settings under **Checkout · abandoned fixed-amount**), the maintenance cron marks that row **`failed`** and POSTs a **payment** webhook with `status: "failed"` (see §6) so you can cancel the order on your side.
 
 ```json
 {
@@ -215,7 +215,7 @@ When `amount` was sent and parsed, the response also includes `expected_amount_a
 | 503 | `gateway_secret_unavailable` | Server cannot verify `X-Token` (missing cipher; regenerate key). |
 | 403 | `rail_not_enabled_for_merchant` | Pair not in your supported rails (when configured). |
 | 400 | `unsupported_currency_network` | Unknown `currency`/`network` combination. |
-| 409 | `callback_pending` | A prior **payment** webhook for this user is still retrying (no `2xx` yet). New deposit addresses are blocked until delivery succeeds or automatic retries are exhausted. |
+| 409 | `callback_pending` | A prior **payment** webhook for this user (`status` success, underpaid, or failed) is still retrying (no `2xx` yet). New deposit addresses are blocked until delivery succeeds or automatic retries are exhausted. |
 
 Idempotent: same merchant + `external_user_id` + same `(currency, network)` returns the same wallet. Each successful `deposit-address` call still logs a new **checkout session** (new `payment_link` token when the pool assigns or refreshes the row); optional `amount` applies to that session only.
 
@@ -285,15 +285,16 @@ X-Webhook-Event: payment
 |----------|------|
 | `success` | Deposit row is successful (full confirmations; for fixed-amount sessions, session total met). |
 | `underpaid` | You sent optional **`amount`** on `deposit-address`; an on-chain credit exists for this checkout session but the **session total** is still below the expected total (after tolerance). Body adds **`expected_amount_atomic`**, **`expected_amount_decimal`**, **`received_amount_atomic`**, **`received_amount_decimal`**. Prompt top-up or cancel on your side. |
-| `pending` / `failed` | May appear on payloads tied to in-progress or failed rows where applicable. |
+| `failed` | The gateway moved the row out of a terminal non-payment state — today this is used when a fixed-amount checkout stayed at `created` (no on-chain credit) past **`CHECKOUT_CREATED_EXPIRY_HOURS`** (tunable in Admin → **Checkout · abandoned fixed-amount** / `.env`). Body matches the usual shape with `status: "failed"` and includes **`failure_reason`: `"checkout_expired_unpaid"`** so you can mark the checkout cancelled server-side. Same retry rules as other payment webhooks until your endpoint returns **2xx**. |
+| `pending` | May appear on payloads tied to in-progress rows where applicable. |
 
 When later transfers bring a fixed-amount **session** total to the expected value, you receive another POST with `status: success` (for the transaction that completed the threshold); earlier `underpaid` rows for the same session may be updated to `success` in the database without another underpaid delivery.
 
-Common body fields (success and underpaid): `transaction_id` (gateway row id), `merchant_transaction_id` (your `transaction_id` from `deposit-address`, if any), `tx_hash`, `amount`, `amount_decimal`, `chain`, `currency`, `network`, `token_symbol`, `wallet_address`, `confirmations`, `external_user_id`, `merchant_id`, `gateway_environment`.
+Common body fields (success, underpaid, and failed): `transaction_id` (gateway row id), `merchant_transaction_id` (your `transaction_id` from `deposit-address`, if any), `tx_hash`, `amount`, `amount_decimal`, `chain`, `currency`, `network`, `token_symbol`, `wallet_address`, `confirmations`, `external_user_id`, `merchant_id`, `gateway_environment`.
 
 ### 6.1 New `deposit-address` while webhooks are stuck
 
-If a **payment** webhook has not been acknowledged with **`2xx`**, the gateway may return **`409` `callback_pending`** on new `deposit-address` calls for that payer until retries finish or you fix the callback handler.
+If a **payment** webhook (`status` **success**, **underpaid**, or **failed**) has not been acknowledged with **`2xx`**, the gateway may return **`409` `callback_pending`** on new `deposit-address` calls for that payer until retries finish or you fix the callback handler.
 
 ---
 
@@ -303,7 +304,7 @@ If a **payment** webhook has not been acknowledged with **`2xx`**, the gateway m
 2. Store **`api_key`** from admin onboarding in server-side secrets; note your **`id`** from `GET /api/v1/auth/me` for `X-Merchant-Id` when using header auth.
 3. On checkout, call **`deposit-address`** with `external_user_id` and optionally `currency` / `network`, optional **`amount`** (fixed price), optional **`transaction_id`** / **`redirect_url`**, using **`X-Token`** (recommended) or legacy **`api_key`** in the body.
 4. Show the user the returned **`address`** and the correct **`network`** label (e.g. TRC20 vs ERC20), or open **`payment_link`** for hosted checkout (shows **amount due** when you passed `amount`).
-5. Handle **`POST` callback** with `X-Webhook-Event: payment` and **`body.status`** (`success` vs `underpaid`); handle **`409` `callback_pending`** if your endpoint was down.
+5. Handle **`POST` callback** with `X-Webhook-Event: payment` and **`body.status`** (`success`, `underpaid`, or `failed`); handle **`409` `callback_pending`** if your endpoint was down.
 
 ---
 

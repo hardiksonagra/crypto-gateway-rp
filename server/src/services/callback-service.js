@@ -10,6 +10,7 @@ import { ACTIVE } from "../lib/active-row.js";
 import { prisma } from "../lib/prisma.js";
 import { logger } from "../lib/logger.js";
 import {
+  logPaymentFailedCallback,
   logPaymentSuccessCallback,
   logPaymentUnderpaidCallback,
   writeAuditLog,
@@ -82,6 +83,22 @@ export function buildPaymentUnderpaidWebhookBody(tx, expectedAtomic) {
     ),
     received_amount_atomic: base.amount,
     received_amount_decimal: base.amount_decimal,
+  };
+}
+
+/**
+ * @param {import("@prisma/client").Transaction & {
+ *   wallet: import("@prisma/client").Wallet & { merchant: import("@prisma/client").Merchant },
+ *   payerUser: (import("@prisma/client").User & { merchant: import("@prisma/client").Merchant }) | null,
+ * }} tx
+ * @param {string} [failureReason]
+ * @returns {Record<string, unknown>}
+ */
+export function buildPaymentFailedWebhookBody(tx, failureReason) {
+  const base = buildPaymentSuccessWebhookBody(tx);
+  return {
+    ...base,
+    ...(failureReason ? { failure_reason: failureReason } : {}),
   };
 }
 
@@ -205,6 +222,133 @@ export async function notifyPaymentSuccess(txId) {
       ...detail,
     });
     logPaymentSuccessCallback({
+      merchantId: merchant.id,
+      transactionId: tid,
+      url,
+      requestBody: body,
+      ok: false,
+      httpStatus: detail.status ?? null,
+      responseSnippet: detail.body ?? String(e).slice(0, 500),
+      trigger: "auto",
+    });
+  }
+}
+
+/**
+ * POST `X-Webhook-Event: payment` with JSON `status: "failed"` (e.g. abandoned fixed-amount checkout).
+ *
+ * @param {string | number} txId
+ * @param {{ failureReason?: string }} [opts]
+ */
+export async function notifyPaymentFailed(txId, opts = {}) {
+  const tid = await resolveTransactionInternalId(txId);
+  if (tid == null) {
+    logger.warn("callback failed skip: tx not found", { txId });
+    return;
+  }
+  const tx = await prisma.transaction.findFirst({
+    where: { id: tid, ...ACTIVE },
+    include: {
+      wallet: { include: { merchant: true } },
+      payerUser: { include: { merchant: true } },
+    },
+  });
+  if (!tx) {
+    logger.warn("callback failed skip: tx not found", { txId });
+    return;
+  }
+  if (tx.callbackDeliveredAt) return;
+  if (tx.status !== TxStatus.failed) {
+    logger.debug("callback failed skip: tx not failed", {
+      txId,
+      status: tx.status,
+    });
+    return;
+  }
+  const merchant = tx.payerUser?.merchant ?? tx.wallet.merchant;
+  const url = merchant.callbackUrl;
+  const failureReason =
+    typeof opts.failureReason === "string" && opts.failureReason.trim()
+      ? opts.failureReason.trim()
+      : String(tx.txHash ?? "").startsWith("gateway-created:")
+        ? "checkout_expired_unpaid"
+        : undefined;
+  const body = buildPaymentFailedWebhookBody(tx, failureReason);
+  if (!url) {
+    logger.warn("callback failed skip: merchant has no callback_url (set in portal)", {
+      txId,
+      payerUserId: tx.payerUserId,
+      merchantId: merchant.id,
+    });
+    logPaymentFailedCallback({
+      merchantId: merchant.id,
+      transactionId: tid,
+      url: null,
+      requestBody: body,
+      ok: false,
+      httpStatus: null,
+      responseSnippet: "skipped: callback_url not configured",
+      trigger: "skipped",
+    });
+    return;
+  }
+
+  const throttleSince = new Date(Date.now() - CALLBACK_RETRY_MIN_INTERVAL_MS);
+  const claimed = await prisma.transaction.updateMany({
+    where: {
+      id: tid,
+      ...ACTIVE,
+      status: TxStatus.failed,
+      callbackDeliveredAt: null,
+      callbackAttemptCount: { lt: MAX_AUTO_CALLBACK_ATTEMPTS },
+      OR: [{ callbackAttemptCount: 0 }, { callbackLastAttemptAt: { lte: throttleSince } }],
+    },
+    data: {
+      callbackAttemptCount: { increment: 1 },
+      callbackLastAttemptAt: new Date(),
+    },
+  });
+  if (claimed.count === 0) {
+    logger.debug("callback failed skip: delivered elsewhere, max auto attempts, or retry interval", {
+      txId,
+    });
+    return;
+  }
+
+  try {
+    logger.info("callback failed posting", { txId, url, chain: tx.chain, token: tx.tokenSymbol });
+    const resp = await axios.post(url, body, {
+      timeout: 15_000,
+      headers: {
+        "Content-Type": "application/json",
+        "X-Webhook-Event": PAYMENT_WEBHOOK_EVENT,
+      },
+      validateStatus: (s) => s >= 200 && s < 300,
+    });
+    await prisma.transaction.updateMany({
+      where: { id: tid, ...ACTIVE },
+      data: { callbackDeliveredAt: new Date() },
+    });
+    logger.info("callback failed delivered", { txId, url });
+    logPaymentFailedCallback({
+      merchantId: merchant.id,
+      transactionId: tid,
+      url,
+      requestBody: body,
+      ok: true,
+      httpStatus: resp.status,
+      responseSnippet: null,
+      trigger: "auto",
+    });
+  } catch (e) {
+    const detail = axiosErrDetail(e);
+    logger.error("callback failed delivery error", {
+      txId,
+      url,
+      err: String(e),
+      ...detail,
+    });
+    logPaymentFailedCallback({
       merchantId: merchant.id,
       transactionId: tid,
       url,

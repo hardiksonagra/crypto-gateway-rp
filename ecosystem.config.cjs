@@ -6,7 +6,7 @@
  * - `crypto-gateway-worker-erc20` — USDT·ERC20 deposit scan (`WORKER_POLL_INTERVAL_SEC_ERC20`, seconds).
  * - `crypto-gateway-worker-trc20` — USDT·TRC20 deposit scan + callback retries (`WORKER_POLL_INTERVAL_SEC_TRC20`, seconds).
  * - (Optional) `crypto-gateway-worker` — both rails in one process (`entry-worker.js`); prefer the split apps above in production.
- * - `crypto-gateway-cron-maintenance` — heartbeat + wallet-pool expired holds.
+ * - `crypto-gateway-cron-maintenance` — heartbeat + wallet-pool expired holds + stale fixed-amount checkout expiry (`CHECKOUT_EXPIRY_CRON_MINUTES` / `CHECKOUT_CREATED_EXPIRY_HOURS`).
  * - `crypto-gateway-cron-deposit-full-scan` — periodic full live-wallet deposit scan (`DEPOSIT_FULL_SCAN_INTERVAL_HOURS`).
  * - `crypto-gateway-cron-tron-sweep` — TRON USDT auto-sweep (and similar chain-heavy jobs).
  *

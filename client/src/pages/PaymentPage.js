@@ -249,8 +249,8 @@ export default function PaymentPage() {
               Insufficient amount received
             </p>
             <p className="mt-1 text-xs text-white/55">
-              Send the remaining {currency} to this same address on {network}{" "}
-              so the total matches the amount due.
+              Send the remaining {currency} to this same address on {network} so
+              the total matches the amount due.
             </p>
           </div>
         )}
@@ -334,15 +334,6 @@ export default function PaymentPage() {
           <div className="rounded-2xl border border-white/10 bg-white p-3">
             <QRCode value={qrPayload} size={200} level="M" />
           </div>
-          {qrPrefillsAmount ? (
-            <p className="max-w-sm text-center text-[11px] leading-relaxed text-white/40">
-              This QR may pre-fill the amount in compatible wallets (EVM: EIP-681
-              with uint256 smallest units; TRON: <span className="font-mono">tron:</span>{" "}
-              URI with a human decimal <span className="font-mono">amount</span> and
-              USDT contract). If your app opens without the amount, send manually to
-              the address above.
-            </p>
-          ) : null}
         </div>
 
         <p className="mt-8 text-center text-xs text-white/35">

@@ -855,8 +855,13 @@ GET /api/v1/gateway/transactions?address=TExampleAddress…&currency=USDT&networ
           <span className="font-mono">underpaid</span> when a credit exists but
           the session total is still short (optional{" "}
           <span className="font-mono">amount</span> on{" "}
-          <span className="font-mono">deposit-address</span> only). Retries until{" "}
-          <span className="font-mono">2xx</span>. Dedupe with{" "}
+          <span className="font-mono">deposit-address</span> only),{" "}
+          <span className="font-mono">failed</span> when the gateway expired an
+          unpaid fixed-amount checkout (placeholder stayed{" "}
+          <span className="font-mono">created</span> past the configured hours —
+          body includes{" "}
+          <span className="font-mono">failure_reason: &quot;checkout_expired_unpaid&quot;</span>
+          ). Retries until <span className="font-mono">2xx</span>. Dedupe with{" "}
           <span className="font-mono">tx_hash</span> + chain +{" "}
           <span className="font-mono">wallet_id</span>. If you passed{" "}
           <span className="font-mono">transaction_id</span> on{" "}
@@ -924,6 +929,34 @@ X-Webhook-Event: payment
   "token_symbol": "USDT",
   "wallet_address": "…",
   "confirmations": 20,
+  "external_user_id": "user-123",
+  "merchant_id": 1,
+  "gateway_environment": "live"
+}`}</Pre>
+        <p className="mt-4 text-xs font-medium text-white/45">
+          Example — <span className="font-mono">status: failed</span> (unpaid
+          checkout expired)
+        </p>
+        <Pre breakAll={Boolean(merchantCallbackUrl)}>{`POST ${webhookPostUrl}
+Content-Type: application/json
+X-Webhook-Event: payment
+
+{
+  "transaction_id": 99,
+  "merchant_transaction_id": "order-789",
+  "wallet_id": 1,
+  "tx_hash": "gateway-created:…",
+  "amount": "0",
+  "token_decimals": 6,
+  "amount_decimal": "0",
+  "status": "failed",
+  "failure_reason": "checkout_expired_unpaid",
+  "chain": "TRON",
+  "currency": "USDT",
+  "network": "TRC20",
+  "token_symbol": "USDT",
+  "wallet_address": "…",
+  "confirmations": 0,
   "external_user_id": "user-123",
   "merchant_id": 1,
   "gateway_environment": "live"

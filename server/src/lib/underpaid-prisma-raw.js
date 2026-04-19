@@ -84,7 +84,7 @@ export async function findGatewayBlockingPendingCallbackRaw(
         AND w.environment = CAST(${gwEnv} AS "MerchantGatewayEnv")
       WHERE t.deleted_at IS NULL
         AND t.payer_user_id = ${payerUserId}
-        AND (t.status)::text IN ('success', 'underpaid')
+        AND (t.status)::text IN ('success', 'underpaid', 'failed')
         AND t.callback_delivered_at IS NULL
         AND t.callback_attempt_count < ${maxAttempts}
       LIMIT 1

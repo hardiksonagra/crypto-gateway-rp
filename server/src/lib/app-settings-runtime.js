@@ -400,6 +400,10 @@ function envFallbackString(key) {
       return String(env.walletAssignmentHoldMinutes);
     case "WALLET_POOL_HOLD_RELEASE_CRON_MINUTES":
       return String(env.walletPoolHoldReleaseCronMinutes);
+    case "CHECKOUT_CREATED_EXPIRY_HOURS":
+      return String(env.checkoutCreatedExpiryHours);
+    case "CHECKOUT_EXPIRY_CRON_MINUTES":
+      return String(env.checkoutExpiryCronMinutes);
     case "LATE_DEPOSIT_RECHECK_HOURS":
       return String(env.lateDepositRecheckHours);
     case "DEPOSIT_FULL_SCAN_INTERVAL_HOURS":
@@ -493,6 +497,16 @@ function validateStoredValue(key, stored) {
         }
         if (n > 500) {
           throw new Error(`${key}: must be at most 500`);
+        }
+      }
+      if (key === "CHECKOUT_EXPIRY_CRON_MINUTES") {
+        if (n < 1 || n > 59) {
+          throw new Error(`${key}: must be between 1 and 59`);
+        }
+      }
+      if (key === "CHECKOUT_CREATED_EXPIRY_HOURS") {
+        if (n < 1 || n > 8760) {
+          throw new Error(`${key}: must be between 1 and 8760`);
         }
       }
       return String(n);

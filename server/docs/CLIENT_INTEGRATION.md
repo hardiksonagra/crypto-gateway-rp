@@ -130,7 +130,7 @@ Poll returns `has_successful_deposit` and `has_underpaid_deposit` (fixed-amount 
 | `unsupported_currency_network`  | 400  | Unknown pair.                              |
 | `amount_invalid` (and related)  | 400  | Bad optional `amount`.                     |
 | `amount_not_supported_for_rail` | 400  | `amount` set for a rail without decimal rules. |
-| `callback_pending`              | 409  | Prior success/underpaid webhook still retrying. |
+| `callback_pending`              | 409  | Prior success, underpaid, or failed payment webhook still retrying. |
 | Missing fields                  | 400  | `external_user_id` required (and gateway auth). |
 
 ---

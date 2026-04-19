@@ -16,6 +16,7 @@ import { scanEvmChain } from "./evm-tracker.js";
 import { scanTronChain } from "./tron-tracker.js";
 import { maybeSweepTick } from "crypto-payment-gateway/src/services/sweep-service.js";
 import {
+  retryStuckFailedCallbacks,
   retryStuckSuccessCallbacks,
   retryStuckUnderpaidCallbacks,
 } from "crypto-payment-gateway/src/services/callback-retry.js";
@@ -106,7 +107,7 @@ export async function runEvmDepositTick() {
 
 const TRON_DEPOSIT_CRON = "trc20";
 
-/** USDT·TRC20 (TRON) deposit scan + shared post-tick hooks (sweep no-op stub + callback retries). */
+/** USDT·TRC20 (TRON) deposit scan + shared post-tick hooks (sweep no-op stub + payment webhook retries: success, underpaid, failed). */
 export async function runTronDepositTick() {
   return withDepositScanLogCron(TRON_DEPOSIT_CRON, async () => {
     const tickWallStart = Date.now();
@@ -137,6 +138,7 @@ export async function runTronDepositTick() {
     try {
       await retryStuckSuccessCallbacks();
       await retryStuckUnderpaidCallbacks();
+      await retryStuckFailedCallbacks();
     } catch {
       /* ignore */
     }

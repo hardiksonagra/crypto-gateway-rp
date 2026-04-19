@@ -467,7 +467,7 @@ router.post("/api/v1/gateway/deposit-address", async (req, res) => {
       const blocking = prismaClientKnowsTxStatusUnderpaid()
         ? await prisma.transaction.findFirst({
             where: {
-              status: { in: [TxStatus.success, TxStatus.underpaid] },
+              status: { in: [TxStatus.success, TxStatus.underpaid, TxStatus.failed] },
               callbackDeliveredAt: null,
               /** After max auto attempts, allow new deposit addresses; merchant can fix webhook and resend later. */
               callbackAttemptCount: { lt: MAX_AUTO_CALLBACK_ATTEMPTS },
@@ -497,7 +497,7 @@ router.post("/api/v1/gateway/deposit-address", async (req, res) => {
         });
         res.status(409).json({
           error: "callback_pending",
-          message: `A payment webhook (X-Webhook-Event: payment; check JSON status) was not delivered with a 2xx response. New deposit addresses are blocked until delivery succeeds or automatic retries finish (up to ${MAX_AUTO_CALLBACK_ATTEMPTS} attempts, at most one per minute). After retries are exhausted, you may request a new address; fix your callback URL/handler and resend from the merchant portal (transaction detail) for the affected payment.`,
+          message: `A payment webhook (X-Webhook-Event: payment; check JSON status: success, underpaid, or failed) was not delivered with a 2xx response. New deposit addresses are blocked until delivery succeeds or automatic retries finish (up to ${MAX_AUTO_CALLBACK_ATTEMPTS} attempts, at most one per minute). After retries are exhausted, you may request a new address; fix your callback URL/handler and resend from the merchant portal (transaction detail) for the affected payment.`,
         });
         return;
       }

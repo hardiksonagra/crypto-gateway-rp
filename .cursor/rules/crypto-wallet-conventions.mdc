@@ -36,7 +36,8 @@ alwaysApply: true
 - **Third-party explorer caps (per rail):** `DEPOSIT_SCANNER_API_MAX_PER_SECOND_ERC20` / `DEPOSIT_SCANNER_API_MAX_PER_SECOND_TRC20` (rolling 1s, `0` = off) throttle Etherscan / TronScan HTTP from deposit trackers only; `OUTBOUND_RPC_MAX_PER_SECOND` still applies per bucket after that (`acquireDepositScannerApiSlot` then `acquireOutboundRpcSlot` in `cron/src/services/tracker/*-tracker.js`).
 - **Combined dev / legacy:** `entry-worker.js` may still run **both** rails in one process (`startBlockchainWorker`); prefer split PM2 apps in production.
 - **Deposit scanner** Admin sections use **`Deposit scanner · shared`** (all rails) and **`Deposit scanner · USDT·<network>`** per rail (today ERC20 + TRC20). Add new rails via `DEPOSIT_SCANNER_CATEGORIES` + defs in `server/src/lib/app-settings-registry.js`, then `re` / `env` / `envFallbackString`, PM2 + `entry-worker-*.js`.
-- **Side effects** that must not run twice (e.g. callback retries): designate **one** worker process for them and document in `cron/src/services/tracker/worker.js`.
+- **Side effects** that must not run twice (e.g. callback retries): designate **one** worker process for them and document in `cron/src/services/tracker/worker.js` (today: success / underpaid / **failed** webhook retries run on the **TRC20** deposit worker tick only).
+- **Stale fixed-amount checkouts:** `CHECKOUT_CREATED_EXPIRY_HOURS` + `CHECKOUT_EXPIRY_CRON_MINUTES` in Admin **Checkout · abandoned fixed-amount**; maintenance cron (`entry-cron-1.js`) runs `checkout-created-expiry-cron.js` → `server/src/services/checkout-session-expiry.js`.
 - Adding a **new deposit network** implies: its **own** PM2 entry + interval key(s) + scan path — do not fold unrelated networks into one process without an explicit product decision.
 
 When editing this repo, align new changes with these rules even if legacy files still violate them.

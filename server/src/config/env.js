@@ -170,6 +170,15 @@ export const env = {
     "WALLET_POOL_HOLD_RELEASE_CRON_MINUTES",
     30,
   ),
+  /**
+   * Maintenance cron: `created` checkout placeholder rows older than this many hours are set to `failed`
+   * and a payment webhook is sent (`status: failed`, `failure_reason: checkout_expired_unpaid`).
+   */
+  checkoutCreatedExpiryHours: intEnv("CHECKOUT_CREATED_EXPIRY_HOURS", 24),
+  /**
+   * How often the maintenance cron runs the stale-checkout pass (minutes, 1–59).
+   */
+  checkoutExpiryCronMinutes: intEnv("CHECKOUT_EXPIRY_CRON_MINUTES", 30),
   /** Legacy env; worker no longer runs late-deposit recheck (use full-scan interval + TTL + rescan). */
   lateDepositRecheckHours: intEnv("LATE_DEPOSIT_RECHECK_HOURS", 6),
   /**
