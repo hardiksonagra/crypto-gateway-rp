@@ -235,7 +235,9 @@ export const adminTransactionsFilterSchema = yup.object({
   external_user_id: yup.string(),
   transaction_id: yup.string(),
   chain: chainFilterField,
-  status: yup.string().oneOf(["", "pending", "success", "failed"]),
+  status: yup
+    .string()
+    .oneOf(["", "pending", "success", "failed", "underpaid"]),
   token_symbol: yup.string(),
   address: yup.string(),
 });
@@ -243,7 +245,9 @@ export const adminTransactionsFilterSchema = yup.object({
 /** Filters for transactions on merchant detail (merchant id is fixed in the page). */
 export const merchantDetailTransactionsFilterSchema = yup.object({
   chain: chainFilterField,
-  status: yup.string().oneOf(["", "pending", "success", "failed"]),
+  status: yup
+    .string()
+    .oneOf(["", "pending", "success", "failed", "underpaid"]),
   token_symbol: yup.string(),
   address: yup.string(),
   transaction_id: yup.string(),
@@ -287,7 +291,9 @@ export const merchantWalletsFilterSchema = yup.object({
 
 export const merchantTransactionsFilterSchema = yup.object({
   chain: chainFilterField,
-  status: yup.string().oneOf(["", "pending", "success", "failed"]),
+  status: yup
+    .string()
+    .oneOf(["", "pending", "success", "failed", "underpaid"]),
   token_symbol: yup.string(),
   external_user_id: yup.string(),
   transaction_id: yup.string(),

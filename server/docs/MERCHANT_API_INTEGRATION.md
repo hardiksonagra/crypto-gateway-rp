@@ -80,7 +80,7 @@ Configure these in the portal (**Settings** / `/m/settings`) or via `PATCH /api/
 
 | Setting | Effect on integration |
 |---------|------------------------|
-| **Callback URL** | HTTPS URL that receives `payment.success` webhooks (see §6). |
+| **Callback URL** | HTTPS URL for **payment** webhooks: same `X-Webhook-Event` for every POST; use JSON **`status`** to branch (`success`, `underpaid`, …). See §6. |
 | **Supported chains** | Underlying chains the gateway may use. Each deposit **rail** must belong to one of these chains. |
 | **Supported currency / network (rails)** | Whitelist of `(currency, network)` pairs your API key may use (e.g. `USDT` + `TRC20`). If this list is **non-empty**, requests for other pairs return `rail_not_enabled_for_merchant`. If the list is **empty** (legacy), any gateway rail on a supported chain is allowed. |
 | **Default pair** (stored as `default_currency` / `default_network`) | Set automatically from the **first** rail in your supported list when you save settings. Used when `deposit-address` is called **without** `currency` and `network`. |
@@ -170,10 +170,15 @@ POST /api/v1/gateway/deposit-address
 | `external_user_id` | Yes | Stable unique id of the payer on **your** system. |
 | `currency` | No | e.g. `USDT`. If omitted, merchant **default** pair is used. |
 | `network` | No | e.g. `TRC20`. If omitted, merchant **default** pair is used. |
+| `amount` | No | **Optional fixed checkout amount.** Either a **decimal token amount** (e.g. `"10.50"`) or a **digits-only string in smallest units** (same as on-chain `amount`). When set, the gateway stores it for this payment session, shows it on the hosted checkout page (`payment_link`), and treats the deposit as **underpaid** until the **sum of on-chain credits for this checkout session** reaches the expected total (within a one–smallest-unit tolerance). Omit `amount` for the classic “pay any amount” flow. Supported for rails where the gateway knows token decimals (today: **USDT** on **TRC20**, **ERC20**, **BEP20**). |
+| `transaction_id` | No | Your order / checkout id (stored on new deposit rows and webhooks as `merchant_transaction_id`). Max 256 characters. |
+| `redirect_url` | No | After a **successful** full payment, the hosted checkout can redirect the browser here (HTTPS allowlist). |
 | `gateway_environment` | No | **Omit** to use the merchant portal **Live/Sandbox** setting (Settings). Optional override only when live and sandbox share one secret and you need the other environment. |
 | Headers | With `X-Token` | `X-Token` (required), `X-Merchant-Id` (required). |
 
-**200**
+**200** — always includes `address`, `chain`, `currency`, `network`, numeric `wallet_id`, `user_id`, `merchant_id`, `created_new_user`, `gateway_environment`, `payment_link` (hosted checkout URL for this assignment), `deposit_scan_expires_at`, `deposit_scan_ttl_minutes`, `reservation_expires_at`, and `redirect_url` (echo, may be `null`).
+
+When `amount` was sent and parsed, the response also includes `expected_amount_atomic` and `expected_amount_decimal` (human-readable for display).
 
 ```json
 {
@@ -181,10 +186,18 @@ POST /api/v1/gateway/deposit-address
   "chain": "TRON",
   "currency": "USDT",
   "network": "TRC20",
-  "wallet_id": "cl…",
-  "user_id": "cl…",
-  "merchant_id": "cl…",
-  "created_new_user": false
+  "wallet_id": 1,
+  "user_id": 1,
+  "merchant_id": 1,
+  "created_new_user": false,
+  "gateway_environment": "live",
+  "payment_link": "https://pay.example.com/pay/<token>",
+  "deposit_scan_expires_at": "2026-01-01T12:00:00.000Z",
+  "deposit_scan_ttl_minutes": 120,
+  "reservation_expires_at": "2026-01-01T11:00:00.000Z",
+  "redirect_url": "https://merchant.example.com/thanks",
+  "expected_amount_atomic": "10500000",
+  "expected_amount_decimal": "10.5"
 }
 ```
 
@@ -194,14 +207,33 @@ POST /api/v1/gateway/deposit-address
 | 400 | `x_merchant_id_required` | `X-Token` sent without `X-Merchant-Id`. |
 | 400 | `ambiguous_gateway_auth` | Both `api_key` and `X-Token` sent. |
 | 400 | (message) | Missing `external_user_id`, or unsupported pair. |
+| 400 | `amount_invalid` / `amount_must_be_positive` / `amount_too_long` / `amount_too_large` | Bad `amount` string. |
+| 400 | `amount_not_supported_for_rail` | `amount` sent but this `currency`/`network` has no fixed-decimal rules in the gateway (use omit or another rail). |
 | 401 | `invalid_api_key` | Bad or inactive key (legacy body auth). |
 | 401 | `invalid_x_token` | Token does not match body / secret. |
 | 401 | `invalid_x_merchant_id` | Unknown or inactive merchant id. |
 | 503 | `gateway_secret_unavailable` | Server cannot verify `X-Token` (missing cipher; regenerate key). |
 | 403 | `rail_not_enabled_for_merchant` | Pair not in your supported rails (when configured). |
 | 400 | `unsupported_currency_network` | Unknown `currency`/`network` combination. |
+| 409 | `callback_pending` | A prior **payment** webhook for this user is still retrying (no `2xx` yet). New deposit addresses are blocked until delivery succeeds or automatic retries are exhausted. |
 
-Idempotent: same merchant + `external_user_id` + same `(currency, network)` returns the same wallet.
+Idempotent: same merchant + `external_user_id` + same `(currency, network)` returns the same wallet. Each successful `deposit-address` call still logs a new **checkout session** (new `payment_link` token when the pool assigns or refreshes the row); optional `amount` applies to that session only.
+
+### 5.1a Hosted checkout: load session and poll
+
+If you send the customer to `payment_link`, your own SPA can also drive the same flow:
+
+```http
+GET /api/v1/gateway/payment-session/{token}
+```
+
+**200** — `address`, `chain`, `currency`, `network`, `deposit_scan_expires_at`, `deposit_scan_ttl_minutes`, `reservation_expires_at`, `redirect_url`. If this session had an optional `amount` on `deposit-address`, also `expected_amount_atomic` and `expected_amount_decimal`.
+
+```http
+GET /api/v1/gateway/payment-session/{token}/poll
+```
+
+**200** — `{ "has_successful_deposit": true|false, "has_underpaid_deposit": true|false }`. Use `has_successful_deposit` when the session reached the full expected total (same gate as a callback with `status: success`). Use `has_underpaid_deposit` when a deposit exists but the session total is still short (same idea as `status: underpaid` on the webhook). No auth headers required; the token is signed and time-limited.
 
 ### 5.2 Create another wallet (same user, another rail)
 
@@ -235,19 +267,33 @@ Returns up to **200** recent transactions; amounts are in **smallest units** —
 
 ---
 
-## 6. Webhooks (`payment.success`)
+## 6. Webhooks (unified `payment` event)
 
-When a transaction reaches **success**, the gateway POSTs to your **callback URL** (from merchant settings).
+The gateway does not sign webhooks by default — protect your endpoint (secret token in URL, mTLS, or IP allowlist). Treat delivery as **at-least-once**; dedupe with `tx_hash` + `chain` + `wallet_id` (and `log_index` / event id semantics for multi-log chains).
+
+All automatic and manual payment callbacks use the **same** header:
 
 ```http
 POST {callback_url}
 Content-Type: application/json
-X-Webhook-Event: payment.success
+X-Webhook-Event: payment
 ```
 
-Example body fields include `tx_hash`, `amount`, `status`, `chain`, `token_symbol`, `wallet_address`, `confirmations`, `external_user_id`, `merchant_id`. Treat delivery as **at-least-once**; dedupe with `tx_hash` + `chain` + `wallet` + `token_symbol`.
+**Branch on JSON `status`:**
 
-The gateway does not sign webhooks by default — protect your endpoint (secret token in URL, mTLS, or IP allowlist).
+| `status` | When |
+|----------|------|
+| `success` | Deposit row is successful (full confirmations; for fixed-amount sessions, session total met). |
+| `underpaid` | You sent optional **`amount`** on `deposit-address`; an on-chain credit exists for this checkout session but the **session total** is still below the expected total (after tolerance). Body adds **`expected_amount_atomic`**, **`expected_amount_decimal`**, **`received_amount_atomic`**, **`received_amount_decimal`**. Prompt top-up or cancel on your side. |
+| `pending` / `failed` | May appear on payloads tied to in-progress or failed rows where applicable. |
+
+When later transfers bring a fixed-amount **session** total to the expected value, you receive another POST with `status: success` (for the transaction that completed the threshold); earlier `underpaid` rows for the same session may be updated to `success` in the database without another underpaid delivery.
+
+Common body fields (success and underpaid): `transaction_id` (gateway row id), `merchant_transaction_id` (your `transaction_id` from `deposit-address`, if any), `tx_hash`, `amount`, `amount_decimal`, `chain`, `currency`, `network`, `token_symbol`, `wallet_address`, `confirmations`, `external_user_id`, `merchant_id`, `gateway_environment`.
+
+### 6.1 New `deposit-address` while webhooks are stuck
+
+If a **payment** webhook has not been acknowledged with **`2xx`**, the gateway may return **`409` `callback_pending`** on new `deposit-address` calls for that payer until retries finish or you fix the callback handler.
 
 ---
 
@@ -255,9 +301,9 @@ The gateway does not sign webhooks by default — protect your endpoint (secret 
 
 1. Log in to `/m`, set **callback URL**, **chains**, and **supported rails** (order = default rail first).
 2. Store **`api_key`** from admin onboarding in server-side secrets; note your **`id`** from `GET /api/v1/auth/me` for `X-Merchant-Id` when using header auth.
-3. On checkout, call **`deposit-address`** with `external_user_id` and optionally `currency` / `network`, using **`X-Token`** (recommended) or legacy **`api_key`** in the body.
-4. Show the user the returned **`address`** and the correct **`network`** label (e.g. TRC20 vs ERC20).
-5. Handle **`payment.success`** on your callback URL.
+3. On checkout, call **`deposit-address`** with `external_user_id` and optionally `currency` / `network`, optional **`amount`** (fixed price), optional **`transaction_id`** / **`redirect_url`**, using **`X-Token`** (recommended) or legacy **`api_key`** in the body.
+4. Show the user the returned **`address`** and the correct **`network`** label (e.g. TRC20 vs ERC20), or open **`payment_link`** for hosted checkout (shows **amount due** when you passed `amount`).
+5. Handle **`POST` callback** with `X-Webhook-Event: payment` and **`body.status`** (`success` vs `underpaid`); handle **`409` `callback_pending`** if your endpoint was down.
 
 ---
 

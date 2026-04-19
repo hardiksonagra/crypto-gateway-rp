@@ -9,13 +9,17 @@
  * (TRON uses `log_index = -1` → one row per on-chain tx id on TRON).
  */
 import { Chain, MerchantGatewayEnv, TxStatus } from "@prisma/client";
+import { TX_STATUS_UNDERPAID } from "../../lib/prisma-tx-status.js";
 import { utils } from "tronweb";
 import { prisma } from "../../lib/prisma.js";
 import { ACTIVE } from "../../lib/active-row.js";
 import { logger } from "../../lib/logger.js";
 import { confirmationsForChain } from "../../config/chains.js";
 import { SCANNER_STATE_ROWS_BY_CHAIN } from "../../config/payment-rails.js";
-import { notifyPaymentSuccess } from "../callback-service.js";
+import {
+  notifyPaymentSuccess,
+  notifyPaymentUnderpaid,
+} from "../callback-service.js";
 import { liveWorkerWalletScanFilter } from "../../lib/wallet-scan.js";
 import {
   recordNewDepositInsert,
@@ -28,6 +32,11 @@ import {
 } from "../../lib/deposit-session-key.js";
 import { generateGatewayReferenceTransactionId } from "../../lib/gateway-reference-transaction-id.js";
 import { resolveWalletInternalId } from "../../lib/entity-internal-id.js";
+import {
+  expectedAtomicForDepositSession,
+  sumInboundAtomicForSessionExcluding,
+} from "../../lib/expected-deposit-amount.js";
+import { UNDERPAY_TOLERANCE_ATOMIC } from "../../lib/gateway-expected-amount.js";
 
 /**
  * @param {object} input
@@ -37,8 +46,6 @@ import { resolveWalletInternalId } from "../../lib/entity-internal-id.js";
  */
 export async function upsertIncomingTransaction(input) {
   const threshold = confirmationsForChain(input.chain);
-  const nextStatus =
-    input.confirmations >= threshold ? TxStatus.success : TxStatus.pending;
 
   const walletInternalId = await resolveWalletInternalId(
     String(input.walletId ?? ""),
@@ -61,6 +68,7 @@ export async function upsertIncomingTransaction(input) {
       toAddress: true,
       status: true,
       callbackDeliveredAt: true,
+      depositSessionKey: true,
     },
   });
 
@@ -117,6 +125,44 @@ export async function upsertIncomingTransaction(input) {
     }
   }
 
+  let nextStatus =
+    input.confirmations >= threshold ? TxStatus.success : TxStatus.pending;
+
+  if (prior?.status === TxStatus.success) {
+    nextStatus = TxStatus.success;
+  } else if (nextStatus === TxStatus.success) {
+    const sessionKeyForExpected = hadRowBefore
+      ? prior.depositSessionKey
+      : depositSessionKeyForCreate;
+    const expected = sessionKeyForExpected
+      ? await expectedAtomicForDepositSession(
+          walletInternalId,
+          sessionKeyForExpected,
+        )
+      : null;
+    if (expected != null) {
+      try {
+        const exp = BigInt(expected);
+        const incoming = BigInt(String(input.amount ?? "0").trim());
+        const othersSum = await sumInboundAtomicForSessionExcluding(
+          walletInternalId,
+          sessionKeyForExpected,
+          eventKey,
+        );
+        const totalRecv = othersSum + incoming;
+        if (totalRecv + UNDERPAY_TOLERANCE_ATOMIC < exp) {
+          nextStatus = TX_STATUS_UNDERPAID;
+        }
+      } catch {
+        logger.warn("underpaid_amount_compare_skipped", {
+          wallet_id: walletInternalId,
+          tx_hash: input.txHash,
+          chain: input.chain,
+        });
+      }
+    }
+  }
+
   const row = await prisma.transaction.upsert({
     where: { tx_chain_log_unique: eventKey },
     create: {
@@ -145,6 +191,25 @@ export async function upsertIncomingTransaction(input) {
   });
 
   if (
+    nextStatus === TxStatus.success &&
+    row.depositSessionKey != null &&
+    (await expectedAtomicForDepositSession(
+      walletInternalId,
+      row.depositSessionKey,
+    )) != null
+  ) {
+    await prisma.transaction.updateMany({
+      where: {
+        walletId: row.walletId,
+        depositSessionKey: row.depositSessionKey,
+        status: TX_STATUS_UNDERPAID,
+        ...ACTIVE,
+      },
+      data: { status: TxStatus.success, updatedAt: new Date() },
+    });
+  }
+
+  if (
     workerRailMetricsEnabled() &&
     input.currency != null &&
     input.network != null &&
@@ -160,7 +225,13 @@ export async function upsertIncomingTransaction(input) {
     await releaseWalletAfterDepositSuccess(row.walletId);
   }
 
-  if (nextStatus === TxStatus.success && !row.callbackDeliveredAt) {
+  const becameUnderpaid =
+    nextStatus === TX_STATUS_UNDERPAID &&
+    (!prior || prior.status !== TX_STATUS_UNDERPAID);
+
+  if (becameUnderpaid && !row.callbackDeliveredAt) {
+    await notifyPaymentUnderpaid(row.id);
+  } else if (nextStatus === TxStatus.success && !row.callbackDeliveredAt) {
     await notifyPaymentSuccess(row.id);
   }
 }

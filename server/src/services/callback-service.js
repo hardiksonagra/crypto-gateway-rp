@@ -1,16 +1,29 @@
 import axios from "axios";
 import { TxStatus } from "@prisma/client";
+import { TX_STATUS_UNDERPAID } from "../lib/prisma-tx-status.js";
 import { formatAtomicAmountString } from "../lib/format-atomic-amount.js";
 import { ACTIVE } from "../lib/active-row.js";
 import { prisma } from "../lib/prisma.js";
 import { logger } from "../lib/logger.js";
-import { logPaymentSuccessCallback, writeAuditLog } from "./audit-log.js";
+import {
+  logPaymentSuccessCallback,
+  logPaymentUnderpaidCallback,
+  writeAuditLog,
+} from "./audit-log.js";
 import {
   resolveTransactionInternalId,
   transactionWhereFromRouteParam,
 } from "../lib/entity-internal-id.js";
+import { expectedAtomicForDepositSession } from "../lib/expected-deposit-amount.js";
 
-/** Max automatic `payment.success` POST attempts per transaction (first try when tx becomes success counts as one). */
+/**
+ * HTTP `X-Webhook-Event` for every automatic and manual payment callback.
+ * Branch on JSON `status` (`success`, `underpaid`, `pending`, `failed`) and on
+ * optional `expected_amount_*` / `received_amount_*` when present.
+ */
+export const PAYMENT_WEBHOOK_EVENT = "payment";
+
+/** Max automatic payment webhook POST attempts per transaction (first try counts as one). */
 export const MAX_AUTO_CALLBACK_ATTEMPTS = 5;
 
 /** Minimum milliseconds between automatic webhook attempts after a failed try. */
@@ -44,6 +57,27 @@ export function buildPaymentSuccessWebhookBody(tx) {
     external_user_id: u?.externalUserId ?? "",
     merchant_id: merchant.id,
     gateway_environment: u?.environment ?? tx.wallet.environment,
+  };
+}
+
+/**
+ * @param {import("@prisma/client").Transaction & {
+ *   wallet: import("@prisma/client").Wallet & { merchant: import("@prisma/client").Merchant },
+ *   payerUser: (import("@prisma/client").User & { merchant: import("@prisma/client").Merchant }) | null,
+ * }} tx
+ * @param {string} expectedAtomic
+ */
+export function buildPaymentUnderpaidWebhookBody(tx, expectedAtomic) {
+  const base = buildPaymentSuccessWebhookBody(tx);
+  return {
+    ...base,
+    expected_amount_atomic: expectedAtomic,
+    expected_amount_decimal: formatAtomicAmountString(
+      expectedAtomic,
+      tx.tokenDecimals,
+    ),
+    received_amount_atomic: base.amount,
+    received_amount_decimal: base.amount_decimal,
   };
 }
 
@@ -137,7 +171,10 @@ export async function notifyPaymentSuccess(txId) {
     logger.info("callback posting", { txId, url, chain: tx.chain, token: tx.tokenSymbol });
     const resp = await axios.post(url, body, {
       timeout: 15_000,
-      headers: { "Content-Type": "application/json", "X-Webhook-Event": "payment.success" },
+      headers: {
+        "Content-Type": "application/json",
+        "X-Webhook-Event": PAYMENT_WEBHOOK_EVENT,
+      },
       validateStatus: (s) => s >= 200 && s < 300,
     });
     await prisma.transaction.updateMany({
@@ -164,6 +201,131 @@ export async function notifyPaymentSuccess(txId) {
       ...detail,
     });
     logPaymentSuccessCallback({
+      merchantId: merchant.id,
+      transactionId: tid,
+      url,
+      requestBody: body,
+      ok: false,
+      httpStatus: detail.status ?? null,
+      responseSnippet: detail.body ?? String(e).slice(0, 500),
+      trigger: "auto",
+    });
+  }
+}
+
+export async function notifyPaymentUnderpaid(txId) {
+  const tid = await resolveTransactionInternalId(txId);
+  if (tid == null) {
+    logger.warn("callback underpaid skip: tx not found", { txId });
+    return;
+  }
+  const tx = await prisma.transaction.findFirst({
+    where: { id: tid, ...ACTIVE },
+    include: {
+      wallet: { include: { merchant: true } },
+      payerUser: { include: { merchant: true } },
+    },
+  });
+  if (!tx) {
+    logger.warn("callback underpaid skip: tx not found", { txId });
+    return;
+  }
+  if (tx.callbackDeliveredAt) return;
+  if (tx.status !== TX_STATUS_UNDERPAID) {
+    logger.debug("callback underpaid skip: tx not underpaid yet", {
+      txId,
+      status: tx.status,
+    });
+    return;
+  }
+  const merchant = tx.payerUser?.merchant ?? tx.wallet.merchant;
+  const url = merchant.callbackUrl;
+  const expected =
+    (await expectedAtomicForDepositSession(
+      tx.walletId,
+      tx.depositSessionKey,
+    )) ?? "";
+  const body = buildPaymentUnderpaidWebhookBody(tx, expected);
+  if (!url) {
+    logger.warn(
+      "callback underpaid skip: merchant has no callback_url (set in portal)",
+      { txId, payerUserId: tx.payerUserId, merchantId: merchant.id },
+    );
+    logPaymentUnderpaidCallback({
+      merchantId: merchant.id,
+      transactionId: tid,
+      url: null,
+      requestBody: body,
+      ok: false,
+      httpStatus: null,
+      responseSnippet: "skipped: callback_url not configured",
+      trigger: "skipped",
+    });
+    return;
+  }
+
+  const throttleSince = new Date(Date.now() - CALLBACK_RETRY_MIN_INTERVAL_MS);
+  const claimed = await prisma.transaction.updateMany({
+    where: {
+      id: tid,
+      ...ACTIVE,
+      status: TX_STATUS_UNDERPAID,
+      callbackDeliveredAt: null,
+      callbackAttemptCount: { lt: MAX_AUTO_CALLBACK_ATTEMPTS },
+      OR: [{ callbackAttemptCount: 0 }, { callbackLastAttemptAt: { lte: throttleSince } }],
+    },
+    data: {
+      callbackAttemptCount: { increment: 1 },
+      callbackLastAttemptAt: new Date(),
+    },
+  });
+  if (claimed.count === 0) {
+    logger.debug(
+      "callback underpaid skip: delivered elsewhere, max auto attempts, or retry interval",
+      { txId },
+    );
+    return;
+  }
+
+  try {
+    logger.info("callback underpaid posting", {
+      txId,
+      url,
+      chain: tx.chain,
+      token: tx.tokenSymbol,
+    });
+    const resp = await axios.post(url, body, {
+      timeout: 15_000,
+      headers: {
+        "Content-Type": "application/json",
+        "X-Webhook-Event": PAYMENT_WEBHOOK_EVENT,
+      },
+      validateStatus: (s) => s >= 200 && s < 300,
+    });
+    await prisma.transaction.updateMany({
+      where: { id: tid, ...ACTIVE },
+      data: { callbackDeliveredAt: new Date() },
+    });
+    logger.info("callback underpaid delivered", { txId, url });
+    logPaymentUnderpaidCallback({
+      merchantId: merchant.id,
+      transactionId: tid,
+      url,
+      requestBody: body,
+      ok: true,
+      httpStatus: resp.status,
+      responseSnippet: null,
+      trigger: "auto",
+    });
+  } catch (e) {
+    const detail = axiosErrDetail(e);
+    logger.error("callback underpaid failed", {
+      txId,
+      url,
+      err: String(e),
+      ...detail,
+    });
+    logPaymentUnderpaidCallback({
       merchantId: merchant.id,
       transactionId: tid,
       url,
@@ -207,7 +369,8 @@ async function executeRedeliverPaymentSuccess(tx, audit) {
     return {
       ok: false,
       code: "callback_requires_success",
-      message: "Webhooks are only sent for successful transactions.",
+      message:
+        "Resend is only available for successful transactions (payload status success).",
     };
   }
   const url = merchant.callbackUrl;
@@ -240,7 +403,10 @@ async function executeRedeliverPaymentSuccess(tx, audit) {
     });
     const resp = await axios.post(url, body, {
       timeout: 15_000,
-      headers: { "Content-Type": "application/json", "X-Webhook-Event": "payment.success" },
+      headers: {
+        "Content-Type": "application/json",
+        "X-Webhook-Event": PAYMENT_WEBHOOK_EVENT,
+      },
       validateStatus: (s) => s >= 200 && s < 300,
     });
     if (!tx.callbackDeliveredAt) {
@@ -294,7 +460,7 @@ async function executeRedeliverPaymentSuccess(tx, audit) {
 }
 
 /**
- * POST the same payment.success payload again (merchant portal). Does not create or update transaction rows except
+ * POST the same payment webhook payload again (merchant portal). Does not create or update transaction rows except
  * optionally setting callbackDeliveredAt when it was still null after a successful delivery.
  *
  * @param {string} txId

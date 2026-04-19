@@ -23,6 +23,7 @@ enum TxStatus {
   pending
   success
   failed
+  underpaid
 }
 
 enum WithdrawalStatus {
@@ -211,6 +212,8 @@ model WalletAssignmentEvent {
   depositSessionKey String? @map("deposit_session_key") @db.VarChar(64)
   /// Merchant checkout / order id from gateway body; copied to `Transaction.transaction_id` on new deposit rows.
   referenceTransactionId String? @map("reference_transaction_id") @db.VarChar(256)
+  /// Smallest-unit integer string (e.g. USDT 6dp) when `deposit-address` sent optional `amount`; used for checkout + underpaid checks.
+  expectedAmountAtomic String? @map("expected_amount_atomic") @db.VarChar(128)
   createdAt   DateTime @default(now()) @map("created_at")
   deletedAt DateTime? @map("deleted_at")
 
@@ -242,7 +245,7 @@ model Transaction {
   logIndex            Int       @default(-1) @map("log_index")
   tokenDecimals       Int       @default(18) @map("token_decimals")
   callbackDeliveredAt DateTime? @map("callback_delivered_at")
-  /// Auto delivery tries (payment.success POST); capped by worker + upsert path; manual redeliver does not increment.
+  /// Auto delivery tries (payment webhook POST, X-Webhook-Event: payment); capped by worker + upsert path; manual redeliver does not increment.
   callbackAttemptCount Int      @default(0) @map("callback_attempt_count")
   callbackLastAttemptAt DateTime? @map("callback_last_attempt_at")
   /// Matches `WalletAssignmentEvent.depositSessionKey` for the checkout session (payment link poll / redirect).

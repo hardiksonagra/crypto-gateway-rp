@@ -58,6 +58,7 @@ function isWalletAssignmentTableMissingError(e) {
  *   currency: string,
  *   network: string,
  *   referenceTransactionId?: string | null,
+ *   expectedAmountAtomic?: string | null,
  * }} p
  * @returns {Promise<{ wallet: import("@prisma/client").Wallet; assignmentSource: "existing_session" | "pool_pick" | "new_wallet"; depositSessionKey: string }>}
  */
@@ -176,6 +177,11 @@ export async function assignPooledWalletForDeposit(tx, p) {
         source,
         depositSessionKey,
         referenceTransactionId,
+        expectedAmountAtomic:
+          typeof p.expectedAmountAtomic === "string" &&
+          /^\d+$/.test(p.expectedAmountAtomic.trim())
+            ? p.expectedAmountAtomic.trim()
+            : null,
       },
     });
   } catch (e) {

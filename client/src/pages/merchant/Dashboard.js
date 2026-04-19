@@ -23,7 +23,7 @@ function TxStatusBadge({ status }) {
       ? "bg-emerald-500/15 text-emerald-100/90 ring-emerald-400/30"
       : s === "pending"
         ? "bg-amber-500/12 text-amber-100/90 ring-amber-400/25"
-        : s === "failed"
+        : s === "failed" || s === "underpaid"
           ? "bg-rose-500/12 text-rose-100/90 ring-rose-400/25"
           : "bg-white/[0.06] text-white/50 ring-white/10";
   return (

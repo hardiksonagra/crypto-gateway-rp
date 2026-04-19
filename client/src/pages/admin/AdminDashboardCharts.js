@@ -21,7 +21,7 @@ function chartPalette(isDark) {
 
 /**
  * @param {object} props
- * @param {Array<{ date: string, pending: number, success: number, failed: number }>} props.daily
+ * @param {Array<{ date: string, pending: number, success: number, failed: number, underpaid?: number }>} props.daily
  * @param {Array<{ status: string, count: number }>} props.byStatus
  * @param {Array<{ chain: string, count: number }>} props.byChain
  * @param {number} props.successRatePct

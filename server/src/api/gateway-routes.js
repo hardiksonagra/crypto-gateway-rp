@@ -1,6 +1,11 @@
 import { Router } from "express";
 import { Chain, TxStatus } from "@prisma/client";
+import { TX_STATUS_UNDERPAID } from "../lib/prisma-tx-status.js";
 import { formatAtomicAmountString } from "../lib/format-atomic-amount.js";
+import {
+  parseOptionalGatewayDepositAmount,
+  tokenDecimalsForGatewayRail,
+} from "../lib/gateway-expected-amount.js";
 import { prisma } from "../lib/prisma.js";
 import { ACTIVE } from "../lib/active-row.js";
 import { env } from "../config/env.js";
@@ -106,11 +111,21 @@ router.get("/api/v1/gateway/payment-session/:token/poll", async (req, res) => {
       return;
     }
     let successRow = null;
+    let underpaidRow = null;
     if (v.depositSessionKey) {
       successRow = await prisma.transaction.findFirst({
         where: {
           walletId: wid,
           status: TxStatus.success,
+          depositSessionKey: v.depositSessionKey,
+          ...ACTIVE,
+        },
+        select: { id: true },
+      });
+      underpaidRow = await prisma.transaction.findFirst({
+        where: {
+          walletId: wid,
+          status: TX_STATUS_UNDERPAID,
           depositSessionKey: v.depositSessionKey,
           ...ACTIVE,
         },
@@ -129,7 +144,10 @@ router.get("/api/v1/gateway/payment-session/:token/poll", async (req, res) => {
         select: { id: true },
       });
     }
-    res.json({ has_successful_deposit: Boolean(successRow) });
+    res.json({
+      has_successful_deposit: Boolean(successRow),
+      has_underpaid_deposit: Boolean(underpaidRow),
+    });
   } catch (e) {
     logger.error("gateway payment-session poll failed", { err: String(e) });
     res.status(500).json({ error: "internal error" });
@@ -169,6 +187,26 @@ router.get("/api/v1/gateway/payment-session/:token", async (req, res) => {
       res.status(410).json({ error: "payment_link_invalid_or_expired" });
       return;
     }
+    let expected_amount_atomic = null;
+    let expected_amount_decimal = null;
+    if (v.depositSessionKey) {
+      const ev = await prisma.walletAssignmentEvent.findFirst({
+        where: {
+          walletId: wid,
+          depositSessionKey: v.depositSessionKey,
+          ...ACTIVE,
+        },
+        select: { expectedAmountAtomic: true },
+      });
+      const raw = ev?.expectedAmountAtomic?.trim();
+      if (raw && /^\d+$/.test(raw)) {
+        const dec = tokenDecimalsForGatewayRail(w.currency, w.network);
+        if (dec != null) {
+          expected_amount_atomic = raw;
+          expected_amount_decimal = formatAtomicAmountString(raw, dec);
+        }
+      }
+    }
     res.json({
       address: w.address,
       chain: w.chain,
@@ -178,6 +216,12 @@ router.get("/api/v1/gateway/payment-session/:token", async (req, res) => {
       deposit_scan_ttl_minutes: walletScanTtlMinutes(),
       reservation_expires_at: w.holdExpiresAt?.toISOString() ?? null,
       redirect_url: redirectUrl,
+      ...(expected_amount_atomic != null
+        ? {
+            expected_amount_atomic,
+            expected_amount_decimal,
+          }
+        : {}),
     });
   } catch (e) {
     logger.error("gateway payment-session failed", { err: String(e) });
@@ -351,6 +395,45 @@ router.post("/api/v1/gateway/deposit-address", async (req, res) => {
       }
     }
 
+    const tokenDecimals = tokenDecimalsForGatewayRail(currency, network);
+    let expectedAmountAtomic = null;
+    if (body.amount != null && String(body.amount).trim()) {
+      if (tokenDecimals == null) {
+        auditGatewayApi(req, {
+          action: "deposit_address",
+          merchantId: merchant.id,
+          actorType: "gateway_api_key",
+          summary: "deposit-address 400 — amount_not_supported_for_rail",
+          metadata: {
+            request_in: redactGatewayBody(body),
+            http_status: 400,
+            external_user_id: externalUserId,
+            currency,
+            network,
+          },
+        });
+        res.status(400).json({ error: "amount_not_supported_for_rail" });
+        return;
+      }
+      const parsed = parseOptionalGatewayDepositAmount(body.amount, tokenDecimals);
+      if (!parsed.ok) {
+        auditGatewayApi(req, {
+          action: "deposit_address",
+          merchantId: merchant.id,
+          actorType: "gateway_api_key",
+          summary: `deposit-address 400 — ${parsed.error}`,
+          metadata: {
+            request_in: redactGatewayBody(body),
+            http_status: 400,
+            external_user_id: externalUserId,
+          },
+        });
+        res.status(400).json({ error: parsed.error });
+        return;
+      }
+      expectedAmountAtomic = parsed.atomic;
+    }
+
     let u = await prisma.user.findFirst({
       where: {
         merchantId: merchant.id,
@@ -374,7 +457,7 @@ router.post("/api/v1/gateway/deposit-address", async (req, res) => {
     if (String(merchant.callbackUrl ?? "").trim()) {
       const blocking = await prisma.transaction.findFirst({
         where: {
-          status: TxStatus.success,
+          status: { in: ["success", TX_STATUS_UNDERPAID] },
           callbackDeliveredAt: null,
           /** After max auto attempts, allow new deposit addresses; merchant can fix webhook and resend later. */
           callbackAttemptCount: { lt: MAX_AUTO_CALLBACK_ATTEMPTS },
@@ -398,7 +481,7 @@ router.post("/api/v1/gateway/deposit-address", async (req, res) => {
         });
         res.status(409).json({
           error: "callback_pending",
-          message: `A successful payment’s payment.success webhook was not delivered (2xx). New deposit addresses are blocked until delivery succeeds or automatic retries finish (up to ${MAX_AUTO_CALLBACK_ATTEMPTS} attempts, at most one per minute). After retries are exhausted, you may request a new address; fix your callback URL/handler and resend from the merchant portal (transaction detail) for the affected payment.`,
+          message: `A payment webhook (X-Webhook-Event: payment; check JSON status) was not delivered with a 2xx response. New deposit addresses are blocked until delivery succeeds or automatic retries finish (up to ${MAX_AUTO_CALLBACK_ATTEMPTS} attempts, at most one per minute). After retries are exhausted, you may request a new address; fix your callback URL/handler and resend from the merchant portal (transaction detail) for the affected payment.`,
         });
         return;
       }
@@ -413,6 +496,7 @@ router.post("/api/v1/gateway/deposit-address", async (req, res) => {
         currency: rail.currency,
         network: rail.network,
         referenceTransactionId: txRefParsed.value,
+        expectedAmountAtomic,
       });
       return {
         wallet: assigned.wallet,
@@ -466,6 +550,15 @@ router.post("/api/v1/gateway/deposit-address", async (req, res) => {
       deposit_scan_ttl_minutes: walletScanTtlMinutes(),
       reservation_expires_at: wallet.holdExpiresAt?.toISOString() ?? null,
       redirect_url: redirectUrl,
+      ...(expectedAmountAtomic != null && tokenDecimals != null
+        ? {
+            expected_amount_atomic: expectedAmountAtomic,
+            expected_amount_decimal: formatAtomicAmountString(
+              expectedAmountAtomic,
+              tokenDecimals,
+            ),
+          }
+        : {}),
     });
   } catch (e) {
     logger.error("gateway deposit-address failed", { err: String(e) });

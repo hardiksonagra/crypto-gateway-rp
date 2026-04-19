@@ -22,7 +22,7 @@ import { StatusBadge } from "../../components/StatusBadge.js";
 import { BrandLoader } from "../../components/BrandLoader.js";
 
 const DEFAULT_PAGE_SIZE = DEFAULT_LIST_PAGE_SIZE;
-const ST = ["pending", "success", "failed"];
+const ST = ["pending", "success", "failed", "underpaid"];
 
 export default function AdminTransactions() {
   const queryClient = useQueryClient();

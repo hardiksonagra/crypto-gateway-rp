@@ -87,6 +87,52 @@ export function writeAuditLog(p) {
  * @param {boolean} p.ok
  * @param {number | null} [p.httpStatus]
  * @param {string | null} [p.responseSnippet]
+ * @param {"auto" | "skipped"} p.trigger
+ */
+export function logPaymentUnderpaidCallback(p) {
+  const actorType = p.trigger === "skipped" ? "system" : "system";
+  const summary =
+    p.trigger === "skipped"
+      ? `Payment webhook (status=underpaid) skipped (no URL) for tx ${p.transactionId}`
+      : p.ok
+        ? `Payment webhook delivered (HTTP ${p.httpStatus ?? "?"}) — tx ${p.transactionId} (status=underpaid)`
+        : `Payment webhook failed — tx ${p.transactionId} (status=underpaid)`;
+
+  writeAuditLog({
+    source: "callback",
+    action:
+      p.trigger === "skipped"
+        ? "callback.payment_underpaid_skipped"
+        : p.ok
+          ? "callback.payment_underpaid_delivered"
+          : "callback.payment_underpaid_failed",
+    merchantId: p.merchantId,
+    actorType,
+    actorId: null,
+    actorEmail: null,
+    summary,
+    metadata: {
+      transaction_id: p.transactionId,
+      trigger: p.trigger,
+      webhook_url: p.url,
+      x_webhook_event: "payment",
+      request_body: p.requestBody,
+      ok: p.ok,
+      http_status: p.httpStatus ?? null,
+      response_snippet: p.responseSnippet,
+    },
+  });
+}
+
+/**
+ * @param {object} p
+ * @param {string} p.merchantId
+ * @param {string} p.transactionId
+ * @param {string | null} p.url
+ * @param {Record<string, unknown>} p.requestBody
+ * @param {boolean} p.ok
+ * @param {number | null} [p.httpStatus]
+ * @param {string | null} [p.responseSnippet]
  * @param {"auto" | "merchant_redeliver" | "admin_redeliver" | "skipped"} p.trigger
  * @param {string | null} [p.actorAdminId]
  * @param {string | null} [p.actorMerchantEmail]
@@ -104,8 +150,8 @@ export function logPaymentSuccessCallback(p) {
     p.trigger === "skipped"
       ? `Callback skipped (no URL) for tx ${p.transactionId}`
       : p.ok
-        ? `payment.success webhook delivered (HTTP ${p.httpStatus ?? "?"}) — tx ${p.transactionId}`
-        : `payment.success webhook failed — tx ${p.transactionId}`;
+        ? `Payment webhook delivered (HTTP ${p.httpStatus ?? "?"}) — tx ${p.transactionId} (status=success)`
+        : `Payment webhook failed — tx ${p.transactionId} (status=success)`;
 
   writeAuditLog({
     source: "callback",
@@ -127,7 +173,7 @@ export function logPaymentSuccessCallback(p) {
       transaction_id: p.transactionId,
       trigger: p.trigger,
       webhook_url: p.url,
-      x_webhook_event: "payment.success",
+      x_webhook_event: "payment",
       request_body: p.requestBody,
       response_http_status: p.httpStatus ?? null,
       response_body_snippet: p.responseSnippet?.slice(0, 2000) ?? null,

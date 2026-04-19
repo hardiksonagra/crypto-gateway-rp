@@ -20,11 +20,11 @@ Share your **HTTPS base URL** (e.g. `https://payments.example.com`) with integra
 ## 2. Flow
 
 1. Merchant configures **callback URL**, **supported chains**, and **supported currency/network rails** in the portal (`/m/settings`).
-2. Integrator calls `**POST /api/v1/gateway/deposit-address`** with gateway auth (`X-Token` + `X-Merchant-Id`, or legacy `api_key`) and `external_user_id`, and optionally `currency` + `network`.
-3. Response includes `address`, `chain`, `currency`, `network` (idempotent per customer + rail).
+2. Integrator calls `**POST /api/v1/gateway/deposit-address`** with gateway auth (`X-Token` + `X-Merchant-Id`, or legacy `api_key`) and `external_user_id`, and optionally `currency` + `network`, optional **`amount`** (fixed checkout total), optional **`transaction_id`** (your order id), optional **`redirect_url`** (post-pay redirect from hosted checkout).
+3. Response includes `address`, `chain`, `currency`, `network`, and **`payment_link`** (hosted checkout URL). When `amount` was sent, the response also includes **`expected_amount_decimal`** / **`expected_amount_atomic`** for display. Same customer + rail is idempotent for the **wallet**; each call can start a new **checkout session** (new link) when the pool refreshes the assignment.
 4. Optional: `**POST /api/v1/gateway/create-wallet`** with the same auth style, `user_id`, `currency`, and `network` for another rail for the same user.
-5. User sends crypto to the shown address on the **correct network**.
-6. When confirmations pass, the gateway POSTs **`payment.success`** to the merchant **callback URL**.
+5. User sends crypto to the shown address on the **correct network** (hosted page shows **amount due** when you passed `amount`).
+6. When confirmations pass, the gateway POSTs to the merchant **callback URL** with **`X-Webhook-Event: payment`** and JSON **`status`** (`success`, `underpaid`, etc.). If you used a fixed **`amount`** and the first on-chain credit is **below** the expected session total, **`status` is `underpaid`** first; when the **combined** session total reaches the expected amount, another POST with **`status: success`** follows (see MERCHANT_API_INTEGRATION.md section 6).
 
 ---
 
@@ -84,9 +84,12 @@ Content-Type: application/json
 | `external_user_id` | string | Yes      | Stable unique id of the payer on **your** system.                    |
 | `currency`         | string | No       | Upper-case token symbol (e.g. `USDT`). Defaults to merchant default. |
 | `network`          | string | No       | Network label (e.g. `TRC20`). Defaults to merchant default.          |
+| `amount`           | string | No       | Optional fixed total: decimal (e.g. `10.5`) or digits-only **atomic** string. USDT on TRC20/ERC20/BEP20 only for decimal rules; see MERCHANT_API_INTEGRATION.md section 5.1. |
+| `transaction_id`   | string | No       | Your checkout / order id (max 256 chars); echoed as `merchant_transaction_id` on webhooks. |
+| `redirect_url`     | string | No       | HTTPS return URL after full payment on hosted checkout.              |
 | (headers)          |        | Preferred | `X-Token`, `X-Merchant-Id` — see MERCHANT_API_INTEGRATION.md §3.1. |
 
-**200**
+**200** — includes `payment_link`, `deposit_scan_expires_at`, `deposit_scan_ttl_minutes`, `reservation_expires_at`, `redirect_url`, `gateway_environment`, and wallet fields. When `amount` was valid, also `expected_amount_atomic` and `expected_amount_decimal`.
 
 ```json
 {
@@ -94,12 +97,29 @@ Content-Type: application/json
   "chain": "TRON",
   "currency": "USDT",
   "network": "TRC20",
-  "wallet_id": "cl…",
-  "user_id": "cl…",
-  "merchant_id": "cl…",
-  "created_new_user": false
+  "wallet_id": 1,
+  "user_id": 1,
+  "merchant_id": 1,
+  "created_new_user": false,
+  "gateway_environment": "live",
+  "payment_link": "https://pay.example.com/pay/<token>",
+  "deposit_scan_expires_at": null,
+  "deposit_scan_ttl_minutes": 120,
+  "reservation_expires_at": null,
+  "redirect_url": null,
+  "expected_amount_atomic": "10500000",
+  "expected_amount_decimal": "10.5"
 }
 ```
+
+**Hosted checkout polling (no auth on token):**
+
+```http
+GET /api/v1/gateway/payment-session/{token}
+GET /api/v1/gateway/payment-session/{token}/poll
+```
+
+Poll returns `has_successful_deposit` and `has_underpaid_deposit` (fixed-amount sessions). See MERCHANT_API_INTEGRATION.md section 5.1a.
 
 | Error                           | HTTP | Meaning                                    |
 | ------------------------------- | ---- | ------------------------------------------ |
@@ -108,6 +128,9 @@ Content-Type: application/json
 | `gateway_auth_required`         | 400  | No `api_key` or `X-Token` auth.            |
 | `rail_not_enabled_for_merchant` | 403  | Rail not in merchant’s supported list.     |
 | `unsupported_currency_network`  | 400  | Unknown pair.                              |
+| `amount_invalid` (and related)  | 400  | Bad optional `amount`.                     |
+| `amount_not_supported_for_rail` | 400  | `amount` set for a rail without decimal rules. |
+| `callback_pending`              | 409  | Prior success/underpaid webhook still retrying. |
 | Missing fields                  | 400  | `external_user_id` required (and gateway auth). |
 
 ---
@@ -157,33 +180,36 @@ Up to **200** recent rows; `amount` is in **smallest units**; use `token_decimal
 
 ---
 
-## 6. Webhooks (`payment.success`)
+## 6. Webhooks
 
-When a row reaches `**success`**, the gateway POSTs once (with retries until `2xx`) to the merchant’s `**callback_url`\*\*.
+Every payment callback uses **`X-Webhook-Event: payment`**. Read **`status`** in the JSON body (`success`, `underpaid`, `pending`, `failed`). Underpaid payloads add **`expected_amount_*`** and **`received_amount_*`** (see MERCHANT_API_INTEGRATION.md section 6).
 
 ```http
 POST {callback_url}
 Content-Type: application/json
-X-Webhook-Event: payment.success
+X-Webhook-Event: payment
 ```
 
-**Example body**
+**Example body (`status: success`)**
 
 ```json
 {
+  "transaction_id": 42,
+  "merchant_transaction_id": "order-789",
   "tx_hash": "0x…",
   "amount": "1000000",
+  "amount_decimal": "1",
   "status": "success",
   "chain": "TRON",
   "token_symbol": "USDT",
   "wallet_address": "T…",
   "confirmations": 20,
   "external_user_id": "your-user-123",
-  "merchant_id": "cl…"
+  "merchant_id": 1
 }
 ```
 
-**Idempotency:** Use `tx_hash` + `chain` + `token_symbol` + `wallet_address` (and your own payment id if any).
+**Idempotency:** Use `tx_hash` + `chain` + `wallet_id` (and your own order id in `merchant_transaction_id` if you sent `transaction_id` on `deposit-address`).
 
 **Security:** Add a shared secret or signature at your edge; the default gateway does not sign payloads.
 

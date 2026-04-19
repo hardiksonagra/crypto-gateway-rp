@@ -140,7 +140,7 @@ export default function MerchantSettings() {
           <Form className="glass mt-8 w-full grid grid-cols-1 gap-6 rounded-2xl p-6 lg:grid-cols-2 lg:p-8">
             <div className="lg:col-span-2">
               <label className="text-xs text-white/50" htmlFor="callback_url">
-                Webhook URL (payment.success)
+                Webhook URL (X-Webhook-Event: payment, status in JSON)
               </label>
               <Field
                 id="callback_url"

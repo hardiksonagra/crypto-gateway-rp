@@ -15,7 +15,10 @@ import {
 import { scanEvmChain } from "./evm-tracker.js";
 import { scanTronChain } from "./tron-tracker.js";
 import { maybeSweepTick } from "crypto-payment-gateway/src/services/sweep-service.js";
-import { retryStuckSuccessCallbacks } from "crypto-payment-gateway/src/services/callback-retry.js";
+import {
+  retryStuckSuccessCallbacks,
+  retryStuckUnderpaidCallbacks,
+} from "crypto-payment-gateway/src/services/callback-retry.js";
 import { isChainLiveForPlatform } from "crypto-payment-gateway/src/lib/chain-enable.js";
 
 /**
@@ -133,6 +136,7 @@ export async function runTronDepositTick() {
     }
     try {
       await retryStuckSuccessCallbacks();
+      await retryStuckUnderpaidCallbacks();
     } catch {
       /* ignore */
     }

@@ -1,6 +1,7 @@
 /**
  * In-app reference for integrators: `/api/v1/gateway/*` and webhooks.
- * Kept in sync with server gateway-routes, callback-service, and unified gateway key behaviour.
+ * Kept in sync with server gateway-routes, callback-service, payment-session,
+ * optional fixed `amount` / underpaid flow, and unified gateway key behaviour.
  */
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
@@ -512,6 +513,9 @@ X-Token: <base64 from buildXToken on canonical JSON of:
           <span className="font-mono">external_user_id</span> + same{" "}
           <span className="font-mono">currency</span>/
           <span className="font-mono">network</span> returns the same address.
+          Each call can mint a new <span className="font-mono">payment_link</span>{" "}
+          (new checkout session); optional <span className="font-mono">amount</span>{" "}
+          applies only to that session.
         </p>
         <p className="mt-3 text-xs font-medium text-white/45">
           Headers (recommended — no secret in JSON)
@@ -542,11 +546,30 @@ X-Token: <base64 from buildXToken on canonical JSON of:
             default pair if omitted)
           </li>
           <li>
+            <span className="font-mono text-white/60">transaction_id</span>{" "}
+            (optional) — your order / checkout id (max 256 chars); echoed on
+            deposit rows and webhooks as{" "}
+            <span className="font-mono">merchant_transaction_id</span>
+          </li>
+          <li>
             <span className="font-mono text-white/60">redirect_url</span>{" "}
             (optional) — absolute <span className="font-mono">http(s)</span>{" "}
-            URL; payment page redirects here when a deposit reaches{" "}
-            <span className="font-mono">success</span> or when the deposit scan
-            countdown ends
+            URL; hosted checkout redirects here when a deposit reaches full{" "}
+            <span className="font-mono">success</span> (or when the deposit scan
+            countdown ends if configured)
+          </li>
+          <li>
+            <span className="font-mono text-white/60">amount</span> (optional) —
+            fixed total for this checkout: either a <strong>decimal</strong>{" "}
+            token string (e.g. <span className="font-mono">&quot;10.50&quot;</span>
+            ) or <strong>digits-only smallest units</strong> (same as on-chain{" "}
+            <span className="font-mono">amount</span>). Omitted = pay any amount.
+            Decimal parsing is supported when the gateway knows decimals for the
+            rail (today: <span className="font-mono">USDT</span> on{" "}
+            <span className="font-mono">TRC20</span>,{" "}
+            <span className="font-mono">ERC20</span>,{" "}
+            <span className="font-mono">BEP20</span>). Otherwise use atomic string
+            or omit.
           </li>
           <li>
             Do not send <span className="font-mono">api_key</span> when using
@@ -562,6 +585,8 @@ X-Token: <base64 from buildXToken on canonical JSON of body>
   "external_user_id": "user-123",
   "currency": "USDT",
   "network": "TRC20",
+  "transaction_id": "order-789",
+  "amount": "10.50",
   "redirect_url": "https://yoursite.com/payment/return"
 }`}</Pre>
         <p className="mt-4 text-xs font-medium text-white/45">200 response</p>
@@ -570,25 +595,96 @@ X-Token: <base64 from buildXToken on canonical JSON of body>
   "chain": "TRON",
   "currency": "USDT",
   "network": "TRC20",
-  "wallet_id": "…",
-  "user_id": "…",
-  "merchant_id": "…",
+  "wallet_id": 1,
+  "user_id": 1,
+  "merchant_id": 1,
   "created_new_user": false,
-  "payment_link": "https://…",
+  "gateway_environment": "live",
+  "payment_link": "https://…/pay/<token>",
   "deposit_scan_expires_at": "…",
-  "deposit_scan_ttl_minutes": 10,
-  "redirect_url": "https://yoursite.com/payment/return"
+  "deposit_scan_ttl_minutes": 120,
+  "reservation_expires_at": "…",
+  "redirect_url": "https://yoursite.com/payment/return",
+  "expected_amount_atomic": "10500000",
+  "expected_amount_decimal": "10.5"
 }`}</Pre>
+        <p className="mt-2 text-xs text-white/45">
+          <span className="font-mono">expected_amount_*</span> appears only when
+          you sent a valid <span className="font-mono">amount</span>.
+        </p>
         <p className="mt-4 text-xs text-white/45">
-          Errors: <span className="font-mono">400</span> missing fields or{" "}
-          <span className="font-mono">unsupported_currency_network</span> or{" "}
-          <span className="font-mono">invalid_redirect_url</span>;{" "}
+          Errors: <span className="font-mono">400</span> missing fields,{" "}
+          <span className="font-mono">unsupported_currency_network</span>,{" "}
+          <span className="font-mono">invalid_redirect_url</span>,{" "}
+          <span className="font-mono">transaction_id_too_long</span>, or{" "}
+          <span className="font-mono">amount_*</span> (
+          <span className="font-mono">amount_invalid</span>,{" "}
+          <span className="font-mono">amount_not_supported_for_rail</span>, etc.);{" "}
           <span className="font-mono">401 invalid_x_token</span>;{" "}
           <span className="font-mono">403 rail_not_enabled_for_merchant</span>;{" "}
+          <span className="font-mono">409 callback_pending</span> when a prior{" "}
+          <span className="font-mono">payment</span> webhook is still retrying;{" "}
           <span className="font-mono">
             500 merchant_default_pair_misconfigured
           </span>{" "}
           if defaults are missing.
+        </p>
+      </section>
+
+      <section className="glass w-full rounded-2xl p-6 lg:p-8">
+        <h2 className="text-lg font-semibold text-white">
+          Hosted checkout: payment session
+        </h2>
+        <p className="mt-3 text-sm text-white/55">
+          The <span className="font-mono">payment_link</span> from{" "}
+          <span className="font-mono">deposit-address</span> loads the public
+          checkout page. Your app can mirror it with these unauthenticated reads
+          (token is signed and scoped to one wallet/session).
+        </p>
+        <EndpointRow
+          textToCopy={gatewayEndpointClipboardText(
+            "/api/v1/gateway/payment-session/{token}",
+          )}
+          breakAll
+        >
+          <span className="text-sky-300/90">GET</span>{" "}
+          /api/v1/gateway/payment-session/{"{"}token{"}"}
+        </EndpointRow>
+        <p className="mt-2 text-xs text-white/45">
+          Returns <span className="font-mono">address</span>,{" "}
+          <span className="font-mono">chain</span>,{" "}
+          <span className="font-mono">currency</span>,{" "}
+          <span className="font-mono">network</span>, scan/hold TTL fields,{" "}
+          <span className="font-mono">redirect_url</span>. If this session used
+          optional <span className="font-mono">amount</span>, also{" "}
+          <span className="font-mono">expected_amount_atomic</span> and{" "}
+          <span className="font-mono">expected_amount_decimal</span>.
+        </p>
+        <EndpointRow
+          textToCopy={gatewayEndpointClipboardText(
+            "/api/v1/gateway/payment-session/{token}/poll",
+          )}
+          breakAll
+        >
+          <span className="text-sky-300/90">GET</span>{" "}
+          /api/v1/gateway/payment-session/{"{"}token{"}"}/poll
+        </EndpointRow>
+        <p className="mt-2 text-xs font-medium text-white/45">200 response</p>
+        <Pre>{`{
+  "has_successful_deposit": false,
+  "has_underpaid_deposit": true
+}`}</Pre>
+        <p className="mt-2 text-xs text-white/45">
+          Poll every few seconds: when the combined on-chain total for this
+          checkout session reaches the optional expected amount,{" "}
+          <span className="font-mono">has_successful_deposit</span> becomes true
+          (same condition as a callback with{" "}
+          <span className="font-mono">status: success</span>). If a deposit is
+          seen but the session total is still short,{" "}
+          <span className="font-mono">has_underpaid_deposit</span> is true (same
+          idea as <span className="font-mono">status: underpaid</span> on the
+          webhook). No{" "}
+          <span className="font-mono">X-Token</span> on these GETs.
         </p>
       </section>
 
@@ -599,7 +695,8 @@ X-Token: <base64 from buildXToken on canonical JSON of body>
         <p className="mt-2 text-sm text-white/55">
           Creates a synthetic <span className="font-mono">success</span>{" "}
           transaction and sends the same{" "}
-          <span className="font-mono">payment.success</span> webhook as a real
+          <span className="font-mono">payment</span> webhook (
+          <span className="font-mono">status: success</span>) as a real
           confirmed deposit — so your backend can test parsing and idempotency
           without sending crypto. Use the same{" "}
           <span className="font-mono">X-Token</span> +{" "}
@@ -723,12 +820,18 @@ GET /api/v1/gateway/transactions?address=TExampleAddress…&currency=USDT&networ
     }
   ]
 }`}</Pre>
+        <p className="mt-2 text-xs text-white/45">
+          <span className="font-mono">status</span> may be{" "}
+          <span className="font-mono">pending</span>,{" "}
+          <span className="font-mono">success</span>,{" "}
+          <span className="font-mono">failed</span>, or{" "}
+          <span className="font-mono">underpaid</span> (fixed-amount sessions
+          until the session total is met).
+        </p>
       </section>
 
       <section className="glass w-full rounded-2xl p-6 lg:p-8">
-        <h2 className="text-lg font-semibold text-white">
-          Payment success webhook
-        </h2>
+        <h2 className="text-lg font-semibold text-white">Payment webhook</h2>
         <EndpointRow textToCopy={webhookPostUrl} breakAll>
           <span className="text-amber-300/90">POST</span>{" "}
           <span
@@ -738,23 +841,25 @@ GET /api/v1/gateway/transactions?address=TExampleAddress…&currency=USDT&networ
           </span>
         </EndpointRow>
         <p className="mt-1 font-mono text-xs text-white/45">
-          X-Webhook-Event: payment.success
+          X-Webhook-Event: payment
         </p>
         <p className="mt-3 text-sm text-white/55">
-          When a deposit reaches success, the gateway POSTs once (retries until
-          2xx) to the webhook URL from{" "}
-          <span className="font-mono text-white/60">
-            Gateway &amp; webhooks
-          </span>{" "}
-          (same URL as above when configured). Payloads are not signed by
-          default — protect your endpoint (secret in URL, mTLS, or IP
-          allowlist). Treat delivery as at-least-once; dedupe with{" "}
-          <span className="font-mono">tx_hash</span> + chain + wallet + token.
-          The body includes{" "}
-          <span className="font-mono">gateway_environment</span> (
-          <span className="font-mono">live</span> or{" "}
-          <span className="font-mono">sandbox</span>) so you can ignore or
-          branch on test traffic.
+          Every automatic delivery and portal “resend” uses the same header.{" "}
+          <strong>Branch on JSON</strong>{" "}
+          <span className="font-mono">status</span>:{" "}
+          <span className="font-mono">success</span> when the row is fully paid
+          (and for fixed-amount checkouts when the session total is met),{" "}
+          <span className="font-mono">underpaid</span> when a credit exists but
+          the session total is still short (optional{" "}
+          <span className="font-mono">amount</span> on{" "}
+          <span className="font-mono">deposit-address</span> only). Retries until{" "}
+          <span className="font-mono">2xx</span>. Dedupe with{" "}
+          <span className="font-mono">tx_hash</span> + chain +{" "}
+          <span className="font-mono">wallet_id</span>. If you passed{" "}
+          <span className="font-mono">transaction_id</span> on{" "}
+          <span className="font-mono">deposit-address</span>, the body includes{" "}
+          <span className="font-mono">merchant_transaction_id</span>. Payloads are
+          not signed by default.
         </p>
         {!merchantCallbackUrl && railRows !== null ? (
           <p className="mt-2 text-xs text-amber-200/80">
@@ -763,13 +868,17 @@ GET /api/v1/gateway/transactions?address=TExampleAddress…&currency=USDT&networ
             webhooks page — the sample below uses a placeholder until then.
           </p>
         ) : null}
+        <p className="mt-4 text-xs font-medium text-white/45">
+          Example — <span className="font-mono">status: success</span>
+        </p>
         <Pre breakAll={Boolean(merchantCallbackUrl)}>{`POST ${webhookPostUrl}
 Content-Type: application/json
-X-Webhook-Event: payment.success
+X-Webhook-Event: payment
 
 {
-  "transaction_id": "…",
-  "wallet_id": "…",
+  "transaction_id": 42,
+  "merchant_transaction_id": "order-789",
+  "wallet_id": 1,
   "tx_hash": "…",
   "amount": "1000000",
   "token_decimals": 6,
@@ -782,9 +891,47 @@ X-Webhook-Event: payment.success
   "wallet_address": "…",
   "confirmations": 20,
   "external_user_id": "user-123",
-  "merchant_id": "…",
+  "merchant_id": 1,
   "gateway_environment": "live"
 }`}</Pre>
+        <p className="mt-4 text-xs font-medium text-white/45">
+          Example — <span className="font-mono">status: underpaid</span> (extra
+          expected/received fields)
+        </p>
+        <Pre breakAll={Boolean(merchantCallbackUrl)}>{`POST ${webhookPostUrl}
+Content-Type: application/json
+X-Webhook-Event: payment
+
+{
+  "transaction_id": 42,
+  "merchant_transaction_id": "order-789",
+  "wallet_id": 1,
+  "tx_hash": "…",
+  "amount": "5000000",
+  "token_decimals": 6,
+  "amount_decimal": "5",
+  "status": "underpaid",
+  "expected_amount_atomic": "10500000",
+  "expected_amount_decimal": "10.5",
+  "received_amount_atomic": "5000000",
+  "received_amount_decimal": "5",
+  "chain": "TRON",
+  "currency": "USDT",
+  "network": "TRC20",
+  "token_symbol": "USDT",
+  "wallet_address": "…",
+  "confirmations": 20,
+  "external_user_id": "user-123",
+  "merchant_id": 1,
+  "gateway_environment": "live"
+}`}</Pre>
+        <p className="mt-3 text-xs text-white/45">
+          When the session later reaches the full expected amount, you get another
+          POST with <span className="font-mono">status: success</span>. A webhook
+          stuck without <span className="font-mono">2xx</span> can block new{" "}
+          <span className="font-mono">deposit-address</span> calls with{" "}
+          <span className="font-mono">409 callback_pending</span>.
+        </p>
       </section>
     </div>
   );

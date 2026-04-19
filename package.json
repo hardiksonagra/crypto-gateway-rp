@@ -2,6 +2,9 @@
   "name": "crypto-payment-gateway-monorepo",
   "private": true,
   "workspaces": ["server", "client", "cron"],
+  "prisma": {
+    "schema": "server/prisma/schema.prisma"
+  },
   "scripts": {
     "postinstall": "npm run prisma:generate -w server",
     "dev": "npm run dev -w server",

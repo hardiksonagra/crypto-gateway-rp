@@ -136,7 +136,9 @@ export default function TransactionDetailModal({
         <div className="space-y-3 border-t px-6 py-4" style={{ borderColor: "var(--border)" }}>
           <p className="text-xs leading-relaxed" style={{ color: "var(--text-3)" }}>
             <span style={{ color: "var(--text-2)" }}>Resend webhook</span> posts the same{" "}
-            <span className="font-mono" style={{ color: "var(--text-2)" }}>payment.success</span> JSON again. It does{" "}
+            <span className="font-mono" style={{ color: "var(--text-2)" }}>payment</span> payload (
+            <span className="font-mono" style={{ color: "var(--text-2)" }}>X-Webhook-Event: payment</span>,{" "}
+            <span className="font-mono" style={{ color: "var(--text-2)" }}>status: success</span>) again. It does{" "}
             <strong style={{ color: "var(--text-1)" }}>not</strong> create another transaction in this
             system. Your server should treat the same{" "}
             <span className="font-mono" style={{ color: "var(--text-2)" }}>transaction_id</span> idempotently.
@@ -167,10 +169,10 @@ export default function TransactionDetailModal({
               title={
                 canRedeliver
                   ? undefined
-                  : "Only successful transactions can trigger the payment.success webhook."
+                  : "Only successful transactions can resend the payment webhook."
               }
             >
-              {redeliverLoading ? "Sending…" : "Resend payment.success webhook"}
+              {redeliverLoading ? "Sending…" : "Resend payment webhook"}
             </button>
           </div>
         </div>

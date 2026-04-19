@@ -21,7 +21,7 @@ import { formatLocalDateTime } from "../../lib/formatLocalDateTime.js";
 import { BrandLoader } from "../../components/BrandLoader.js";
 
 const DEFAULT_PAGE_SIZE = DEFAULT_LIST_PAGE_SIZE;
-const ST = ["pending", "success", "failed"];
+const ST = ["pending", "success", "failed", "underpaid"];
 
 export default function MerchantTransactions() {
   const queryClient = useQueryClient();

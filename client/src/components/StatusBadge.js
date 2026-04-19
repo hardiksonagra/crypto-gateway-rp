@@ -7,6 +7,7 @@ export function StatusBadge({ status, className = "" }) {
   const cls =
     key === "success" || key === "completed" ? "badge-success" :
     key === "pending" ? "badge-pending" :
+    key === "underpaid" ? "badge-failed" :
     key === "failed" ? "badge-failed" :
     key === "processing" ? "badge-processing" :
     key === "active" ? "badge-active" :

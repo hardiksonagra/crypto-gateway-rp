@@ -225,7 +225,7 @@ router.get("/api/v1/admin/dashboard", async (req, res) => {
     ),
   ]);
 
-  /** @type {Map<string, { pending: number, success: number, failed: number }>} */
+  /** @type {Map<string, { pending: number, success: number, failed: number, underpaid: number }>} */
   const dailyMap = new Map();
   for (const row of dailyStatusRows) {
     const dayVal = row.day;
@@ -234,7 +234,7 @@ router.get("/api/v1/admin/dashboard", async (req, res) => {
         ? dayVal.toISOString().slice(0, 10)
         : String(dayVal).slice(0, 10);
     if (!dailyMap.has(key)) {
-      dailyMap.set(key, { pending: 0, success: 0, failed: 0 });
+      dailyMap.set(key, { pending: 0, success: 0, failed: 0, underpaid: 0 });
     }
     const bucket = dailyMap.get(key);
     const st = String(row.status);
@@ -242,11 +242,23 @@ router.get("/api/v1/admin/dashboard", async (req, res) => {
     if (st === "pending") bucket.pending = c;
     else if (st === "success") bucket.success = c;
     else if (st === "failed") bucket.failed = c;
+    else if (st === "underpaid") bucket.underpaid = c;
   }
 
   const transactions_daily_by_status = dayKeys.map((date) => {
-    const b = dailyMap.get(date) ?? { pending: 0, success: 0, failed: 0 };
-    return { date, pending: b.pending, success: b.success, failed: b.failed };
+    const b = dailyMap.get(date) ?? {
+      pending: 0,
+      success: 0,
+      failed: 0,
+      underpaid: 0,
+    };
+    return {
+      date,
+      pending: b.pending,
+      success: b.success,
+      failed: b.failed,
+      underpaid: b.underpaid,
+    };
   });
 
   res.json({

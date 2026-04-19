@@ -4,6 +4,7 @@ import QRCode from "react-qr-code";
 import { apiUrl } from "../api";
 import { BrandMark } from "../components/BrandMark.js";
 import { BrandLoader } from "../components/BrandLoader.js";
+import { paymentQrEncodedValue } from "../lib/payment-qr-uri.js";
 
 /**
  * @param {number} totalSec
@@ -23,6 +24,7 @@ export default function PaymentPage() {
   const [remainSec, setRemainSec] = useState(null);
   const [copyState, setCopyState] = useState("idle");
   const [paidNoReturnUrl, setPaidNoReturnUrl] = useState(false);
+  const [underpaidNotice, setUnderpaidNotice] = useState(false);
   const didRedirect = useRef(false);
   const redirectUrlRef = useRef(null);
 
@@ -104,10 +106,14 @@ export default function PaymentPage() {
         if (!res.ok) return;
         const data = await res.json().catch(() => ({}));
         if (cancelled || didRedirect.current) return;
-        if (!data?.has_successful_deposit) return;
-        const url = redirectUrlRef.current;
-        if (url) assignRedirect(url);
-        else setPaidNoReturnUrl(true);
+        if (data?.has_successful_deposit) {
+          setUnderpaidNotice(false);
+          const url = redirectUrlRef.current;
+          if (url) assignRedirect(url);
+          else setPaidNoReturnUrl(true);
+          return;
+        }
+        if (data?.has_underpaid_deposit) setUnderpaidNotice(true);
       } catch {
         /* ignore transient errors */
       }
@@ -175,10 +181,39 @@ export default function PaymentPage() {
   }
 
   const { address, chain, currency, network } = session;
+  const expectedDecimal =
+    typeof session?.expected_amount_decimal === "string" &&
+    session.expected_amount_decimal.trim()
+      ? session.expected_amount_decimal.trim()
+      : null;
+
+  const qrPayload = useMemo(
+    () =>
+      paymentQrEncodedValue({
+        address,
+        chain,
+        currency,
+        network,
+        expected_amount_atomic: session?.expected_amount_atomic,
+      }),
+    [address, chain, currency, network, session?.expected_amount_atomic],
+  );
+  const qrPrefillsAmount = qrPayload !== address;
 
   return (
     <div className="mesh-bg flex min-h-screen flex-col items-center justify-center px-4 py-10">
       <div className="glass w-full max-w-lg rounded-2xl p-6 sm:p-8">
+        {underpaidNotice && !paidNoReturnUrl && (
+          <div className="mb-4 rounded-xl border border-rose-400/35 bg-rose-500/10 px-4 py-3 text-center">
+            <p className="text-sm font-medium text-rose-100/95">
+              Insufficient amount received
+            </p>
+            <p className="mt-1 text-xs text-white/55">
+              Send the remaining {currency} to this same address on {network}{" "}
+              so the total matches the amount due.
+            </p>
+          </div>
+        )}
         {paidNoReturnUrl && (
           <div className="mb-4 rounded-xl border border-emerald-400/30 bg-emerald-500/10 px-4 py-3 text-center">
             <p className="text-sm font-medium text-emerald-100/95">
@@ -208,6 +243,11 @@ export default function PaymentPage() {
           <p className="mt-1 text-sm text-white/50">
             {network} · {chain}
           </p>
+          {expectedDecimal != null && (
+            <p className="mt-4 rounded-xl border border-sky-400/25 bg-sky-500/10 px-4 py-3 font-display text-sm font-semibold tracking-wide text-sky-100/95">
+              Amount due: {expectedDecimal} {currency}
+            </p>
+          )}
         </div>
 
         {showTimer && (
@@ -251,8 +291,15 @@ export default function PaymentPage() {
                 : "Copy address"}
           </button>
           <div className="rounded-2xl border border-white/10 bg-white p-3">
-            <QRCode value={address} size={200} level="M" />
+            <QRCode value={qrPayload} size={200} level="M" />
           </div>
+          {qrPrefillsAmount ? (
+            <p className="max-w-sm text-center text-[11px] leading-relaxed text-white/40">
+              This QR may pre-fill the amount in compatible wallets (EVM: EIP-681;
+              TRON: common Tron URI). If your app opens without the amount, send
+              manually to the address above.
+            </p>
+          ) : null}
         </div>
 
         <p className="mt-8 text-center text-xs text-white/35">
