@@ -27,6 +27,10 @@ function DetailRow(label, value) {
  * @property {number} token_decimals
  * @property {string} amount
  * @property {string} [amount_decimal]
+ * @property {string | null} [requested_amount_atomic]
+ * @property {string | null} [requested_amount_decimal]
+ * @property {string} [received_amount_atomic]
+ * @property {string} [received_amount_decimal]
  * @property {number} confirmations
  * @property {string} from_address
  * @property {string} to_address
@@ -110,10 +114,25 @@ export default function TransactionDetailModal({
             {DetailRow("Token", t.token_symbol)}
             {DetailRow("Token decimals", t.token_decimals)}
             {DetailRow(
-              "Amount (display)",
-              t.amount_decimal ?? formatTokenAmount(t.amount, t.token_decimals),
+              "Requested amount (checkout)",
+              t.requested_amount_decimal != null
+                ? `${t.requested_amount_decimal} ${t.token_symbol}`
+                : null,
             )}
-            {DetailRow("Amount (raw / smallest units)", t.amount)}
+            {DetailRow(
+              "Requested amount (raw)",
+              t.requested_amount_atomic ?? null,
+            )}
+            {DetailRow(
+              "Received amount (on-chain)",
+              t.received_amount_decimal ??
+                t.amount_decimal ??
+                formatTokenAmount(t.amount, t.token_decimals),
+            )}
+            {DetailRow(
+              "Received amount (raw)",
+              t.received_amount_atomic ?? t.amount,
+            )}
             {DetailRow("Confirmations", t.confirmations)}
             {DetailRow("From address", t.from_address)}
             {DetailRow("To address", t.to_address)}

@@ -21,7 +21,7 @@ import { formatLocalDateTime } from "../../lib/formatLocalDateTime.js";
 import { BrandLoader } from "../../components/BrandLoader.js";
 
 const DEFAULT_PAGE_SIZE = DEFAULT_LIST_PAGE_SIZE;
-const ST = ["pending", "success", "failed", "underpaid"];
+const ST = ["created", "pending", "success", "failed", "underpaid"];
 
 export default function MerchantTransactions() {
   const queryClient = useQueryClient();
@@ -413,7 +413,7 @@ export default function MerchantTransactions() {
 
       <div className="mt-10 space-y-4">
         <div className="data-table-surface">
-          <table className="data-table min-w-[960px]">
+          <table className="data-table min-w-[1080px]">
             <thead>
               <tr>
                 <th>Transaction ID</th>
@@ -422,21 +422,22 @@ export default function MerchantTransactions() {
                 <th>User</th>
                 <th>Chain</th>
                 <th>Token</th>
-                <th>Amount</th>
+                <th>Requested</th>
+                <th>Received</th>
                 <th>Status</th>
               </tr>
             </thead>
             <tbody>
               {res.isLoading ? (
                 <tr>
-                  <td colSpan={8} className="!py-8">
+                  <td colSpan={9} className="!py-8">
                     <BrandLoader variant="inline" title="" subtitle="Loading…" />
                   </td>
                 </tr>
               ) : null}
               {showEmpty ? (
                 <tr>
-                  <td colSpan={8} className="!py-12 text-center text-sm text-white/45">
+                  <td colSpan={9} className="!py-12 text-center text-sm text-white/45">
                     No record found.
                   </td>
                 </tr>
@@ -467,6 +468,22 @@ export default function MerchantTransactions() {
                     <td className="max-w-[120px] truncate font-mono text-xs">{t.external_user_id}</td>
                     <td>{t.chain}</td>
                     <td>{t.token_symbol}</td>
+                    <td className="font-mono text-xs">
+                      {t.requested_amount_decimal != null ? (
+                        <>
+                          <span className="text-white/90">
+                            {t.requested_amount_decimal} {t.token_symbol}
+                          </span>
+                          {t.requested_amount_atomic ? (
+                            <span className="mt-0.5 block text-[10px] text-white/35">
+                              raw {t.requested_amount_atomic}
+                            </span>
+                          ) : null}
+                        </>
+                      ) : (
+                        <span className="text-white/35">—</span>
+                      )}
+                    </td>
                     <td className="font-mono text-xs">
                       <span className="text-white/90">
                         {formatTokenAmount(t.amount, t.token_decimals)}

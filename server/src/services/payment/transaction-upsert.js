@@ -236,6 +236,17 @@ export async function upsertIncomingTransaction(input) {
     }
   }
 
+  if (row.depositSessionKey) {
+    await prisma.transaction.deleteMany({
+      where: {
+        walletId: row.walletId,
+        depositSessionKey: row.depositSessionKey,
+        status: TxStatus.created,
+        ...ACTIVE,
+      },
+    });
+  }
+
   if (
     workerRailMetricsEnabled() &&
     input.currency != null &&

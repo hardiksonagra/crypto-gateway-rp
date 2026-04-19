@@ -1,6 +1,7 @@
 import { TxStatus } from "@prisma/client";
 import { ACTIVE } from "../lib/active-row.js";
 import { prisma } from "../lib/prisma.js";
+import { prismaClientKnowsTxStatusUnderpaid } from "../lib/prisma-tx-status.js";
 import {
   resolveAdminInternalId,
   resolveMerchantInternalId,
@@ -25,6 +26,9 @@ function sumTxAmounts(rows) {
 }
 
 /**
+ * Unsettled on-chain credits for settlement: `success` and fixed-amount `underpaid`
+ * (same `amount` as received; excluded once `merchant_settlement_id` is set).
+ *
  * @param {string | number} merchantId
  * @param {MerchantGatewayEnv} environment
  * @param {import("@prisma/client").Chain} chain
@@ -47,20 +51,60 @@ export async function loadUnsettledSuccessTransactions(
       ? new Date(Date.now() - periodDays * 86_400_000)
       : null;
 
-  return txc.transaction.findMany({
-    where: {
-      ...ACTIVE,
-      status: TxStatus.success,
-      merchantSettlementId: null,
-      chain,
-      tokenSymbol,
-      tokenDecimals,
-      wallet: { is: { merchantId, environment, ...ACTIVE } },
-      ...(cutoff ? { createdAt: { lt: cutoff } } : {}),
-    },
-    select: { id: true, amount: true, createdAt: true },
-    orderBy: { createdAt: "asc" },
-  });
+  if (prismaClientKnowsTxStatusUnderpaid()) {
+    return txc.transaction.findMany({
+      where: {
+        ...ACTIVE,
+        status: { in: [TxStatus.success, TxStatus.underpaid] },
+        merchantSettlementId: null,
+        chain,
+        tokenSymbol,
+        tokenDecimals,
+        wallet: { is: { merchantId, environment, ...ACTIVE } },
+        ...(cutoff ? { createdAt: { lt: cutoff } } : {}),
+      },
+      select: { id: true, amount: true, createdAt: true },
+      orderBy: { createdAt: "asc" },
+    });
+  }
+
+  /** @type {{ id: number, amount: unknown, createdAt: Date }[]} */
+  const rows = cutoff
+    ? await txc.$queryRaw`
+        SELECT t.id, t.amount::text AS amount, t.created_at AS "createdAt"
+        FROM transactions t
+        INNER JOIN wallets w ON w.id = t.wallet_id AND w.deleted_at IS NULL
+        WHERE t.deleted_at IS NULL
+          AND (t.status)::text IN ('success', 'underpaid')
+          AND t.merchant_settlement_id IS NULL
+          AND w.merchant_id = ${merchantId}
+          AND w.environment = ${environment}::"MerchantGatewayEnv"
+          AND t.chain = ${chain}::"Chain"
+          AND t.token_symbol = ${tokenSymbol}
+          AND t.token_decimals = ${tokenDecimals}
+          AND t.created_at < ${cutoff}
+        ORDER BY t.created_at ASC
+      `
+    : await txc.$queryRaw`
+        SELECT t.id, t.amount::text AS amount, t.created_at AS "createdAt"
+        FROM transactions t
+        INNER JOIN wallets w ON w.id = t.wallet_id AND w.deleted_at IS NULL
+        WHERE t.deleted_at IS NULL
+          AND (t.status)::text IN ('success', 'underpaid')
+          AND t.merchant_settlement_id IS NULL
+          AND w.merchant_id = ${merchantId}
+          AND w.environment = ${environment}::"MerchantGatewayEnv"
+          AND t.chain = ${chain}::"Chain"
+          AND t.token_symbol = ${tokenSymbol}
+          AND t.token_decimals = ${tokenDecimals}
+        ORDER BY t.created_at ASC
+      `;
+
+  return rows.map((r) => ({
+    id: r.id,
+    amount: String(r.amount),
+    createdAt: r.createdAt,
+  }));
 }
 
 /**
@@ -144,7 +188,7 @@ export async function buildAllPendingPreviews(merchantId, environment, merchantR
       SELECT t.chain::text AS chain, t.token_symbol AS "tokenSymbol", t.token_decimals AS "tokenDecimals"
       FROM transactions t
       INNER JOIN wallets w ON w.id = t.wallet_id
-      WHERE t.status = 'success'::"TxStatus"
+      WHERE (t.status)::text IN ('success', 'underpaid')
         AND t.merchant_settlement_id IS NULL
         AND t.deleted_at IS NULL
         AND w.deleted_at IS NULL
@@ -158,7 +202,7 @@ export async function buildAllPendingPreviews(merchantId, environment, merchantR
       SELECT t.chain::text AS chain, t.token_symbol AS "tokenSymbol", t.token_decimals AS "tokenDecimals"
       FROM transactions t
       INNER JOIN wallets w ON w.id = t.wallet_id
-      WHERE t.status = 'success'::"TxStatus"
+      WHERE (t.status)::text IN ('success', 'underpaid')
         AND t.merchant_settlement_id IS NULL
         AND t.deleted_at IS NULL
         AND w.deleted_at IS NULL

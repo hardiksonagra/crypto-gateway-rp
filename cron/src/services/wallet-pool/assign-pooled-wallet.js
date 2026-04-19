@@ -1,5 +1,6 @@
 import { randomBytes } from "crypto";
-import { Chain } from "@prisma/client";
+import { Chain, TxStatus } from "@prisma/client";
+import { tokenDecimalsForGatewayRail } from "crypto-payment-gateway/src/lib/gateway-expected-amount.js";
 import { generateGatewayReferenceTransactionId } from "crypto-payment-gateway/src/lib/gateway-reference-transaction-id.js";
 import { env } from "crypto-payment-gateway/src/config/env.js";
 import { re } from "crypto-payment-gateway/src/config/runtime-env.js";
@@ -186,6 +187,33 @@ export async function assignPooledWalletForDeposit(tx, p) {
     });
   } catch (e) {
     if (!isWalletAssignmentTableMissingError(e)) throw e;
+  }
+
+  const expAtomic =
+    typeof p.expectedAmountAtomic === "string" &&
+    /^\d+$/.test(p.expectedAmountAtomic.trim())
+      ? p.expectedAmountAtomic.trim()
+      : null;
+  if (expAtomic) {
+    const dec = tokenDecimalsForGatewayRail(currency, network) ?? 6;
+    await tx.transaction.create({
+      data: {
+        walletId: wallet.id,
+        payerUserId: userId,
+        txHash: `gateway-created:${depositSessionKey}`,
+        fromAddress: "gateway:pending",
+        toAddress: wallet.address,
+        amount: "0",
+        tokenSymbol: currency,
+        chain,
+        status: TxStatus.created,
+        confirmations: 0,
+        logIndex: -2,
+        tokenDecimals: dec,
+        depositSessionKey,
+        referenceTransactionId: referenceTransactionId || null,
+      },
+    });
   }
 
   return { wallet, assignmentSource: source, depositSessionKey };

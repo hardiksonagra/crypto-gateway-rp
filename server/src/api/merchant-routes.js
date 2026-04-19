@@ -7,6 +7,10 @@ import {
 } from "@prisma/client";
 import { formatAtomicAmountString } from "../lib/format-atomic-amount.js";
 import {
+  loadExpectedAtomicByWalletSessionForTransactions,
+  requestedAmountFieldsForTransaction,
+} from "../lib/transaction-requested-amounts.js";
+import {
   reactivateWalletDepositScan,
   walletScanTtlMinutes,
 } from "../lib/wallet-scan.js";
@@ -747,6 +751,9 @@ router.get("/api/v1/merchant/transactions", async (req, res) => {
     }),
   ]);
 
+  const expectedByKey =
+    await loadExpectedAtomicByWalletSessionForTransactions(rows);
+
   res.json({
     page,
     pageSize,
@@ -762,6 +769,12 @@ router.get("/api/v1/merchant/transactions", async (req, res) => {
       token_decimals: t.tokenDecimals,
       amount: t.amount,
       amount_decimal: formatAtomicAmountString(t.amount, t.tokenDecimals),
+      received_amount_atomic: t.amount,
+      received_amount_decimal: formatAtomicAmountString(
+        t.amount,
+        t.tokenDecimals,
+      ),
+      ...requestedAmountFieldsForTransaction(t, expectedByKey),
       confirmations: t.confirmations,
       from_address: t.fromAddress,
       to_address: t.toAddress,

@@ -13,6 +13,10 @@ import {
 } from "../constants/portal-role.js";
 import { formatAtomicAmountString } from "../lib/format-atomic-amount.js";
 import {
+  loadExpectedAtomicByWalletSessionForTransactions,
+  requestedAmountFieldsForTransaction,
+} from "../lib/transaction-requested-amounts.js";
+import {
   reactivateWalletDepositScan,
   walletScanTtlMinutes,
 } from "../lib/wallet-scan.js";
@@ -236,10 +240,12 @@ router.get("/api/v1/admin/dashboard", async (req, res) => {
     if (!dailyMap.has(key)) {
       dailyMap.set(key, { pending: 0, success: 0, failed: 0, underpaid: 0 });
     }
-    const bucket = dailyMap.get(key);
+    const bucket = /** @type {{ pending: number, success: number, failed: number, underpaid: number }} */ (
+      dailyMap.get(key)
+    );
     const st = String(row.status);
     const c = Number(row.cnt);
-    if (st === "pending") bucket.pending = c;
+    if (st === "pending" || st === "created") bucket.pending += c;
     else if (st === "success") bucket.success = c;
     else if (st === "failed") bucket.failed = c;
     else if (st === "underpaid") bucket.underpaid = c;
@@ -1408,6 +1414,9 @@ router.get("/api/v1/admin/transactions", async (req, res) => {
     }),
   ]);
 
+  const expectedByKey =
+    await loadExpectedAtomicByWalletSessionForTransactions(rows);
+
   res.json({
     page,
     pageSize,
@@ -1426,6 +1435,12 @@ router.get("/api/v1/admin/transactions", async (req, res) => {
         token_decimals: t.tokenDecimals,
         amount: t.amount,
         amount_decimal: formatAtomicAmountString(t.amount, t.tokenDecimals),
+        received_amount_atomic: t.amount,
+        received_amount_decimal: formatAtomicAmountString(
+          t.amount,
+          t.tokenDecimals,
+        ),
+        ...requestedAmountFieldsForTransaction(t, expectedByKey),
         confirmations: t.confirmations,
         from_address: t.fromAddress,
         to_address: t.toAddress,

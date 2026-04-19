@@ -562,14 +562,13 @@ X-Token: <base64 from buildXToken on canonical JSON of:
             <span className="font-mono text-white/60">amount</span> (optional) —
             fixed total for this checkout: either a <strong>decimal</strong>{" "}
             token string (e.g. <span className="font-mono">&quot;10.50&quot;</span>
-            ) or <strong>digits-only smallest units</strong> (same as on-chain{" "}
-            <span className="font-mono">amount</span>). Omitted = pay any amount.
-            Decimal parsing is supported when the gateway knows decimals for the
+            ) or <strong>digits-only whole token units</strong> (e.g.{" "}
+            <span className="font-mono">&quot;11&quot;</span> = 11 USDT). Omitted
+            = pay any amount. Supported when the gateway knows decimals for the
             rail (today: <span className="font-mono">USDT</span> on{" "}
             <span className="font-mono">TRC20</span>,{" "}
             <span className="font-mono">ERC20</span>,{" "}
-            <span className="font-mono">BEP20</span>). Otherwise use atomic string
-            or omit.
+            <span className="font-mono">BEP20</span>).
           </li>
           <li>
             Do not send <span className="font-mono">api_key</span> when using
@@ -610,7 +609,11 @@ X-Token: <base64 from buildXToken on canonical JSON of body>
 }`}</Pre>
         <p className="mt-2 text-xs text-white/45">
           <span className="font-mono">expected_amount_*</span> appears only when
-          you sent a valid <span className="font-mono">amount</span>.
+          you sent a valid <span className="font-mono">amount</span>. A
+          placeholder <span className="font-mono">transactions</span> row with{" "}
+          <span className="font-mono">status: &quot;created&quot;</span> is also
+          written (removed when the first on-chain deposit row exists for that
+          checkout session).
         </p>
         <p className="mt-4 text-xs text-white/45">
           Errors: <span className="font-mono">400</span> missing fields,{" "}

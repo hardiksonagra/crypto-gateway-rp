@@ -24,6 +24,8 @@ enum TxStatus {
   success
   failed
   underpaid
+  /// Checkout opened with optional `amount`; removed when first on-chain row exists for the session.
+  created
 }
 
 enum WithdrawalStatus {

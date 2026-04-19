@@ -188,6 +188,23 @@ export default function PaymentPage() {
     }
   }, [session?.address]);
 
+  const qrPayload = useMemo(() => {
+    if (!session || !isValidPaymentSessionPayload(session)) return "";
+    return paymentQrEncodedValue({
+      address: session.address,
+      chain: session.chain,
+      currency: session.currency,
+      network: session.network,
+      expected_amount_atomic: session.expected_amount_atomic,
+      expected_amount_decimal: session.expected_amount_decimal,
+    });
+  }, [session]);
+
+  const qrPrefillsAmount =
+    Boolean(session) &&
+    isValidPaymentSessionPayload(session) &&
+    qrPayload !== String(session.address ?? "").trim();
+
   if (loading) {
     return (
       <div className="mesh-bg flex min-h-screen items-center justify-center px-4">
@@ -222,19 +239,6 @@ export default function PaymentPage() {
     session.expected_amount_decimal.trim()
       ? session.expected_amount_decimal.trim()
       : null;
-
-  const qrPayload = useMemo(
-    () =>
-      paymentQrEncodedValue({
-        address,
-        chain,
-        currency,
-        network,
-        expected_amount_atomic: session?.expected_amount_atomic,
-      }),
-    [address, chain, currency, network, session?.expected_amount_atomic],
-  );
-  const qrPrefillsAmount = qrPayload !== address;
 
   return (
     <div className="mesh-bg flex min-h-screen flex-col items-center justify-center px-4 py-10">
@@ -280,8 +284,9 @@ export default function PaymentPage() {
             {network} · {chain}
           </p>
           {expectedDecimal != null && (
-            <p className="mt-4 rounded-xl border border-sky-400/25 bg-sky-500/10 px-4 py-3 font-display text-sm font-semibold tracking-wide text-sky-100/95">
-              Amount due: {expectedDecimal} {currency}
+            <p className="mt-4 rounded-xl border border-sky-400/25 bg-sky-500/10 px-4 py-3 font-sans text-sm font-semibold tracking-wide text-sky-100/95">
+              Amount due:{" "}
+              <span className="tabular-nums">{expectedDecimal}</span> {currency}
             </p>
           )}
         </div>
@@ -331,9 +336,11 @@ export default function PaymentPage() {
           </div>
           {qrPrefillsAmount ? (
             <p className="max-w-sm text-center text-[11px] leading-relaxed text-white/40">
-              This QR may pre-fill the amount in compatible wallets (EVM: EIP-681;
-              TRON: common Tron URI). If your app opens without the amount, send
-              manually to the address above.
+              This QR may pre-fill the amount in compatible wallets (EVM: EIP-681
+              with uint256 smallest units; TRON: <span className="font-mono">tron:</span>{" "}
+              URI with a human decimal <span className="font-mono">amount</span> and
+              USDT contract). If your app opens without the amount, send manually to
+              the address above.
             </p>
           ) : null}
         </div>

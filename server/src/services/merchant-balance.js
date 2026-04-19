@@ -35,7 +35,7 @@ export async function computeMerchantBalances(
       SUM(t.amount::numeric)::text AS "sumAmount"
     FROM "transactions" t
     INNER JOIN "wallets" w ON w.id = t.wallet_id
-    WHERE t.status = 'success'
+    WHERE (t.status)::text IN ('success', 'underpaid')
       AND t.deleted_at IS NULL
       AND w.deleted_at IS NULL
       AND w.merchant_id = ${merchantId}
@@ -138,7 +138,7 @@ export async function merchantBalanceForAsset(merchantOpaqueId, chain, tokenSymb
       SELECT COALESCE(SUM(t.amount::numeric), 0)::text AS s
       FROM "transactions" t
       INNER JOIN "wallets" w ON w.id = t.wallet_id
-      WHERE t.status = 'success'
+      WHERE (t.status)::text IN ('success', 'underpaid')
         AND w.merchant_id = ${merchantId}
         AND w.environment = ${MerchantGatewayEnv.live}::"MerchantGatewayEnv"
         AND t.chain = ${chain}::"Chain"

@@ -1,5 +1,6 @@
 /**
- * Optional `amount` on `POST /api/v1/gateway/deposit-address` (smallest-unit integer string, or decimal).
+ * Optional `amount` on `POST /api/v1/gateway/deposit-address`:
+ * decimal token string (e.g. `10.50`), or digits-only **whole USDT units** (e.g. `11` = 11 USDT).
  */
 
 /**
@@ -37,7 +38,9 @@ function decimalPartsToAtomic(whole, frac, tokenDecimals) {
 }
 
 /**
- * Optional gateway `amount`: digits-only = atomic smallest units; contains `.` = decimal token amount.
+ * Optional gateway `amount`:
+ * - Contains `.` → decimal token amount (e.g. `10.50` USDT).
+ * - Digits only → **whole token units** (e.g. `11` = 11.000000 USDT), scaled by `tokenDecimals`.
  *
  * @param {unknown} raw
  * @param {number} tokenDecimals
@@ -52,12 +55,16 @@ export function parseOptionalGatewayDepositAmount(raw, tokenDecimals) {
 
   if (!s.includes(".")) {
     if (!/^\d+$/.test(s)) return { ok: false, error: "amount_invalid" };
+    const stripped = s.replace(/^0+/, "") || "0";
+    if (stripped === "0") return { ok: false, error: "amount_must_be_positive" };
     try {
-      const n = BigInt(s);
-      if (n <= 0n) return { ok: false, error: "amount_must_be_positive" };
+      const wholeUnits = BigInt(stripped);
+      const scale = 10n ** BigInt(dec);
+      const atomic = wholeUnits * scale;
+      if (atomic <= 0n) return { ok: false, error: "amount_must_be_positive" };
       const maxReasonable = 10n ** 24n;
-      if (n > maxReasonable) return { ok: false, error: "amount_too_large" };
-      return { ok: true, atomic: s };
+      if (atomic > maxReasonable) return { ok: false, error: "amount_too_large" };
+      return { ok: true, atomic: atomic.toString() };
     } catch {
       return { ok: false, error: "amount_invalid" };
     }

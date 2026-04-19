@@ -237,7 +237,7 @@ export const adminTransactionsFilterSchema = yup.object({
   chain: chainFilterField,
   status: yup
     .string()
-    .oneOf(["", "pending", "success", "failed", "underpaid"]),
+    .oneOf(["", "created", "pending", "success", "failed", "underpaid"]),
   token_symbol: yup.string(),
   address: yup.string(),
 });
@@ -247,7 +247,7 @@ export const merchantDetailTransactionsFilterSchema = yup.object({
   chain: chainFilterField,
   status: yup
     .string()
-    .oneOf(["", "pending", "success", "failed", "underpaid"]),
+    .oneOf(["", "created", "pending", "success", "failed", "underpaid"]),
   token_symbol: yup.string(),
   address: yup.string(),
   transaction_id: yup.string(),
@@ -293,7 +293,7 @@ export const merchantTransactionsFilterSchema = yup.object({
   chain: chainFilterField,
   status: yup
     .string()
-    .oneOf(["", "pending", "success", "failed", "underpaid"]),
+    .oneOf(["", "created", "pending", "success", "failed", "underpaid"]),
   token_symbol: yup.string(),
   external_user_id: yup.string(),
   transaction_id: yup.string(),

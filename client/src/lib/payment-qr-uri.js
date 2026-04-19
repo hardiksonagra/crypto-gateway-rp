@@ -3,7 +3,9 @@
  * wallet payment URI where supported; otherwise return the raw deposit address.
  *
  * EVM: EIP-681 style `ethereum:token@chainId/transfer?address=recipient&uint256=amount`.
- * TRON: `tron:recipient?amount=atomic&token=USDT_CONTRACT` (best-effort; wallets vary).
+ * TRON: `tron:recipient?amount=<human decimal>&token=USDT_CONTRACT` — many wallets
+ * show the `amount` query raw in the send form; we pass a human decimal (e.g. `10.5`)
+ * derived from 6dp atomic (`10500000`), not the integer string, while `token=` pins USDT.
  */
 
 /** USDT TRC20 (mainnet) contract base58 */
@@ -62,11 +64,57 @@ function eip681Erc20Transfer(p) {
  * @param {string} amountAtomic
  * @returns {string | null}
  */
-function tronUsdtPaymentUri(recipientBase58, amountAtomic) {
+const USDT_TRC20_DECIMALS = 6;
+
+/**
+ * Smallest-unit string → human decimal (matches gateway `formatAtomicAmountString` behaviour).
+ * @param {string} atomicStr
+ * @param {number} tokenDecimals
+ * @returns {string | null}
+ */
+function atomicToHumanDecimalString(atomicStr, tokenDecimals) {
+  const dec = Math.min(Math.max(0, Math.floor(Number(tokenDecimals))), 36);
+  try {
+    const n = BigInt(String(atomicStr).trim());
+    if (n <= 0n) return null;
+    if (dec === 0) return n.toString();
+    const d = 10n ** BigInt(dec);
+    const whole = n / d;
+    const frac = n % d;
+    const fs = frac.toString().padStart(dec, "0").replace(/0+$/, "");
+    return fs ? `${whole}.${fs}` : whole.toString();
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * @param {string | null | undefined} s
+ * @returns {boolean}
+ */
+function isPositiveDecimalAmountString(s) {
+  const t = String(s ?? "").trim();
+  if (!/^\d+(\.\d+)?$/.test(t)) return false;
+  const n = Number(t);
+  return Number.isFinite(n) && n > 0;
+}
+
+/**
+ * @param {string} recipientBase58
+ * @param {string} amountAtomic
+ * @param {string | null | undefined} amountDecimalHint — from API `expected_amount_decimal` when present
+ * @returns {string | null}
+ */
+function tronUsdtPaymentUri(recipientBase58, amountAtomic, amountDecimalHint) {
   const to = String(recipientBase58 ?? "").trim();
   if (!to || !/^T[1-9A-HJ-NP-Za-km-z]{33}$/.test(to)) return null;
   if (!/^\d+$/.test(amountAtomic) || amountAtomic === "0") return null;
-  return `tron:${to}?amount=${amountAtomic}&token=${USDT_TRC20_CONTRACT}`;
+  const human =
+    isPositiveDecimalAmountString(amountDecimalHint)
+      ? String(amountDecimalHint).trim()
+      : atomicToHumanDecimalString(amountAtomic, USDT_TRC20_DECIMALS);
+  if (!human) return null;
+  return `tron:${to}?amount=${encodeURIComponent(human)}&token=${USDT_TRC20_CONTRACT}`;
 }
 
 /**
@@ -76,6 +124,7 @@ function tronUsdtPaymentUri(recipientBase58, amountAtomic) {
  *   currency: string,
  *   network: string,
  *   expected_amount_atomic?: string | null,
+ *   expected_amount_decimal?: string | null,
  * }} session
  * @returns {string}
  */
@@ -96,7 +145,13 @@ export function paymentQrEncodedValue(session) {
   if (currency !== "USDT") return address;
 
   if (network === "TRC20" && chain === "TRON") {
-    return tronUsdtPaymentUri(address, atomic) ?? address;
+    return (
+      tronUsdtPaymentUri(
+        address,
+        atomic,
+        session.expected_amount_decimal,
+      ) ?? address
+    );
   }
 
   /** @type {Record<string, { chainId: number, token: string }>} */

@@ -170,7 +170,7 @@ POST /api/v1/gateway/deposit-address
 | `external_user_id` | Yes | Stable unique id of the payer on **your** system. |
 | `currency` | No | e.g. `USDT`. If omitted, merchant **default** pair is used. |
 | `network` | No | e.g. `TRC20`. If omitted, merchant **default** pair is used. |
-| `amount` | No | **Optional fixed checkout amount.** Either a **decimal token amount** (e.g. `"10.50"`) or a **digits-only string in smallest units** (same as on-chain `amount`). When set, the gateway stores it for this payment session, shows it on the hosted checkout page (`payment_link`), and treats the deposit as **underpaid** until the **sum of on-chain credits for this checkout session** reaches the expected total (within a one–smallest-unit tolerance). Omit `amount` for the classic “pay any amount” flow. Supported for rails where the gateway knows token decimals (today: **USDT** on **TRC20**, **ERC20**, **BEP20**). |
+| `amount` | No | **Optional fixed checkout amount.** Either a **decimal token amount** (e.g. `"10.50"`) or **digits-only whole token units** (e.g. `"11"` = 11 USDT, scaled by the rail’s decimals). When set, the gateway stores it for this payment session, shows it on the hosted checkout page (`payment_link`), and treats the deposit as **underpaid** until the **sum of on-chain credits for this checkout session** reaches the expected total (within a one–smallest-unit tolerance). Omit `amount` for the classic “pay any amount” flow. Supported for rails where the gateway knows token decimals (today: **USDT** on **TRC20**, **ERC20**, **BEP20**). |
 | `transaction_id` | No | Your order / checkout id (stored on new deposit rows and webhooks as `merchant_transaction_id`). Max 256 characters. |
 | `redirect_url` | No | After a **successful** full payment, the hosted checkout can redirect the browser here (HTTPS allowlist). |
 | `gateway_environment` | No | **Omit** to use the merchant portal **Live/Sandbox** setting (Settings). Optional override only when live and sandbox share one secret and you need the other environment. |
@@ -178,7 +178,7 @@ POST /api/v1/gateway/deposit-address
 
 **200** — always includes `address`, `chain`, `currency`, `network`, numeric `wallet_id`, `user_id`, `merchant_id`, `created_new_user`, `gateway_environment`, `payment_link` (hosted checkout URL for this assignment), `deposit_scan_expires_at`, `deposit_scan_ttl_minutes`, `reservation_expires_at`, and `redirect_url` (echo, may be `null`).
 
-When `amount` was sent and parsed, the response also includes `expected_amount_atomic` and `expected_amount_decimal` (human-readable for display).
+When `amount` was sent and parsed, the response also includes `expected_amount_atomic` and `expected_amount_decimal` (human-readable for display). The gateway also inserts a **`transactions` row** with `status: "created"` (placeholder `amount` `0`, synthetic `tx_hash` until the first on-chain credit for that checkout session arrives, then that placeholder is removed).
 
 ```json
 {

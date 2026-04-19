@@ -84,7 +84,7 @@ Content-Type: application/json
 | `external_user_id` | string | Yes      | Stable unique id of the payer on **your** system.                    |
 | `currency`         | string | No       | Upper-case token symbol (e.g. `USDT`). Defaults to merchant default. |
 | `network`          | string | No       | Network label (e.g. `TRC20`). Defaults to merchant default.          |
-| `amount`           | string | No       | Optional fixed total: decimal (e.g. `10.5`) or digits-only **atomic** string. USDT on TRC20/ERC20/BEP20 only for decimal rules; see MERCHANT_API_INTEGRATION.md section 5.1. |
+| `amount`           | string | No       | Optional fixed total: decimal (e.g. `10.5`) or digits-only **whole USDT** (e.g. `11` = 11 USDT). USDT on TRC20/ERC20/BEP20; see MERCHANT_API_INTEGRATION.md section 5.1. |
 | `transaction_id`   | string | No       | Your checkout / order id (max 256 chars); echoed as `merchant_transaction_id` on webhooks. |
 | `redirect_url`     | string | No       | HTTPS return URL after full payment on hosted checkout.              |
 | (headers)          |        | Preferred | `X-Token`, `X-Merchant-Id` — see MERCHANT_API_INTEGRATION.md §3.1. |

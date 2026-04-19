@@ -31,7 +31,7 @@ import {
 import { useBreadcrumbExtras } from "../../contexts/BreadcrumbExtrasContext.js";
 
 const DEFAULT_PAGE_SIZE = DEFAULT_LIST_PAGE_SIZE;
-const TX_STATUS_OPTIONS = ["pending", "success", "failed", "underpaid"];
+const TX_STATUS_OPTIONS = ["created", "pending", "success", "failed", "underpaid"];
 
 const MERCHANT_DETAIL_TABS = [
   { id: "details", label: "Details" },
