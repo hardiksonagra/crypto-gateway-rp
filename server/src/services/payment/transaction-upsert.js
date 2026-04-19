@@ -9,7 +9,14 @@
  * (TRON uses `log_index = -1` → one row per on-chain tx id on TRON).
  */
 import { Chain, MerchantGatewayEnv, TxStatus } from "@prisma/client";
-import { TX_STATUS_UNDERPAID } from "../../lib/prisma-tx-status.js";
+import {
+  prismaClientKnowsTxStatusUnderpaid,
+  TX_STATUS_UNDERPAID,
+} from "../../lib/prisma-tx-status.js";
+import {
+  promoteUnderpaidSessionToSuccessRaw,
+  upsertTransactionRowUnderpaidRaw,
+} from "../../lib/underpaid-prisma-raw.js";
 import { utils } from "tronweb";
 import { prisma } from "../../lib/prisma.js";
 import { ACTIVE } from "../../lib/active-row.js";
@@ -163,32 +170,44 @@ export async function upsertIncomingTransaction(input) {
     }
   }
 
-  const row = await prisma.transaction.upsert({
-    where: { tx_chain_log_unique: eventKey },
-    create: {
-      walletId: walletInternalId,
-      payerUserId: payerUserIdForCreate,
-      depositSessionKey: depositSessionKeyForCreate ?? undefined,
-      referenceTransactionId: referenceTransactionIdForCreate ?? undefined,
-      txHash: input.txHash,
-      fromAddress: input.fromAddress,
-      toAddress: input.toAddress,
-      amount: input.amount,
-      tokenSymbol: input.tokenSymbol,
-      tokenDecimals: input.tokenDecimals,
-      chain: input.chain,
-      status: nextStatus,
-      confirmations: input.confirmations,
-      blockNumber: input.blockNumber ?? undefined,
-      logIndex: input.logIndex,
-    },
-    update: {
-      confirmations: input.confirmations,
-      blockNumber: input.blockNumber ?? undefined,
-      status: nextStatus,
-      updatedAt: new Date(),
-    },
-  });
+  const useRawUnderpaidUpsert =
+    nextStatus === TX_STATUS_UNDERPAID &&
+    !prismaClientKnowsTxStatusUnderpaid();
+
+  const row = useRawUnderpaidUpsert
+    ? await upsertTransactionRowUnderpaidRaw(prisma, {
+        walletInternalId,
+        payerUserIdForCreate,
+        depositSessionKeyForCreate,
+        referenceTransactionIdForCreate,
+        input,
+      })
+    : await prisma.transaction.upsert({
+        where: { tx_chain_log_unique: eventKey },
+        create: {
+          walletId: walletInternalId,
+          payerUserId: payerUserIdForCreate,
+          depositSessionKey: depositSessionKeyForCreate ?? undefined,
+          referenceTransactionId: referenceTransactionIdForCreate ?? undefined,
+          txHash: input.txHash,
+          fromAddress: input.fromAddress,
+          toAddress: input.toAddress,
+          amount: input.amount,
+          tokenSymbol: input.tokenSymbol,
+          tokenDecimals: input.tokenDecimals,
+          chain: input.chain,
+          status: nextStatus,
+          confirmations: input.confirmations,
+          blockNumber: input.blockNumber ?? undefined,
+          logIndex: input.logIndex,
+        },
+        update: {
+          confirmations: input.confirmations,
+          blockNumber: input.blockNumber ?? undefined,
+          status: nextStatus,
+          updatedAt: new Date(),
+        },
+      });
 
   if (
     nextStatus === TxStatus.success &&
@@ -198,15 +217,23 @@ export async function upsertIncomingTransaction(input) {
       row.depositSessionKey,
     )) != null
   ) {
-    await prisma.transaction.updateMany({
-      where: {
+    if (prismaClientKnowsTxStatusUnderpaid()) {
+      await prisma.transaction.updateMany({
+        where: {
+          walletId: row.walletId,
+          depositSessionKey: row.depositSessionKey,
+          status: TxStatus.underpaid,
+          ...ACTIVE,
+        },
+        data: { status: TxStatus.success, updatedAt: new Date() },
+      });
+    } else {
+      await promoteUnderpaidSessionToSuccessRaw(prisma, {
         walletId: row.walletId,
         depositSessionKey: row.depositSessionKey,
-        status: TX_STATUS_UNDERPAID,
-        ...ACTIVE,
-      },
-      data: { status: TxStatus.success, updatedAt: new Date() },
-    });
+        now: new Date(),
+      });
+    }
   }
 
   if (

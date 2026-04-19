@@ -1,6 +1,10 @@
 import { Router } from "express";
 import { Chain, TxStatus } from "@prisma/client";
-import { TX_STATUS_UNDERPAID } from "../lib/prisma-tx-status.js";
+import { prismaClientKnowsTxStatusUnderpaid } from "../lib/prisma-tx-status.js";
+import {
+  findGatewayBlockingPendingCallbackRaw,
+  findGatewayPollUnderpaidRowRaw,
+} from "../lib/underpaid-prisma-raw.js";
 import { formatAtomicAmountString } from "../lib/format-atomic-amount.js";
 import {
   parseOptionalGatewayDepositAmount,
@@ -122,15 +126,20 @@ router.get("/api/v1/gateway/payment-session/:token/poll", async (req, res) => {
         },
         select: { id: true },
       });
-      underpaidRow = await prisma.transaction.findFirst({
-        where: {
-          walletId: wid,
-          status: TX_STATUS_UNDERPAID,
-          depositSessionKey: v.depositSessionKey,
-          ...ACTIVE,
-        },
-        select: { id: true },
-      });
+      underpaidRow = prismaClientKnowsTxStatusUnderpaid()
+        ? await prisma.transaction.findFirst({
+            where: {
+              walletId: wid,
+              status: TxStatus.underpaid,
+              depositSessionKey: v.depositSessionKey,
+              ...ACTIVE,
+            },
+            select: { id: true },
+          })
+        : await findGatewayPollUnderpaidRowRaw(prisma, {
+            walletId: wid,
+            depositSessionKey: v.depositSessionKey,
+          });
     } else {
       const since =
         v.linkIssuedAt != null ? new Date(v.linkIssuedAt * 1000) : null;
@@ -455,18 +464,25 @@ router.post("/api/v1/gateway/deposit-address", async (req, res) => {
     }
 
     if (String(merchant.callbackUrl ?? "").trim()) {
-      const blocking = await prisma.transaction.findFirst({
-        where: {
-          status: { in: ["success", TX_STATUS_UNDERPAID] },
-          callbackDeliveredAt: null,
-          /** After max auto attempts, allow new deposit addresses; merchant can fix webhook and resend later. */
-          callbackAttemptCount: { lt: MAX_AUTO_CALLBACK_ATTEMPTS },
-          payerUserId: u.id,
-          ...ACTIVE,
-          wallet: { merchantId: merchant.id, environment: gwEnv, ...ACTIVE },
-        },
-        select: { id: true },
-      });
+      const blocking = prismaClientKnowsTxStatusUnderpaid()
+        ? await prisma.transaction.findFirst({
+            where: {
+              status: { in: [TxStatus.success, TxStatus.underpaid] },
+              callbackDeliveredAt: null,
+              /** After max auto attempts, allow new deposit addresses; merchant can fix webhook and resend later. */
+              callbackAttemptCount: { lt: MAX_AUTO_CALLBACK_ATTEMPTS },
+              payerUserId: u.id,
+              ...ACTIVE,
+              wallet: { merchantId: merchant.id, environment: gwEnv, ...ACTIVE },
+            },
+            select: { id: true },
+          })
+        : await findGatewayBlockingPendingCallbackRaw(prisma, {
+            payerUserId: u.id,
+            merchantId: merchant.id,
+            gwEnv,
+            maxAttempts: MAX_AUTO_CALLBACK_ATTEMPTS,
+          });
       if (blocking) {
         auditGatewayApi(req, {
           action: "deposit_address",

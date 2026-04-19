@@ -1,6 +1,10 @@
 import axios from "axios";
 import { TxStatus } from "@prisma/client";
-import { TX_STATUS_UNDERPAID } from "../lib/prisma-tx-status.js";
+import {
+  prismaClientKnowsTxStatusUnderpaid,
+  TX_STATUS_UNDERPAID,
+} from "../lib/prisma-tx-status.js";
+import { claimUnderpaidWebhookAttemptRaw } from "../lib/underpaid-prisma-raw.js";
 import { formatAtomicAmountString } from "../lib/format-atomic-amount.js";
 import { ACTIVE } from "../lib/active-row.js";
 import { prisma } from "../lib/prisma.js";
@@ -265,21 +269,34 @@ export async function notifyPaymentUnderpaid(txId) {
   }
 
   const throttleSince = new Date(Date.now() - CALLBACK_RETRY_MIN_INTERVAL_MS);
-  const claimed = await prisma.transaction.updateMany({
-    where: {
-      id: tid,
-      ...ACTIVE,
-      status: TX_STATUS_UNDERPAID,
-      callbackDeliveredAt: null,
-      callbackAttemptCount: { lt: MAX_AUTO_CALLBACK_ATTEMPTS },
-      OR: [{ callbackAttemptCount: 0 }, { callbackLastAttemptAt: { lte: throttleSince } }],
-    },
-    data: {
-      callbackAttemptCount: { increment: 1 },
-      callbackLastAttemptAt: new Date(),
-    },
-  });
-  if (claimed.count === 0) {
+  const now = new Date();
+  const claimedCount = prismaClientKnowsTxStatusUnderpaid()
+    ? (
+        await prisma.transaction.updateMany({
+          where: {
+            id: tid,
+            ...ACTIVE,
+            status: TxStatus.underpaid,
+            callbackDeliveredAt: null,
+            callbackAttemptCount: { lt: MAX_AUTO_CALLBACK_ATTEMPTS },
+            OR: [
+              { callbackAttemptCount: 0 },
+              { callbackLastAttemptAt: { lte: throttleSince } },
+            ],
+          },
+          data: {
+            callbackAttemptCount: { increment: 1 },
+            callbackLastAttemptAt: now,
+          },
+        })
+      ).count
+    : await claimUnderpaidWebhookAttemptRaw(prisma, {
+        transactionId: tid,
+        now,
+        throttleSince,
+        maxAttempts: MAX_AUTO_CALLBACK_ATTEMPTS,
+      });
+  if (Number(claimedCount) === 0) {
     logger.debug(
       "callback underpaid skip: delivered elsewhere, max auto attempts, or retry interval",
       { txId },

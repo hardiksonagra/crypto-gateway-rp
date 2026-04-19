@@ -1,13 +1,8 @@
 import { TxStatus } from "@prisma/client";
 import { prisma } from "./prisma.js";
 import { ACTIVE } from "./active-row.js";
-import { TX_STATUS_UNDERPAID } from "./prisma-tx-status.js";
-
-const SESSION_INBOUND_STATUSES = [
-  TxStatus.pending,
-  TxStatus.success,
-  TX_STATUS_UNDERPAID,
-];
+import { prismaClientKnowsTxStatusUnderpaid } from "./prisma-tx-status.js";
+import { selectSessionInboundAmountRowsRaw } from "./underpaid-prisma-raw.js";
 
 /**
  * Sum `amount` (atomic integer strings) for deposits on this checkout session,
@@ -28,15 +23,22 @@ export async function sumInboundAtomicForSessionExcluding(
       ? depositSessionKey.trim()
       : "";
   if (!k) return 0n;
-  const rows = await prisma.transaction.findMany({
-    where: {
-      walletId: walletInternalId,
-      depositSessionKey: k,
-      status: { in: SESSION_INBOUND_STATUSES },
-      ...ACTIVE,
-    },
-    select: { amount: true, chain: true, txHash: true, logIndex: true },
-  });
+  const rows = prismaClientKnowsTxStatusUnderpaid()
+    ? await prisma.transaction.findMany({
+        where: {
+          walletId: walletInternalId,
+          depositSessionKey: k,
+          status: {
+            in: [TxStatus.pending, TxStatus.success, TxStatus.underpaid],
+          },
+          ...ACTIVE,
+        },
+        select: { amount: true, chain: true, txHash: true, logIndex: true },
+      })
+    : await selectSessionInboundAmountRowsRaw(prisma, {
+        walletId: walletInternalId,
+        depositSessionKey: k,
+      });
   let sum = 0n;
   for (const r of rows) {
     if (

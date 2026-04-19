@@ -1,6 +1,7 @@
 import { TxStatus } from "@prisma/client";
 import { ACTIVE } from "../lib/active-row.js";
-import { TX_STATUS_UNDERPAID } from "../lib/prisma-tx-status.js";
+import { prismaClientKnowsTxStatusUnderpaid } from "../lib/prisma-tx-status.js";
+import { findUnderpaidCallbackRetryIdsRaw } from "../lib/underpaid-prisma-raw.js";
 import { prisma } from "../lib/prisma.js";
 import { logger } from "../lib/logger.js";
 import {
@@ -54,24 +55,33 @@ export async function retryStuckSuccessCallbacks(limit = 30) {
  */
 export async function retryStuckUnderpaidCallbacks(limit = 30) {
   const minAgo = new Date(Date.now() - CALLBACK_RETRY_MIN_INTERVAL_MS);
-  const rows = await prisma.transaction.findMany({
-    where: {
-      ...ACTIVE,
-      status: TX_STATUS_UNDERPAID,
-      callbackDeliveredAt: null,
-      callbackAttemptCount: { lt: MAX_AUTO_CALLBACK_ATTEMPTS },
-      wallet: {
-        is: {
+  const rows = prismaClientKnowsTxStatusUnderpaid()
+    ? await prisma.transaction.findMany({
+        where: {
           ...ACTIVE,
-          merchant: { ...ACTIVE, callbackUrl: { not: null } },
+          status: TxStatus.underpaid,
+          callbackDeliveredAt: null,
+          callbackAttemptCount: { lt: MAX_AUTO_CALLBACK_ATTEMPTS },
+          wallet: {
+            is: {
+              ...ACTIVE,
+              merchant: { ...ACTIVE, callbackUrl: { not: null } },
+            },
+          },
+          OR: [
+            { callbackAttemptCount: 0 },
+            { callbackLastAttemptAt: { lte: minAgo } },
+          ],
         },
-      },
-      OR: [{ callbackAttemptCount: 0 }, { callbackLastAttemptAt: { lte: minAgo } }],
-    },
-    select: { id: true },
-    take: limit,
-    orderBy: { updatedAt: "asc" },
-  });
+        select: { id: true },
+        take: limit,
+        orderBy: { updatedAt: "asc" },
+      })
+    : await findUnderpaidCallbackRetryIdsRaw(prisma, {
+        limit,
+        minAgo,
+        maxAttempts: MAX_AUTO_CALLBACK_ATTEMPTS,
+      });
   for (const r of rows) {
     try {
       await notifyPaymentUnderpaid(r.id);
