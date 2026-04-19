@@ -12,9 +12,10 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, monorepoRoot, "");
   const apiPort = env.PORT?.trim() || "3000";
   const target = `http://127.0.0.1:${apiPort}`;
-  const viteApiOrigin =
-    env.VITE_API_ORIGIN?.trim() ||
-    (mode === "development" ? `http://localhost:${apiPort}` : "");
+  const viteApiOrigin = (
+    env.VITE_API_ORIGIN?.trim().replace(/\/+$/, "") ||
+    (mode === "development" ? `http://localhost:${apiPort}` : "")
+  ).trim();
 
   return {
     define: {
