@@ -22,3 +22,14 @@ export const TX_STATUS_UNDERPAID = "underpaid";
 export function prismaClientKnowsTxStatusUnderpaid() {
   return typeof TxStatus.underpaid === "string";
 }
+
+/**
+ * After `ALTER TYPE "TxStatus" ADD VALUE 'created'` and `prisma generate`, the client
+ * exposes `TxStatus.created`. Older clients reject DB rows / aggregations that return
+ * `"created"` (e.g. `transaction.groupBy({ by: ['status'] })`).
+ *
+ * @returns {boolean}
+ */
+export function prismaClientKnowsTxStatusCreated() {
+  return typeof TxStatus.created === "string";
+}

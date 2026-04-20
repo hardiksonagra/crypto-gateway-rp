@@ -21,6 +21,7 @@ import {
   walletScanTtlMinutes,
 } from "../lib/wallet-scan.js";
 import { prisma } from "../lib/prisma.js";
+import { prismaClientKnowsTxStatusCreated } from "../lib/prisma-tx-status.js";
 import { signAuthToken } from "../lib/auth-jwt.js";
 import { requireAuth } from "../middleware/require-auth.js";
 import { logPanelMutations } from "../middleware/log-panel-mutations.js";
@@ -175,6 +176,29 @@ router.get("/api/v1/admin/dashboard", async (req, res) => {
   const dayKeys = lastNDatesInZone(14, viewerTz);
   const wideFrom = new Date(Date.now() - 20 * 24 * 60 * 60 * 1000);
 
+  const byStatusPromise = prismaClientKnowsTxStatusCreated()
+    ? prisma.transaction.groupBy({
+        by: ["status"],
+        where: { ...txEnvWhere, ...ACTIVE },
+        _count: { _all: true },
+      })
+    : prisma.$queryRaw(
+        Prisma.sql`
+          SELECT t.status::text AS status, COUNT(*)::int AS cnt
+          FROM transactions t
+          INNER JOIN wallets w ON w.id = t.wallet_id
+          WHERE w.environment = ${listEnv}::"MerchantGatewayEnv"
+            AND w.deleted_at IS NULL
+            AND t.deleted_at IS NULL
+          GROUP BY t.status
+        `,
+      ).then((rows) =>
+        rows.map((r) => ({
+          status: r.status,
+          _count: { _all: Number(r.cnt) },
+        })),
+      );
+
   const [
     merchants,
     users,
@@ -202,11 +226,7 @@ router.get("/api/v1/admin/dashboard", async (req, res) => {
       },
     }),
     prisma.wallet.count({ where: { environment: listEnv, ...ACTIVE } }),
-    prisma.transaction.groupBy({
-      by: ["status"],
-      where: { ...txEnvWhere, ...ACTIVE },
-      _count: { _all: true },
-    }),
+    byStatusPromise,
     prisma.transaction.groupBy({
       by: ["chain"],
       where: { ...txEnvWhere, ...ACTIVE },
