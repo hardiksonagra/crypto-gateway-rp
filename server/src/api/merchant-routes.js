@@ -15,7 +15,13 @@ import {
   walletScanTtlMinutes,
 } from "../lib/wallet-scan.js";
 import { ACTIVE } from "../lib/active-row.js";
+import {
+  countMerchantPortalTransactionsRaw,
+  listMerchantDashboardRecentTxRaw,
+  listMerchantPortalTransactionsRaw,
+} from "../lib/merchant-transactions-list-raw.js";
 import { prisma } from "../lib/prisma.js";
+import { prismaClientKnowsTxStatusCreated } from "../lib/prisma-tx-status.js";
 import {
   aggregateWalletTxStats,
   loadWalletDepositActivity,
@@ -189,6 +195,23 @@ router.get("/api/v1/merchant/dashboard", async (req, res) => {
   const { environment } = gate;
 
   const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const recentPromise = prismaClientKnowsTxStatusCreated()
+    ? prisma.transaction.findMany({
+        where: {
+          ...ACTIVE,
+          wallet: {
+            is: { merchantId: mid, environment, ...ACTIVE },
+          },
+          createdAt: { gte: since },
+        },
+        orderBy: { createdAt: "desc" },
+        take: 8,
+        include: {
+          wallet: { select: { address: true } },
+        },
+      })
+    : listMerchantDashboardRecentTxRaw(prisma, { mid, environment, since });
+
   const [merchRates, recent, users, txs] = await Promise.all([
     prisma.merchant.findFirst({
       where: { id: mid, ...ACTIVE },
@@ -199,20 +222,7 @@ router.get("/api/v1/merchant/dashboard", async (req, res) => {
         settlementPeriodDays: true,
       },
     }),
-    prisma.transaction.findMany({
-      where: {
-        ...ACTIVE,
-        wallet: {
-          is: { merchantId: mid, environment, ...ACTIVE },
-        },
-        createdAt: { gte: since },
-      },
-      orderBy: { createdAt: "desc" },
-      take: 8,
-      include: {
-        wallet: { select: { address: true } },
-      },
-    }),
+    recentPromise,
     prisma.user.count({
       where: { merchantId: mid, environment, ...ACTIVE },
     }),
@@ -733,23 +743,45 @@ router.get("/api/v1/merchant/transactions", async (req, res) => {
       : {}),
   };
 
-  const [total, rows] = await Promise.all([
-    prisma.transaction.count({ where }),
-    prisma.transaction.findMany({
-      where,
-      orderBy: { createdAt: "desc" },
-      skip,
-      take,
-      include: {
-        payerUser: { select: { externalUserId: true } },
-        wallet: {
-          include: {
-            assignedUser: { select: { externalUserId: true } },
-          },
-        },
-      },
-    }),
-  ]);
+  const rawListArgs = {
+    mid,
+    environment,
+    chain,
+    chainOk: !!(chain && CHAIN_SET.has(chain)),
+    status,
+    token,
+    qUser,
+    qTxRef,
+  };
+
+  const [total, rows] = await Promise.all(
+    prismaClientKnowsTxStatusCreated()
+      ? [
+          prisma.transaction.count({ where }),
+          prisma.transaction.findMany({
+            where,
+            orderBy: { createdAt: "desc" },
+            skip,
+            take,
+            include: {
+              payerUser: { select: { externalUserId: true } },
+              wallet: {
+                include: {
+                  assignedUser: { select: { externalUserId: true } },
+                },
+              },
+            },
+          }),
+        ]
+      : [
+          countMerchantPortalTransactionsRaw(prisma, rawListArgs),
+          listMerchantPortalTransactionsRaw(prisma, {
+            ...rawListArgs,
+            skip,
+            take,
+          }),
+        ],
+  );
 
   const expectedByKey =
     await loadExpectedAtomicByWalletSessionForTransactions(rows);
