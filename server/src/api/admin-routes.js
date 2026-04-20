@@ -21,6 +21,10 @@ import {
   walletScanTtlMinutes,
 } from "../lib/wallet-scan.js";
 import { prisma } from "../lib/prisma.js";
+import {
+  countAdminTransactionsListRaw,
+  listAdminTransactionsListRaw,
+} from "../lib/admin-transactions-list-raw.js";
 import { prismaClientKnowsTxStatusCreated } from "../lib/prisma-tx-status.js";
 import { signAuthToken } from "../lib/auth-jwt.js";
 import { requireAuth } from "../middleware/require-auth.js";
@@ -1411,28 +1415,56 @@ router.get("/api/v1/admin/transactions", async (req, res) => {
       : {}),
   };
 
-  const [total, rows] = await Promise.all([
-    prisma.transaction.count({ where }),
-    prisma.transaction.findMany({
-      where,
-      orderBy: { createdAt: "desc" },
-      skip,
-      take,
-      include: {
-        payerUser: {
-          include: {
-            merchant: { select: { id: true, email: true, displayName: true } },
-          },
-        },
-        wallet: {
-          include: {
-            merchant: { select: { id: true, email: true, displayName: true } },
-            assignedUser: { select: { id: true, externalUserId: true } },
-          },
-        },
-      },
-    }),
-  ]);
+  const rawListArgs = {
+    listEnv,
+    merchantId,
+    txListMerch,
+    chain,
+    chainOk: !!(chain && CHAINS.has(chain)),
+    status,
+    token,
+    qAddr,
+    qExtUser,
+    qTxRef,
+  };
+
+  const [total, rows] = await Promise.all(
+    prismaClientKnowsTxStatusCreated()
+      ? [
+          prisma.transaction.count({ where }),
+          prisma.transaction.findMany({
+            where,
+            orderBy: { createdAt: "desc" },
+            skip,
+            take,
+            include: {
+              payerUser: {
+                include: {
+                  merchant: {
+                    select: { id: true, email: true, displayName: true },
+                  },
+                },
+              },
+              wallet: {
+                include: {
+                  merchant: {
+                    select: { id: true, email: true, displayName: true },
+                  },
+                  assignedUser: { select: { id: true, externalUserId: true } },
+                },
+              },
+            },
+          }),
+        ]
+      : [
+          countAdminTransactionsListRaw(prisma, rawListArgs),
+          listAdminTransactionsListRaw(prisma, {
+            ...rawListArgs,
+            skip,
+            take,
+          }),
+        ],
+  );
 
   const expectedByKey =
     await loadExpectedAtomicByWalletSessionForTransactions(rows);
