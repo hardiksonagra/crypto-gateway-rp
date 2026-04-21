@@ -130,7 +130,10 @@ function axiosErrDetail(e) {
 export async function notifyPaymentSuccess(txId) {
   const tid = await resolveTransactionInternalId(txId);
   if (tid == null) {
-    logger.warn("callback skip: tx not found", { txId });
+    logger.warn("callback skip: tx not found", {
+      txId,
+      txId_type: typeof txId,
+    });
     return;
   }
   const tx = await prisma.transaction.findFirst({
@@ -141,7 +144,10 @@ export async function notifyPaymentSuccess(txId) {
     },
   });
   if (!tx) {
-    logger.warn("callback skip: tx not found", { txId });
+    logger.warn("callback skip: tx row missing (resolved id but load failed)", {
+      txId,
+      tid,
+    });
     return;
   }
   if (tx.callbackDeliveredAt) return;

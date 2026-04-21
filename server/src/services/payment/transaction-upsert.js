@@ -7,9 +7,14 @@
  *
  * Duplicates: DB unique `tx_chain_log_unique` on `(chain, tx_hash, log_index)` plus upsert on that key
  * (TRON uses `log_index = -1` → one row per on-chain tx id on TRON).
+ *
+ * First on-chain credit for a checkout **updates** the existing `status: created` placeholder row
+ * (same `id` as after `deposit-address`) when session + `gateway-created:*` hash match; further
+ * transfers for the same session use new rows as before. Legacy raw underpaid upsert still inserts.
  */
 import { Chain, MerchantGatewayEnv, TxStatus } from "@prisma/client";
 import {
+  prismaClientKnowsTxStatusCreated,
   prismaClientKnowsTxStatusUnderpaid,
   TX_STATUS_UNDERPAID,
 } from "../../lib/prisma-tx-status.js";
@@ -38,7 +43,10 @@ import {
   referenceTransactionIdForNewWalletTransaction,
 } from "../../lib/deposit-session-key.js";
 import { generateGatewayReferenceTransactionId } from "../../lib/gateway-reference-transaction-id.js";
-import { resolveWalletInternalId } from "../../lib/entity-internal-id.js";
+import {
+  coerceTransactionPrimaryKey,
+  resolveWalletInternalId,
+} from "../../lib/entity-internal-id.js";
 import {
   expectedAtomicForDepositSession,
   sumInboundAtomicForSessionExcluding,
@@ -174,40 +182,91 @@ export async function upsertIncomingTransaction(input) {
     nextStatus === TX_STATUS_UNDERPAID &&
     !prismaClientKnowsTxStatusUnderpaid();
 
-  const row = useRawUnderpaidUpsert
-    ? await upsertTransactionRowUnderpaidRaw(prisma, {
-        walletInternalId,
-        payerUserIdForCreate,
-        depositSessionKeyForCreate,
-        referenceTransactionIdForCreate,
-        input,
-      })
-    : await prisma.transaction.upsert({
-        where: { tx_chain_log_unique: eventKey },
-        create: {
-          walletId: walletInternalId,
-          payerUserId: payerUserIdForCreate,
-          depositSessionKey: depositSessionKeyForCreate ?? undefined,
-          referenceTransactionId: referenceTransactionIdForCreate ?? undefined,
+  /** First on-chain event updated the checkout placeholder in place (stable internal id). */
+  let mergedIntoPlaceholder = false;
+  /** @type {import("@prisma/client").Transaction | Awaited<ReturnType<typeof upsertTransactionRowUnderpaidRaw>> | undefined} */
+  let row;
+
+  if (
+    !hadRowBefore &&
+    !useRawUnderpaidUpsert &&
+    depositSessionKeyForCreate != null &&
+    prismaClientKnowsTxStatusCreated()
+  ) {
+    const ph = await prisma.transaction.findFirst({
+      where: {
+        walletId: walletInternalId,
+        chain: input.chain,
+        depositSessionKey: depositSessionKeyForCreate,
+        status: TxStatus.created,
+        txHash: { startsWith: "gateway-created:" },
+        ...ACTIVE,
+      },
+      orderBy: { id: "desc" },
+      select: { id: true },
+    });
+    if (ph) {
+      row = await prisma.transaction.update({
+        where: { id: ph.id },
+        data: {
           txHash: input.txHash,
           fromAddress: input.fromAddress,
           toAddress: input.toAddress,
           amount: input.amount,
           tokenSymbol: input.tokenSymbol,
           tokenDecimals: input.tokenDecimals,
-          chain: input.chain,
-          status: nextStatus,
           confirmations: input.confirmations,
           blockNumber: input.blockNumber ?? undefined,
           logIndex: input.logIndex,
-        },
-        update: {
-          confirmations: input.confirmations,
-          blockNumber: input.blockNumber ?? undefined,
           status: nextStatus,
+          ...(payerUserIdForCreate != null ? { payerUserId: payerUserIdForCreate } : {}),
           updatedAt: new Date(),
         },
       });
+      mergedIntoPlaceholder = true;
+      logger.info("checkout_placeholder_merged_on_chain", {
+        wallet_id: walletInternalId,
+        transaction_id: row.id,
+      });
+    }
+  }
+
+  if (!row) {
+    row = useRawUnderpaidUpsert
+      ? await upsertTransactionRowUnderpaidRaw(prisma, {
+          walletInternalId,
+          payerUserIdForCreate,
+          depositSessionKeyForCreate,
+          referenceTransactionIdForCreate,
+          input,
+        })
+      : await prisma.transaction.upsert({
+          where: { tx_chain_log_unique: eventKey },
+          create: {
+            walletId: walletInternalId,
+            payerUserId: payerUserIdForCreate,
+            depositSessionKey: depositSessionKeyForCreate ?? undefined,
+            referenceTransactionId: referenceTransactionIdForCreate ?? undefined,
+            txHash: input.txHash,
+            fromAddress: input.fromAddress,
+            toAddress: input.toAddress,
+            amount: input.amount,
+            tokenSymbol: input.tokenSymbol,
+            tokenDecimals: input.tokenDecimals,
+            chain: input.chain,
+            status: nextStatus,
+            confirmations: input.confirmations,
+            blockNumber: input.blockNumber ?? undefined,
+            logIndex: input.logIndex,
+          },
+          update: {
+            confirmations: input.confirmations,
+            blockNumber: input.blockNumber ?? undefined,
+            status: nextStatus,
+            updatedAt: new Date(),
+          },
+        });
+  }
 
   if (
     nextStatus === TxStatus.success &&
@@ -236,22 +295,32 @@ export async function upsertIncomingTransaction(input) {
     }
   }
 
+  // After merge, no `created` row remains for this session. If we inserted a new on-chain row
+  // instead, soft-remove any leftover checkout placeholder(s) for the same session.
   if (row.depositSessionKey) {
-    await prisma.transaction.deleteMany({
+    const ph = await prisma.transaction.updateMany({
       where: {
         walletId: row.walletId,
         depositSessionKey: row.depositSessionKey,
         status: TxStatus.created,
         ...ACTIVE,
       },
+      data: { deletedAt: new Date(), updatedAt: new Date() },
     });
+    if (ph.count > 0) {
+      logger.info("checkout_placeholder_soft_removed", {
+        wallet_id: row.walletId,
+        count: ph.count,
+      });
+    }
   }
 
   if (
     workerRailMetricsEnabled() &&
     input.currency != null &&
     input.network != null &&
-    !hadRowBefore
+    !hadRowBefore &&
+    !mergedIntoPlaceholder
   ) {
     recordNewDepositInsert(input.currency, input.network);
   }
@@ -267,10 +336,18 @@ export async function upsertIncomingTransaction(input) {
     nextStatus === TX_STATUS_UNDERPAID &&
     (!prior || prior.status !== TX_STATUS_UNDERPAID);
 
-  if (becameUnderpaid && !row.callbackDeliveredAt) {
-    await notifyPaymentUnderpaid(row.id);
+  const notifyPk = coerceTransactionPrimaryKey(row.id);
+  if (notifyPk == null) {
+    logger.error("upsert_invalid_transaction_row_id", {
+      wallet_id: walletInternalId,
+      tx_hash: input.txHash,
+      chain: input.chain,
+      raw_id: row.id,
+    });
+  } else if (becameUnderpaid && !row.callbackDeliveredAt) {
+    await notifyPaymentUnderpaid(notifyPk);
   } else if (nextStatus === TxStatus.success && !row.callbackDeliveredAt) {
-    await notifyPaymentSuccess(row.id);
+    await notifyPaymentSuccess(notifyPk);
   }
 }
 

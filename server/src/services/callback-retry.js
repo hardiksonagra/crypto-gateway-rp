@@ -3,6 +3,7 @@ import { ACTIVE } from "../lib/active-row.js";
 import { prismaClientKnowsTxStatusUnderpaid } from "../lib/prisma-tx-status.js";
 import { findUnderpaidCallbackRetryIdsRaw } from "../lib/underpaid-prisma-raw.js";
 import { prisma } from "../lib/prisma.js";
+import { coerceTransactionPrimaryKey } from "../lib/entity-internal-id.js";
 import { logger } from "../lib/logger.js";
 import {
   notifyPaymentFailed,
@@ -42,7 +43,8 @@ export async function retryStuckSuccessCallbacks(limit = 30) {
   });
   for (const r of rows) {
     try {
-      await notifyPaymentSuccess(r.id);
+      const id = coerceTransactionPrimaryKey(r.id);
+      if (id != null) await notifyPaymentSuccess(id);
     } catch (e) {
       logger.error("retry callback tick failed", { txId: r.id, err: String(e) });
     }
@@ -81,7 +83,8 @@ export async function retryStuckFailedCallbacks(limit = 30) {
   });
   for (const r of rows) {
     try {
-      await notifyPaymentFailed(r.id);
+      const id = coerceTransactionPrimaryKey(r.id);
+      if (id != null) await notifyPaymentFailed(id);
     } catch (e) {
       logger.error("retry failed callback tick failed", { txId: r.id, err: String(e) });
     }
@@ -119,7 +122,8 @@ export async function retryStuckUnderpaidCallbacks(limit = 30) {
       });
   for (const r of rows) {
     try {
-      await notifyPaymentUnderpaid(r.id);
+      const id = coerceTransactionPrimaryKey(r.id);
+      if (id != null) await notifyPaymentUnderpaid(id);
     } catch (e) {
       logger.error("retry underpaid callback tick failed", {
         txId: r.id,

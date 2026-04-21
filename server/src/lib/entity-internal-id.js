@@ -139,24 +139,34 @@ export async function resolveWalletInternalId(rawWalletId) {
 }
 
 /**
+ * Normalize Prisma / raw-SQL primary keys (number, bigint, digits string) to integer.
+ *
+ * @param {unknown} raw
+ * @returns {number | null}
+ */
+export function coerceTransactionPrimaryKey(raw) {
+  if (typeof raw === "number" && Number.isInteger(raw) && raw >= 1) return raw;
+  if (typeof raw === "bigint") {
+    const n = Number(raw);
+    if (Number.isSafeInteger(n) && n >= 1) return n;
+    return null;
+  }
+  const s = String(raw ?? "").trim();
+  if (/^\d+$/.test(s)) {
+    const n = parseInt(s, 10);
+    if (Number.isInteger(n) && n >= 1) return n;
+  }
+  return null;
+}
+
+/**
  * @param {unknown} txOpaque
  */
 export async function resolveTransactionInternalId(txOpaque) {
-  if (
-    typeof txOpaque === "number" &&
-    Number.isInteger(txOpaque) &&
-    txOpaque >= 1
-  ) {
-    const row = await prisma.transaction.findFirst({
-      where: { id: txOpaque, ...ACTIVE },
-      select: { id: true },
-    });
-    return row?.id ?? null;
-  }
-  const w = transactionWhereFromRouteParam(String(txOpaque ?? ""));
-  if (!w) return null;
+  const n = coerceTransactionPrimaryKey(txOpaque);
+  if (n == null) return null;
   const row = await prisma.transaction.findFirst({
-    where: { ...w, ...ACTIVE },
+    where: { id: n, ...ACTIVE },
     select: { id: true },
   });
   return row?.id ?? null;
