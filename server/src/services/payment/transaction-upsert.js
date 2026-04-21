@@ -135,6 +135,43 @@ export async function upsertIncomingTransaction(input) {
         walletInternalId,
         payerUserIdForCreate,
       );
+    const missingKeysFromAssignment =
+      depositSessionKeyForCreate == null ||
+      referenceTransactionIdForCreate == null;
+    // Assignment helpers key off `wallet.assigned_user_id` + latest `wallet_assignment_events`.
+    // After hold expiry / pool release (or worker lag), that user link is null but the checkout
+    // placeholder row still holds `deposit_session_key` + `transaction_id` — recover from it so
+    // on-chain rows keep the same reference as `deposit-address` (avoids gateway GET 404).
+    if (prismaClientKnowsTxStatusCreated() && missingKeysFromAssignment) {
+      const fb = await prisma.transaction.findFirst({
+        where: {
+          walletId: walletInternalId,
+          chain: input.chain,
+          status: TxStatus.created,
+          txHash: { startsWith: "gateway-created:" },
+          ...ACTIVE,
+        },
+        orderBy: { id: "desc" },
+        select: {
+          depositSessionKey: true,
+          referenceTransactionId: true,
+        },
+      });
+      if (fb?.depositSessionKey) {
+        depositSessionKeyForCreate =
+          depositSessionKeyForCreate ?? fb.depositSessionKey;
+      }
+      if (fb?.referenceTransactionId) {
+        referenceTransactionIdForCreate =
+          referenceTransactionIdForCreate ?? fb.referenceTransactionId;
+      }
+      if (fb) {
+        logger.info("checkout_session_keys_recovered_from_placeholder", {
+          wallet_id: walletInternalId,
+          chain: input.chain,
+        });
+      }
+    }
     if (!referenceTransactionIdForCreate) {
       referenceTransactionIdForCreate = generateGatewayReferenceTransactionId();
     }
@@ -187,24 +224,32 @@ export async function upsertIncomingTransaction(input) {
   /** @type {import("@prisma/client").Transaction | Awaited<ReturnType<typeof upsertTransactionRowUnderpaidRaw>> | undefined} */
   let row;
 
-  if (
-    !hadRowBefore &&
-    !useRawUnderpaidUpsert &&
-    depositSessionKeyForCreate != null &&
-    prismaClientKnowsTxStatusCreated()
-  ) {
-    const ph = await prisma.transaction.findFirst({
-      where: {
-        walletId: walletInternalId,
-        chain: input.chain,
-        depositSessionKey: depositSessionKeyForCreate,
-        status: TxStatus.created,
-        txHash: { startsWith: "gateway-created:" },
-        ...ACTIVE,
-      },
-      orderBy: { id: "desc" },
-      select: { id: true },
-    });
+  if (!hadRowBefore && !useRawUnderpaidUpsert && prismaClientKnowsTxStatusCreated()) {
+    const placeholderWhere = {
+      walletId: walletInternalId,
+      chain: input.chain,
+      status: TxStatus.created,
+      txHash: { startsWith: "gateway-created:" },
+      ...ACTIVE,
+    };
+    let ph =
+      depositSessionKeyForCreate != null
+        ? await prisma.transaction.findFirst({
+            where: {
+              ...placeholderWhere,
+              depositSessionKey: depositSessionKeyForCreate,
+            },
+            orderBy: { id: "desc" },
+            select: { id: true },
+          })
+        : null;
+    if (!ph) {
+      ph = await prisma.transaction.findFirst({
+        where: placeholderWhere,
+        orderBy: { id: "desc" },
+        select: { id: true },
+      });
+    }
     if (ph) {
       row = await prisma.transaction.update({
         where: { id: ph.id },
