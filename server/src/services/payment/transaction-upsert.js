@@ -216,15 +216,18 @@ export async function upsertIncomingTransaction(input) {
   }
 
   const useRawUnderpaidUpsert =
-    nextStatus === TX_STATUS_UNDERPAID &&
-    !prismaClientKnowsTxStatusUnderpaid();
+    nextStatus === TX_STATUS_UNDERPAID && !prismaClientKnowsTxStatusUnderpaid();
 
   /** First on-chain event updated the checkout placeholder in place (stable internal id). */
   let mergedIntoPlaceholder = false;
   /** @type {import("@prisma/client").Transaction | Awaited<ReturnType<typeof upsertTransactionRowUnderpaidRaw>> | undefined} */
   let row;
 
-  if (!hadRowBefore && !useRawUnderpaidUpsert && prismaClientKnowsTxStatusCreated()) {
+  if (
+    !hadRowBefore &&
+    !useRawUnderpaidUpsert &&
+    prismaClientKnowsTxStatusCreated()
+  ) {
     const placeholderWhere = {
       walletId: walletInternalId,
       chain: input.chain,
@@ -264,7 +267,9 @@ export async function upsertIncomingTransaction(input) {
           blockNumber: input.blockNumber ?? undefined,
           logIndex: input.logIndex,
           status: nextStatus,
-          ...(payerUserIdForCreate != null ? { payerUserId: payerUserIdForCreate } : {}),
+          ...(payerUserIdForCreate != null
+            ? { payerUserId: payerUserIdForCreate }
+            : {}),
           updatedAt: new Date(),
         },
       });
@@ -291,7 +296,8 @@ export async function upsertIncomingTransaction(input) {
             walletId: walletInternalId,
             payerUserId: payerUserIdForCreate,
             depositSessionKey: depositSessionKeyForCreate ?? undefined,
-            referenceTransactionId: referenceTransactionIdForCreate ?? undefined,
+            referenceTransactionId:
+              referenceTransactionIdForCreate ?? undefined,
             txHash: input.txHash,
             fromAddress: input.fromAddress,
             toAddress: input.toAddress,
@@ -342,7 +348,12 @@ export async function upsertIncomingTransaction(input) {
 
   // After merge, no `created` row remains for this session. If we inserted a new on-chain row
   // instead, soft-remove any leftover checkout placeholder(s) for the same session.
-  if (row.depositSessionKey) {
+  //
+  // IMPORTANT: only run when Prisma exposes `TxStatus.created`. If `TxStatus.created` is
+  // `undefined` (stale `@prisma/client`), Prisma **drops** `status` from the `where` clause and
+  // would soft-delete **every** row for this wallet + session (including success) — run
+  // `npx prisma generate` in `server/` after migrations that add `created` to `TxStatus`.
+  if (row.depositSessionKey && prismaClientKnowsTxStatusCreated()) {
     const ph = await prisma.transaction.updateMany({
       where: {
         walletId: row.walletId,
@@ -437,7 +448,9 @@ export async function loadAllLiveWalletsForChain(chain) {
 
 export function normalizeMatchAddress(chain, address) {
   if (chain === Chain.TRON) return address;
-  return String(address ?? "").trim().toLowerCase();
+  return String(address ?? "")
+    .trim()
+    .toLowerCase();
 }
 
 /**
