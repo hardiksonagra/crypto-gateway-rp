@@ -18,6 +18,7 @@ import {
 import { CHAIN_VALUES, merchantTransactionsFilterSchema } from "../../admin/merchantSchemas";
 import { formatTokenAmount } from "../../lib/formatTokenAmount.js";
 import { formatLocalDateTime } from "../../lib/formatLocalDateTime.js";
+import { StatusBadge } from "../../components/StatusBadge.js";
 import { BrandLoader } from "../../components/BrandLoader.js";
 
 const DEFAULT_PAGE_SIZE = DEFAULT_LIST_PAGE_SIZE;
@@ -492,7 +493,9 @@ export default function MerchantTransactions() {
                         raw {t.amount}
                       </span>
                     </td>
-                    <td className="text-xs">{t.status}</td>
+                    <td>
+                      <StatusBadge status={t.status} />
+                    </td>
                   </tr>
                 ))}
             </tbody>
