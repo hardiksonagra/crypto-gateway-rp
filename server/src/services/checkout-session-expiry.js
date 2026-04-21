@@ -12,8 +12,8 @@ const DEFAULT_BATCH = 80;
  * Mark stale `created` checkout placeholder rows as `failed`, release the wallet reservation,
  * and enqueue the payment webhook (`notifyPaymentFailed`).
  *
- * Placeholder rows exist only when `deposit-address` was called with a fixed `amount`
- * (see assign-pooled-wallet).
+ * Placeholder rows: one `created` transaction per `deposit-address` call (see
+ * assign-pooled-wallet), with or without optional fixed `amount`.
  *
  * @param {{ batchSize?: number }} [opts]
  * @returns {Promise<number>} number of rows transitioned to `failed`

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import QRCode from "react-qr-code";
-import { apiUrl } from "../api";
+import { apiUrl } from "../api.js";
 import { BrandMark } from "../components/BrandMark.js";
 import { BrandLoader } from "../components/BrandLoader.js";
 import { paymentQrEncodedValue } from "../lib/payment-qr-uri.js";
@@ -199,11 +199,6 @@ export default function PaymentPage() {
       expected_amount_decimal: session.expected_amount_decimal,
     });
   }, [session]);
-
-  const qrPrefillsAmount =
-    Boolean(session) &&
-    isValidPaymentSessionPayload(session) &&
-    qrPayload !== String(session.address ?? "").trim();
 
   if (loading) {
     return (

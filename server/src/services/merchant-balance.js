@@ -27,6 +27,7 @@ export async function computeMerchantBalances(
   if (merchantId == null) {
     return [];
   }
+  /** Inbound balance: sum of `transactions.amount` (on-chain **received**, atomic) for success + underpaid. */
   const inboundRows = await prisma.$queryRaw`
     SELECT
       t.chain::text AS chain,

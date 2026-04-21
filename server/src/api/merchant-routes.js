@@ -7,6 +7,7 @@ import {
 } from "@prisma/client";
 import { formatAtomicAmountString } from "../lib/format-atomic-amount.js";
 import {
+  expectedReceivedAmountQuadForTransaction,
   loadExpectedAtomicByWalletSessionForTransactions,
   requestedAmountFieldsForTransaction,
 } from "../lib/transaction-requested-amounts.js";
@@ -237,6 +238,8 @@ router.get("/api/v1/merchant/dashboard", async (req, res) => {
     res.status(404).json({ error: "not_found" });
     return;
   }
+  const recentExpectedByKey =
+    await loadExpectedAtomicByWalletSessionForTransactions(recent);
   const mdrP = Number(merchRates.mdrPercent);
   const settlementP = Number(merchRates.settlementRatePercent);
   const periodDays = Number(merchRates.settlementPeriodDays ?? 0);
@@ -271,6 +274,7 @@ router.get("/api/v1/merchant/dashboard", async (req, res) => {
       token_decimals: t.tokenDecimals,
       amount: t.amount,
       amount_decimal: formatAtomicAmountString(t.amount, t.tokenDecimals),
+      ...expectedReceivedAmountQuadForTransaction(t, recentExpectedByKey),
       created_at: t.createdAt,
       wallet_address: t.wallet.address,
     })),
@@ -393,7 +397,7 @@ router.get(
       events,
       source_labels: {
         existing_session:
-          "Same rail wallet refreshed (deposit-address / create-wallet)",
+          "Same rail wallet refreshed (deposit-address)",
         pool_pick: "Picked from merchant pool",
         new_wallet: "New address generated",
       },
@@ -801,12 +805,8 @@ router.get("/api/v1/merchant/transactions", async (req, res) => {
       token_decimals: t.tokenDecimals,
       amount: t.amount,
       amount_decimal: formatAtomicAmountString(t.amount, t.tokenDecimals),
-      received_amount_atomic: t.amount,
-      received_amount_decimal: formatAtomicAmountString(
-        t.amount,
-        t.tokenDecimals,
-      ),
       ...requestedAmountFieldsForTransaction(t, expectedByKey),
+      ...expectedReceivedAmountQuadForTransaction(t, expectedByKey),
       confirmations: t.confirmations,
       from_address: t.fromAddress,
       to_address: t.toAddress,

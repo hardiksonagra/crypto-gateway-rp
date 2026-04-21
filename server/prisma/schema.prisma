@@ -169,7 +169,7 @@ model Wallet {
   /// Client-facing network label (e.g. TRC20, ERC20, BEP20, TON, TRON).
   network   String
   derivationIndex Int @map("derivation_index")
-  /// Current payment-session assignee; null = in merchant pool (free or awaiting pickup).
+  /// Current checkout assignee; null = in merchant pool (free or awaiting pickup).
   assignedUserId Int? @map("assigned_user_id")
   assignedUser   User?   @relation("WalletPoolAssignment", fields: [assignedUserId], references: [id], onDelete: SetNull)
   /// When set and in the future, the address is reserved for `assignedUserId` until success or this time passes.
@@ -201,7 +201,7 @@ model Wallet {
   @@map("wallets")
 }
 
-/// Logged on each gateway wallet resolution (deposit-address / create-wallet). Not retroactive for data before migration.
+/// Logged on each gateway wallet resolution (deposit-address). Not retroactive for data before migration.
 model WalletAssignmentEvent {
   id          Int   @id @default(autoincrement())
   walletId    Int   @map("wallet_id")
@@ -250,7 +250,7 @@ model Transaction {
   /// Auto delivery tries (payment webhook POST, X-Webhook-Event: payment); capped by worker + upsert path; manual redeliver does not increment.
   callbackAttemptCount Int      @default(0) @map("callback_attempt_count")
   callbackLastAttemptAt DateTime? @map("callback_last_attempt_at")
-  /// Matches `WalletAssignmentEvent.depositSessionKey` for the checkout session (payment link poll / redirect).
+  /// Matches `WalletAssignmentEvent.depositSessionKey` for the checkout session (`deposit-address` assignment).
   depositSessionKey   String?   @map("deposit_session_key") @db.VarChar(64)
   /// Merchant-provided id (gateway `transaction_id`); list/filter in portals.
   referenceTransactionId String? @map("transaction_id") @db.VarChar(256)

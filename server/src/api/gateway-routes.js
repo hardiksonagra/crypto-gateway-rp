@@ -1,11 +1,16 @@
 import { Router } from "express";
-import { Chain, TxStatus } from "@prisma/client";
+import { TxStatus } from "@prisma/client";
 import { prismaClientKnowsTxStatusUnderpaid } from "../lib/prisma-tx-status.js";
 import {
   findGatewayBlockingPendingCallbackRaw,
   findGatewayPollUnderpaidRowRaw,
 } from "../lib/underpaid-prisma-raw.js";
 import { formatAtomicAmountString } from "../lib/format-atomic-amount.js";
+import {
+  expectedReceivedAmountQuadForTransaction,
+  loadExpectedAtomicByWalletSessionForTransactions,
+  paymentWebhookAmountGroups,
+} from "../lib/transaction-requested-amounts.js";
 import {
   parseOptionalGatewayDepositAmount,
   tokenDecimalsForGatewayRail,
@@ -38,19 +43,73 @@ import {
   requestClientIp,
   writeAuditLog,
 } from "../services/audit-log.js";
-import { createPaymentLinkToken, verifyPaymentLinkToken } from "../lib/payment-link-token.js";
 import { normalizeGatewayRedirectUrl } from "../lib/payment-redirect-url.js";
-import { walletScanTtlMinutes } from "../lib/wallet-scan.js";
 import {
-  resolveUserScopedInternalId,
-  resolveWalletInternalId,
-} from "../lib/entity-internal-id.js";
+  createPaymentLinkToken,
+  verifyPaymentLinkToken,
+} from "../lib/payment-link-token.js";
+import { walletScanTtlMinutes } from "../lib/wallet-scan.js";
+import { resolveWalletInternalId } from "../lib/entity-internal-id.js";
 import { MAX_AUTO_CALLBACK_ATTEMPTS } from "../services/callback-service.js";
 
-const router = Router();
+/** @type {readonly string[]} */
+const DEPRECATED_GATEWAY_TRANSACTIONS_QUERY_KEYS = [
+  "address",
+  "reference_id",
+  "reference_transaction_id",
+  "currency",
+  "network",
+  "chain",
+];
 
-/** @type {ReadonlySet<string>} */
-const CHAIN_QUERY_VALUES = new Set(Object.values(Chain));
+/**
+ * @param {import("@prisma/client").Transaction & {
+ *   payerUser?: { externalUserId: string } | null;
+ *   wallet: {
+ *     currency: string;
+ *     network: string;
+ *     environment: import("@prisma/client").MerchantGatewayEnv;
+ *     assignedUser: { externalUserId: string } | null;
+ *   };
+ * }} t
+ * @param {Awaited<ReturnType<typeof loadExpectedAtomicByWalletSessionForTransactions>>} expectedByKey
+ */
+function serializeGatewayTransactionForApi(t, expectedByKey) {
+  const quad = expectedReceivedAmountQuadForTransaction(t, expectedByKey);
+  const groups = paymentWebhookAmountGroups(quad);
+  const endUserExt =
+    t.payerUser?.externalUserId ??
+    t.wallet.assignedUser?.externalUserId ??
+    null;
+  return {
+    id: t.id,
+    transaction_id: t.referenceTransactionId ?? null,
+    reference_id: t.referenceTransactionId ?? null,
+    wallet_id: t.walletId,
+    external_user_id: endUserExt,
+    deposit_session_key: t.depositSessionKey ?? null,
+    tx_hash: t.txHash,
+    from_address: t.fromAddress,
+    to_address: t.toAddress,
+    amount: quad.received_amount_atomic,
+    amount_decimal: quad.received_amount_decimal,
+    ...quad,
+    ...groups,
+    token_symbol: t.tokenSymbol,
+    token_decimals: t.tokenDecimals,
+    chain: t.chain,
+    currency: t.wallet.currency,
+    network: t.wallet.network,
+    status: t.status,
+    confirmations: t.confirmations,
+    block_number: t.blockNumber?.toString() ?? null,
+    created_at: t.createdAt,
+    updated_at: t.updatedAt,
+    gateway_environment: t.wallet.environment,
+  };
+}
+
+const router = Router();
 
 const MAX_GATEWAY_TRANSACTION_REF_LEN = 256;
 
@@ -69,11 +128,6 @@ function parseOptionalGatewayTransactionId(raw) {
   return { ok: true, value: s };
 }
 
-function paymentPageBaseUrl() {
-  const raw = re.paymentPagePublicUrl.trim() || re.appPublicUrl;
-  return String(raw).replace(/\/+$/, "");
-}
-
 /**
  * @param {import("express").Request} req
  * @param {object} partial
@@ -88,9 +142,13 @@ function auditGatewayApi(req, partial) {
   });
 }
 
+function paymentPageBaseUrl() {
+  const raw = re.paymentPagePublicUrl.trim() || re.appPublicUrl;
+  return String(raw).replace(/\/+$/, "");
+}
+
 /**
- * Lightweight poll for the checkout page: same wallet as the payment link token,
- * no address/currency query params (avoids client/server mismatch vs `/transactions`).
+ * Lightweight poll for hosted checkout: token-scoped wallet + session.
  */
 router.get("/api/v1/gateway/payment-session/:token/poll", async (req, res) => {
   try {
@@ -503,22 +561,24 @@ router.post("/api/v1/gateway/deposit-address", async (req, res) => {
       }
     }
 
-    const { wallet, depositSessionKey } = await prisma.$transaction(async (tx) => {
-      const assigned = await assignPooledWalletForDeposit(tx, {
-        merchantId: merchant.id,
-        environment: gwEnv,
-        userId: u.id,
-        chain: rail.chain,
-        currency: rail.currency,
-        network: rail.network,
-        referenceTransactionId: txRefParsed.value,
-        expectedAmountAtomic,
+    const { wallet, depositSessionKey, referenceTransactionId } =
+      await prisma.$transaction(async (tx) => {
+        const assigned = await assignPooledWalletForDeposit(tx, {
+          merchantId: merchant.id,
+          environment: gwEnv,
+          userId: u.id,
+          chain: rail.chain,
+          currency: rail.currency,
+          network: rail.network,
+          referenceTransactionId: txRefParsed.value,
+          expectedAmountAtomic,
+        });
+        return {
+          wallet: assigned.wallet,
+          depositSessionKey: assigned.depositSessionKey,
+          referenceTransactionId: assigned.referenceTransactionId,
+        };
       });
-      return {
-        wallet: assigned.wallet,
-        depositSessionKey: assigned.depositSessionKey,
-      };
-    });
     const responseOut = {
       status: 200,
       wallet_id: wallet.id,
@@ -526,11 +586,21 @@ router.post("/api/v1/gateway/deposit-address", async (req, res) => {
       merchant_id: merchant.id,
       created_new_user: createdNewUser,
       gateway_environment: gwEnv,
+      transaction_id: referenceTransactionId,
+      reference_id: referenceTransactionId,
       chain: wallet.chain,
       currency: wallet.currency,
       network: wallet.network,
       address_preview: `${String(wallet.address).slice(0, 14)}…`,
     };
+    const payBase = paymentPageBaseUrl();
+    const payToken = createPaymentLinkToken(
+      String(wallet.id),
+      redirectUrl,
+      depositSessionKey,
+    );
+    const payment_link =
+      payBase && payToken ? `${payBase}/pay/${payToken}` : null;
     auditGatewayApi(req, {
       action: "deposit_address",
       merchantId: merchant.id,
@@ -538,19 +608,10 @@ router.post("/api/v1/gateway/deposit-address", async (req, res) => {
       summary: `deposit-address 200 · ext=${externalUserId} · ${wallet.chain} ${wallet.currency}/${wallet.network} · new_user=${createdNewUser} · user=${u.id}`,
       metadata: {
         request_in: redactGatewayBody(body),
-        response_out: {
-          ...responseOut,
-          payment_link: true,
-        },
+        response_out: { ...responseOut, payment_link: Boolean(payment_link) },
         occurred_at_iso: new Date().toISOString(),
       },
     });
-    const payToken = createPaymentLinkToken(
-      String(wallet.id),
-      redirectUrl,
-      depositSessionKey,
-    );
-    const payBase = paymentPageBaseUrl();
     res.status(200).json({
       address: wallet.address,
       chain: wallet.chain,
@@ -561,7 +622,9 @@ router.post("/api/v1/gateway/deposit-address", async (req, res) => {
       merchant_id: merchant.id,
       created_new_user: createdNewUser,
       gateway_environment: gwEnv,
-      payment_link: `${payBase}/pay/${payToken}`,
+      transaction_id: referenceTransactionId,
+      reference_id: referenceTransactionId,
+      ...(payment_link ? { payment_link } : {}),
       deposit_scan_expires_at: wallet.scanExpiresAt?.toISOString() ?? null,
       deposit_scan_ttl_minutes: walletScanTtlMinutes(),
       reservation_expires_at: wallet.holdExpiresAt?.toISOString() ?? null,
@@ -705,17 +768,16 @@ router.post("/api/v1/gateway/supported-currency", async (req, res) => {
   await handleSupportedCurrency(req, res, () => authenticateGatewayJsonPost(req));
 });
 
-router.post("/api/v1/gateway/create-wallet", async (req, res) => {
+router.get("/api/v1/gateway/transactions", async (req, res) => {
   try {
-    const body = req.body ?? {};
-    const auth = await authenticateGatewayJsonPost(req);
+    const auth = await authenticateGatewaySupportedCurrencyGet(req);
     if (!auth.ok) {
       auditGatewayApi(req, {
-        action: "create_wallet",
+        action: "gateway_transactions_get",
         merchantId: null,
         actorType: "gateway_api_key",
-        summary: `create-wallet ${auth.status} — ${auth.error}`,
-        metadata: { request_in: redactGatewayBody(body), http_status: auth.status },
+        summary: `transactions GET ${auth.status} — ${auth.error}`,
+        metadata: { query: req.query ?? {}, http_status: auth.status },
       });
       res
         .status(auth.status)
@@ -727,283 +789,115 @@ router.post("/api/v1/gateway/create-wallet", async (req, res) => {
       return;
     }
     const { merchant, keyType } = auth;
-    const userId = body.user_id?.trim();
-    const currency = normalizeAssetPart(body.currency);
-    const network = normalizeAssetPart(body.network);
-    if (!userId || !currency || !network) {
-      auditGatewayApi(req, {
-        action: "create_wallet",
-        merchantId: merchant.id,
-        actorType: "gateway_api_key",
-        summary: "create-wallet 400 — missing fields",
-        metadata: { request_in: redactGatewayBody(body), http_status: 400 },
-      });
-      res
-        .status(400)
-        .json({ error: "user_id, currency and network are required" });
-      return;
-    }
-
-    const createWalletTxRef = parseOptionalGatewayTransactionId(
-      body.transaction_id,
-    );
-    if (!createWalletTxRef.ok) {
-      auditGatewayApi(req, {
-        action: "create_wallet",
-        merchantId: merchant.id,
-        actorType: "gateway_api_key",
-        summary: `create-wallet 400 — ${createWalletTxRef.error}`,
-        metadata: { request_in: redactGatewayBody(body), http_status: 400 },
-      });
-      res.status(400).json({ error: createWalletTxRef.error });
-      return;
-    }
-
-    const rail = resolveDepositRail(currency, network);
-    if (!rail) {
-      auditGatewayApi(req, {
-        action: "create_wallet",
-        merchantId: null,
-        actorType: "gateway_api_key",
-        summary: `create-wallet 400 — unsupported ${currency}/${network}`,
-        metadata: {
-          request_in: redactGatewayBody(body),
-          http_status: 400,
-          user_id: userId,
-        },
-      });
-      res.status(400).json({ error: "unsupported_currency_network" });
-      return;
-    }
-
     const gate = assertMerchantGatewayKeyAllowed(merchant, keyType);
     if (!gate.ok) {
       auditGatewayApi(req, {
-        action: "create_wallet",
+        action: "gateway_transactions_get",
         merchantId: merchant.id,
         actorType: "gateway_api_key",
-        summary: `create-wallet 403 — ${gate.error}`,
-        metadata: {
-          request_in: redactGatewayBody(body),
-          http_status: 403,
-          user_id: userId,
-        },
+        summary: `transactions GET 403 — ${gate.error}`,
+        metadata: { query: req.query ?? {}, http_status: 403 },
       });
       res.status(403).json({ error: gate.error, message: gate.message });
       return;
     }
-    const gwEnv = gatewayEnvironmentFromKeyType(keyType);
-    if (!merchantChainAllowsRail(merchant, rail)) {
-      auditGatewayApi(req, {
-        action: "create_wallet",
-        merchantId: merchant.id,
-        actorType: "gateway_api_key",
-        summary: "create-wallet 403 — rail_not_enabled",
-        metadata: {
-          request_in: redactGatewayBody(body),
-          http_status: 403,
-          user_id: userId,
-        },
-      });
-      res.status(403).json({
-        error: "rail_not_enabled_for_merchant",
-        message: railNotEnabledForMerchantMessage(merchant, rail),
-      });
+
+    for (const key of DEPRECATED_GATEWAY_TRANSACTIONS_QUERY_KEYS) {
+      const raw = req.query?.[key];
+      const first = Array.isArray(raw) ? raw[0] : raw;
+      const s = typeof first === "string" ? first.trim() : "";
+      if (s) {
+        res.status(400).json({
+          error: "unsupported_query_param",
+          message: `This endpoint accepts only transaction_id (checkout reference string). Remove query parameter: ${key}.`,
+        });
+        return;
+      }
+    }
+
+    const rawTxId = req.query?.transaction_id;
+    const rawTxIdFirst = Array.isArray(rawTxId) ? rawTxId[0] : rawTxId;
+    const txRefParsed = parseOptionalGatewayTransactionId(rawTxIdFirst);
+    if (!txRefParsed.ok) {
+      res.status(400).json({ error: txRefParsed.error });
       return;
     }
-    if (!isChainLiveForPlatform(re.chainEnabledRecord, rail.chain)) {
-      auditGatewayApi(req, {
-        action: "create_wallet",
-        merchantId: merchant.id,
-        actorType: "gateway_api_key",
-        summary: "create-wallet 403 — chain_disabled_for_platform",
-        metadata: {
-          request_in: redactGatewayBody(body),
-          http_status: 403,
-          user_id: userId,
-          chain: rail.chain,
-        },
-      });
-      res.status(403).json({
-        error: "chain_disabled_for_platform",
-        message: `Chain ${rail.chain} is disabled by the operator (admin → Supported chains).`,
+    if (!txRefParsed.value) {
+      res.status(400).json({
+        error: "transaction_id_required",
+        message:
+          "Query parameter transaction_id is required (same checkout reference string as deposit-address transaction_id or reference_id).",
       });
       return;
     }
 
-    const assigned = await prisma.$transaction(async (tx) => {
-      const uid = await resolveUserScopedInternalId(
-        userId,
-        merchant.id,
-        gwEnv,
-      );
-      const u = uid
-        ? await tx.user.findUnique({
-            where: { id: uid },
-          })
-        : null;
-      if (!u) return null;
-      return assignPooledWalletForDeposit(tx, {
-        merchantId: merchant.id,
-        environment: gwEnv,
-        userId: u.id,
-        chain: rail.chain,
-        currency: rail.currency,
-        network: rail.network,
-        referenceTransactionId: createWalletTxRef.value,
-      });
-    });
-    if (!assigned) {
-      auditGatewayApi(req, {
-        action: "create_wallet",
-        merchantId: merchant.id,
-        actorType: "gateway_api_key",
-        summary: "create-wallet 404 — user not found",
-        metadata: {
-          request_in: redactGatewayBody(body),
-          http_status: 404,
-          user_id: userId,
+    const gwEnv = gatewayEnvironmentFromKeyType(keyType);
+    const t = await prisma.transaction.findFirst({
+      where: {
+        ...ACTIVE,
+        referenceTransactionId: txRefParsed.value,
+        wallet: {
+          ...ACTIVE,
+          merchantId: merchant.id,
+          environment: gwEnv,
         },
-      });
-      res.status(404).json({ error: "user not found" });
-      return;
-    }
-    const wallet = assigned.wallet;
-    auditGatewayApi(req, {
-      action: "create_wallet",
-      merchantId: merchant.id,
-      actorType: "gateway_api_key",
-      summary: `create-wallet 200 · user=${userId.slice(0, 8)}… · ${wallet.chain} ${wallet.currency}/${wallet.network}`,
-      metadata: {
-        request_in: redactGatewayBody(body),
-        response_out: {
-          status: 200,
-          wallet_id: wallet.id,
-          gateway_environment: gwEnv,
-          chain: wallet.chain,
-          currency: wallet.currency,
-          network: wallet.network,
-          address_preview: `${String(wallet.address).slice(0, 14)}…`,
+      },
+      orderBy: { createdAt: "desc" },
+      include: {
+        payerUser: { select: { externalUserId: true } },
+        wallet: {
+          select: {
+            currency: true,
+            network: true,
+            environment: true,
+            assignedUser: { select: { externalUserId: true } },
+          },
         },
-        occurred_at_iso: new Date().toISOString(),
       },
     });
-    res.status(200).json({
-      address: wallet.address,
-      chain: wallet.chain,
-      currency: wallet.currency,
-      network: wallet.network,
-      wallet_id: wallet.id,
-      gateway_environment: gwEnv,
-    });
-  } catch (e) {
-    const msg = String(e);
-    if (msg.includes("USER_NOT_FOUND")) {
+
+    if (!t) {
       auditGatewayApi(req, {
-        action: "create_wallet",
-        merchantId: null,
+        action: "gateway_transactions_get",
+        merchantId: merchant.id,
         actorType: "gateway_api_key",
-        summary: "create-wallet 404 — USER_NOT_FOUND",
-        metadata: {
-          request_in: redactGatewayBody(req.body ?? {}),
-          http_status: 404,
-        },
+        summary: "transactions GET 404 — transaction_not_found",
+        metadata: { query: { transaction_id: "[redacted]" }, http_status: 404 },
       });
-      res.status(404).json({ error: "user not found" });
+      res.status(404).json({ error: "transaction_not_found" });
       return;
     }
-    logger.error("gateway create-wallet failed", { err: msg });
+
+    const expectedByKey =
+      await loadExpectedAtomicByWalletSessionForTransactions([t]);
+    const body = serializeGatewayTransactionForApi(t, expectedByKey);
     auditGatewayApi(req, {
-      action: "create_wallet",
+      action: "gateway_transactions_get",
+      merchantId: merchant.id,
+      actorType: "gateway_api_key",
+      summary: `transactions GET 200 · id=${t.id}`,
+      metadata: {
+        query: { transaction_id: "[redacted]" },
+        response_out: { status: 200, id: t.id },
+        http_status: 200,
+      },
+    });
+    res.json(body);
+  } catch (e) {
+    logger.error("gateway transactions GET failed", { err: String(e) });
+    auditGatewayApi(req, {
+      action: "gateway_transactions_get",
       merchantId: null,
       actorType: "gateway_api_key",
-      summary: "create-wallet 500",
+      summary: "transactions GET 500",
       metadata: {
-        request_in: redactGatewayBody(req.body ?? {}),
+        query: req.query ?? {},
         http_status: 500,
-        error: msg.slice(0, 500),
+        error: String(e).slice(0, 500),
       },
     });
     res.status(500).json({ error: "internal error" });
   }
-});
-
-router.get("/api/v1/gateway/transactions", async (req, res) => {
-  const address =
-    typeof req.query.address === "string" ? req.query.address.trim() : "";
-  if (!address) {
-    res.status(400).json({ error: "address query param required" });
-    return;
-  }
-
-  const currencyF = normalizeAssetPart(
-    typeof req.query.currency === "string" ? req.query.currency : "",
-  );
-  const networkF = normalizeAssetPart(
-    typeof req.query.network === "string" ? req.query.network : "",
-  );
-
-  const chainQ =
-    typeof req.query.chain === "string" ? req.query.chain.trim().toUpperCase() : "";
-  const chainFilter =
-    chainQ && CHAIN_QUERY_VALUES.has(chainQ)
-      ? /** @type {import("@prisma/client").Chain} */ (chainQ)
-      : undefined;
-
-  const walletAddressFilter = address.startsWith("0x")
-    ? { equals: address, mode: "insensitive" }
-    : address;
-
-  const txs = await prisma.transaction.findMany({
-    where: {
-      ...ACTIVE,
-      wallet: {
-        ...ACTIVE,
-        address: walletAddressFilter,
-        ...(chainFilter ? { chain: chainFilter } : {}),
-        ...(currencyF && networkF
-          ? {
-              currency: { equals: currencyF, mode: "insensitive" },
-              network: { equals: networkF, mode: "insensitive" },
-            }
-          : {}),
-      },
-    },
-    orderBy: { createdAt: "desc" },
-    take: 200,
-    include: {
-      wallet: {
-        select: {
-          currency: true,
-          network: true,
-          environment: true,
-        },
-      },
-    },
-  });
-
-  res.json({
-    transactions: txs.map((t) => ({
-      id: t.id,
-      transaction_id: t.referenceTransactionId ?? null,
-      tx_hash: t.txHash,
-      from_address: t.fromAddress,
-      to_address: t.toAddress,
-      amount: t.amount,
-      amount_decimal: formatAtomicAmountString(t.amount, t.tokenDecimals),
-      token_symbol: t.tokenSymbol,
-      token_decimals: t.tokenDecimals,
-      chain: t.chain,
-      currency: t.wallet.currency,
-      network: t.wallet.network,
-      status: t.status,
-      confirmations: t.confirmations,
-      block_number: t.blockNumber?.toString() ?? null,
-      created_at: t.createdAt,
-      updated_at: t.updatedAt,
-      gateway_environment: t.wallet.environment,
-    })),
-  });
 });
 
 router.get("/api/v1/gateway/sandbox/simulate-deposit", (req, res) => {

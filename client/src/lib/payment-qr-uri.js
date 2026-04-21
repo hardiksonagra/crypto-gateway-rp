@@ -59,11 +59,6 @@ function eip681Erc20Transfer(p) {
   return `ethereum:${token}@${id}/transfer?address=${recipient}&uint256=${p.amountAtomic}`;
 }
 
-/**
- * @param {string} recipientBase58
- * @param {string} amountAtomic
- * @returns {string | null}
- */
 const USDT_TRC20_DECIMALS = 6;
 
 /**

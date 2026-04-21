@@ -18,7 +18,8 @@ function bigIntFromPgNumericText(s) {
 
 /**
  * Per-wallet aggregates from `transactions` (on-chain rows we recorded). Does not include
- * API assignments that never received a deposit.
+ * API assignments that never received a deposit. Success sums use `transactions.amount`
+ * (**on-chain received**, atomic), same as webhooks’ `received_amount_atomic`.
  *
  * @param {number[]} walletIds
  * @returns {Promise<Map<number, { total_tx: number, success_tx: number, distinct_payers: number, success_received_display: string | null }>>}

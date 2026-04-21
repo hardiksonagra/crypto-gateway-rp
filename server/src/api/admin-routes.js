@@ -13,6 +13,7 @@ import {
 } from "../constants/portal-role.js";
 import { formatAtomicAmountString } from "../lib/format-atomic-amount.js";
 import {
+  expectedReceivedAmountQuadForTransaction,
   loadExpectedAtomicByWalletSessionForTransactions,
   requestedAmountFieldsForTransaction,
 } from "../lib/transaction-requested-amounts.js";
@@ -1266,7 +1267,7 @@ router.get(
       user_id: u.id,
       events,
       source_labels: {
-        existing_session: "Same rail wallet refreshed (deposit-address / create-wallet)",
+        existing_session: "Same rail wallet refreshed (deposit-address)",
         pool_pick: "Picked from merchant pool",
         new_wallet: "New address generated",
       },
@@ -1487,12 +1488,8 @@ router.get("/api/v1/admin/transactions", async (req, res) => {
         token_decimals: t.tokenDecimals,
         amount: t.amount,
         amount_decimal: formatAtomicAmountString(t.amount, t.tokenDecimals),
-        received_amount_atomic: t.amount,
-        received_amount_decimal: formatAtomicAmountString(
-          t.amount,
-          t.tokenDecimals,
-        ),
         ...requestedAmountFieldsForTransaction(t, expectedByKey),
+        ...expectedReceivedAmountQuadForTransaction(t, expectedByKey),
         confirmations: t.confirmations,
         from_address: t.fromAddress,
         to_address: t.toAddress,

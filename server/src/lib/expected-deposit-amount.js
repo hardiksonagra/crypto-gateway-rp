@@ -59,7 +59,7 @@ export async function sumInboundAtomicForSessionExcluding(
 }
 
 /**
- * Expected checkout amount for a payment link session (from `WalletAssignmentEvent`).
+ * Expected checkout amount for a `deposit-address` session (from `WalletAssignmentEvent`).
  *
  * @param {number} walletInternalId
  * @param {string | null | undefined} depositSessionKey

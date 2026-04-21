@@ -14,7 +14,7 @@ import {
 import { computeMerchantBalances } from "./merchant-balance.js";
 
 /**
- * @param {{ amount: string }[]} rows
+ * @param {{ amount: string }[]} rows — each `amount` is **on-chain received** (atomic), same as webhooks’ `received_amount_atomic`.
  * @returns {bigint}
  */
 function sumTxAmounts(rows) {
@@ -26,8 +26,8 @@ function sumTxAmounts(rows) {
 }
 
 /**
- * Unsettled on-chain credits for settlement: `success` and fixed-amount `underpaid`
- * (same `amount` as received; excluded once `merchant_settlement_id` is set).
+ * Unsettled on-chain credits for settlement: `success` and fixed-amount `underpaid`.
+ * Gross uses `transactions.amount` (**received** on-chain), not checkout expectation.
  *
  * @param {string | number} merchantId
  * @param {MerchantGatewayEnv} environment

@@ -1,8 +1,8 @@
-/** Max length stored in payment-link token (keeps URLs under typical browser limits). */
+/** Max length for optional `redirect_url` on `deposit-address` (merchant return URL). */
 const MAX_REDIRECT_URL_LEN = 1024;
 
 /**
- * Validates and normalizes an optional return URL for the payment page.
+ * Validates and normalizes an optional HTTPS return URL from `deposit-address`.
  * Only `http:` and `https:` are allowed.
  *
  * @param {unknown} raw

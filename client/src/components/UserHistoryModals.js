@@ -120,7 +120,8 @@ export function UserAssignmentHistoryModal({
       subtitle={userId}
       extra={
         <p className="mt-2 text-xs" style={{ color: "var(--text-3)" }}>
-          Each row is one deposit-address / create-wallet resolution for this end-user (newest first).
+          Each row is one deposit-address resolution for this end-user (newest
+          first).
           Older data before this feature was added will not appear.
         </p>
       }

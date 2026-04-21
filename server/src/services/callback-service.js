@@ -20,11 +20,18 @@ import {
   transactionWhereFromRouteParam,
 } from "../lib/entity-internal-id.js";
 import { expectedAtomicForDepositSession } from "../lib/expected-deposit-amount.js";
+import {
+  expectedReceivedAmountQuad,
+  paymentWebhookAmountGroups,
+} from "../lib/transaction-requested-amounts.js";
 
 /**
  * HTTP `X-Webhook-Event` for every automatic and manual payment callback.
- * Branch on JSON `status` (`success`, `underpaid`, `pending`, `failed`) and on
- * optional `expected_amount_*` / `received_amount_*` when present.
+ * Branch on JSON `status` (`success`, `underpaid`, `pending`, `failed`). Every payment
+ * webhook body includes flat `expected_amount_*` / `received_amount_*`, nested `checkout` /
+ * `received` (`{ atomic, decimal }`), same shape as `GET /api/v1/gateway/transactions` (single row JSON). Includes
+ * `reference_id` (checkout reference string, same as `merchant_transaction_id`). Legacy
+ * `amount` / `amount_decimal` mirror **received**.
  */
 export const PAYMENT_WEBHOOK_EVENT = "payment";
 
@@ -39,19 +46,25 @@ export const CALLBACK_RETRY_MIN_INTERVAL_MS = 60_000;
  *   wallet: import("@prisma/client").Wallet & { merchant: import("@prisma/client").Merchant },
  *   payerUser: (import("@prisma/client").User & { merchant: import("@prisma/client").Merchant }) | null,
  * }} tx
+ * @param {string | null | undefined} [expectedAtomicNullable] — digits-only atomic from checkout session, or null
  * @returns {Record<string, unknown>}
  */
-export function buildPaymentSuccessWebhookBody(tx) {
+export function buildPaymentSuccessWebhookBody(tx, expectedAtomicNullable = null) {
   const u = tx.payerUser;
   const merchant = u?.merchant ?? tx.wallet.merchant;
+  const quad = expectedReceivedAmountQuad(tx, expectedAtomicNullable);
+  const groups = paymentWebhookAmountGroups(quad);
   return {
     transaction_id: tx.id,
     merchant_transaction_id: tx.referenceTransactionId ?? null,
+    reference_id: tx.referenceTransactionId ?? null,
     wallet_id: tx.walletId,
     tx_hash: tx.txHash,
-    amount: tx.amount,
+    amount: quad.received_amount_atomic,
     token_decimals: tx.tokenDecimals,
-    amount_decimal: formatAtomicAmountString(tx.amount, tx.tokenDecimals),
+    amount_decimal: quad.received_amount_decimal,
+    ...quad,
+    ...groups,
     status: tx.status,
     chain: tx.chain,
     currency: tx.wallet.currency,
@@ -73,17 +86,11 @@ export function buildPaymentSuccessWebhookBody(tx) {
  * @param {string} expectedAtomic
  */
 export function buildPaymentUnderpaidWebhookBody(tx, expectedAtomic) {
-  const base = buildPaymentSuccessWebhookBody(tx);
-  return {
-    ...base,
-    expected_amount_atomic: expectedAtomic,
-    expected_amount_decimal: formatAtomicAmountString(
-      expectedAtomic,
-      tx.tokenDecimals,
-    ),
-    received_amount_atomic: base.amount,
-    received_amount_decimal: base.amount_decimal,
-  };
+  const exp =
+    typeof expectedAtomic === "string" && expectedAtomic.trim()
+      ? expectedAtomic.trim()
+      : null;
+  return buildPaymentSuccessWebhookBody(tx, exp);
 }
 
 /**
@@ -92,12 +99,16 @@ export function buildPaymentUnderpaidWebhookBody(tx, expectedAtomic) {
  *   payerUser: (import("@prisma/client").User & { merchant: import("@prisma/client").Merchant }) | null,
  * }} tx
  * @param {string} [failureReason]
+ * @param {string | null | undefined} [expectedAtomicNullable]
  * @returns {Record<string, unknown>}
  */
-export function buildPaymentFailedWebhookBody(tx, failureReason) {
-  const base = buildPaymentSuccessWebhookBody(tx);
+export function buildPaymentFailedWebhookBody(
+  tx,
+  failureReason,
+  expectedAtomicNullable = null,
+) {
   return {
-    ...base,
+    ...buildPaymentSuccessWebhookBody(tx, expectedAtomicNullable),
     ...(failureReason ? { failure_reason: failureReason } : {}),
   };
 }
@@ -144,7 +155,11 @@ export async function notifyPaymentSuccess(txId) {
   }
   const merchant = tx.payerUser?.merchant ?? tx.wallet.merchant;
   const url = merchant.callbackUrl;
-  const body = buildPaymentSuccessWebhookBody(tx);
+  const expectedAtomic = await expectedAtomicForDepositSession(
+    tx.walletId,
+    tx.depositSessionKey,
+  );
+  const body = buildPaymentSuccessWebhookBody(tx, expectedAtomic);
   if (!url) {
     logger.warn("callback skip: merchant has no callback_url (set in portal)", {
       txId,
@@ -273,7 +288,11 @@ export async function notifyPaymentFailed(txId, opts = {}) {
       : String(tx.txHash ?? "").startsWith("gateway-created:")
         ? "checkout_expired_unpaid"
         : undefined;
-  const body = buildPaymentFailedWebhookBody(tx, failureReason);
+  const expectedAtomic = await expectedAtomicForDepositSession(
+    tx.walletId,
+    tx.depositSessionKey,
+  );
+  const body = buildPaymentFailedWebhookBody(tx, failureReason, expectedAtomic);
   if (!url) {
     logger.warn("callback failed skip: merchant has no callback_url (set in portal)", {
       txId,
@@ -553,7 +572,11 @@ async function executeRedeliverPaymentSuccess(tx, audit) {
     };
   }
 
-  const body = buildPaymentSuccessWebhookBody(tx);
+  const expectedAtomic = await expectedAtomicForDepositSession(
+    tx.walletId,
+    tx.depositSessionKey,
+  );
+  const body = buildPaymentSuccessWebhookBody(tx, expectedAtomic);
 
   try {
     logger.info("callback redeliver posting", {

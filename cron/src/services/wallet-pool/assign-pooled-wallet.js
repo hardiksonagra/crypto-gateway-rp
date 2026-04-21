@@ -61,7 +61,7 @@ function isWalletAssignmentTableMissingError(e) {
  *   referenceTransactionId?: string | null,
  *   expectedAmountAtomic?: string | null,
  * }} p
- * @returns {Promise<{ wallet: import("@prisma/client").Wallet; assignmentSource: "existing_session" | "pool_pick" | "new_wallet"; depositSessionKey: string }>}
+ * @returns {Promise<{ wallet: import("@prisma/client").Wallet; assignmentSource: "existing_session" | "pool_pick" | "new_wallet"; depositSessionKey: string; referenceTransactionId: string }>}
  */
 export async function assignPooledWalletForDeposit(tx, p) {
   const { merchantId, environment, userId, chain, currency, network } = p;
@@ -189,34 +189,33 @@ export async function assignPooledWalletForDeposit(tx, p) {
     if (!isWalletAssignmentTableMissingError(e)) throw e;
   }
 
-  const expAtomic =
-    typeof p.expectedAmountAtomic === "string" &&
-    /^\d+$/.test(p.expectedAmountAtomic.trim())
-      ? p.expectedAmountAtomic.trim()
-      : null;
-  if (expAtomic) {
-    const dec = tokenDecimalsForGatewayRail(currency, network) ?? 6;
-    await tx.transaction.create({
-      data: {
-        walletId: wallet.id,
-        payerUserId: userId,
-        txHash: `gateway-created:${depositSessionKey}`,
-        fromAddress: "gateway:pending",
-        toAddress: wallet.address,
-        amount: "0",
-        tokenSymbol: currency,
-        chain,
-        status: TxStatus.created,
-        confirmations: 0,
-        logIndex: -2,
-        tokenDecimals: dec,
-        depositSessionKey,
-        referenceTransactionId: referenceTransactionId || null,
-      },
-    });
-  }
+  const dec = tokenDecimalsForGatewayRail(currency, network) ?? 6;
+  /** One `created` placeholder per `deposit-address` call (open or fixed amount) — removed when first on-chain row exists for this session. */
+  await tx.transaction.create({
+    data: {
+      walletId: wallet.id,
+      payerUserId: userId,
+      txHash: `gateway-created:${depositSessionKey}`,
+      fromAddress: "gateway:pending",
+      toAddress: wallet.address,
+      amount: "0",
+      tokenSymbol: currency,
+      chain,
+      status: TxStatus.created,
+      confirmations: 0,
+      logIndex: -2,
+      tokenDecimals: dec,
+      depositSessionKey,
+      referenceTransactionId: referenceTransactionId || null,
+    },
+  });
 
-  return { wallet, assignmentSource: source, depositSessionKey };
+  return {
+    wallet,
+    assignmentSource: source,
+    depositSessionKey,
+    referenceTransactionId,
+  };
 }
 
 /**

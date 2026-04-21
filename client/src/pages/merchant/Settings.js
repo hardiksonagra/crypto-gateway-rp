@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
 import { Formik, Form, Field, ErrorMessage } from "formik";
 import { api } from "../../api";
 import { buildMerchantSettingsSchema } from "../../admin/merchantSchemas";
@@ -85,6 +86,17 @@ export default function MerchantSettings() {
       <h1 className="font-display text-2xl font-semibold text-white">
         Gateway &amp; webhooks
       </h1>
+      <p className="mt-2 text-sm text-white/55">
+        Integrators: full <span className="font-mono">/api/v1/gateway/*</span>{" "}
+        reference (endpoints, payloads, webhooks) lives under{" "}
+        <Link
+          to="/docs"
+          className="text-sky-300/90 underline decoration-white/20 underline-offset-2 hover:decoration-sky-300/60"
+        >
+          Doc
+        </Link>{" "}
+        in the sidebar.
+      </p>
 
       {gatewayModes ? (
         <div className="mt-6 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white/70">

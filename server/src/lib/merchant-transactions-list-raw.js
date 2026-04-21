@@ -102,6 +102,8 @@ export async function listMerchantDashboardRecentTxRaw(prisma, p) {
     Prisma.sql`
       SELECT
         t.id,
+        t.wallet_id,
+        t.deposit_session_key,
         t.transaction_id AS reference_transaction_id,
         t.tx_hash,
         t.chain::text AS chain,
@@ -127,6 +129,8 @@ export async function listMerchantDashboardRecentTxRaw(prisma, p) {
   );
   return rows.map((row) => ({
     id: row.id,
+    walletId: row.wallet_id,
+    depositSessionKey: row.deposit_session_key,
     referenceTransactionId: row.reference_transaction_id,
     txHash: row.tx_hash,
     chain: row.chain,

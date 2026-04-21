@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { api } from "../../api";
 import ConfirmModal from "../../components/ConfirmModal.js";
 import { BrandLoader } from "../../components/BrandLoader.js";
@@ -168,6 +169,16 @@ export default function GatewayApiKey() {
       </ConfirmModal>
 
       <h1 className="font-display text-2xl font-semibold text-white">API key</h1>
+      <p className="mt-2 text-sm text-white/55">
+        Endpoint reference for this key:{" "}
+        <Link
+          to="/docs"
+          className="text-sky-300/90 underline decoration-white/20 underline-offset-2 hover:decoration-sky-300/60"
+        >
+          Gateway API docs
+        </Link>{" "}
+        (<span className="font-mono">Doc</span> in the sidebar).
+      </p>
 
       <div className="glass mt-8 w-full rounded-2xl p-6 lg:p-8">
         <label
