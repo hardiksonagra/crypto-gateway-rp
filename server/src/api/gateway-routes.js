@@ -264,16 +264,18 @@ router.get("/api/v1/gateway/payment-session/:token", async (req, res) => {
     }
     let expected_amount_atomic = null;
     let expected_amount_decimal = null;
+    /** @type {{ expectedAmountAtomic: string | null, createdAt: Date } | null} */
+    let assignmentForSession = null;
     if (v.depositSessionKey) {
-      const ev = await prisma.walletAssignmentEvent.findFirst({
+      assignmentForSession = await prisma.walletAssignmentEvent.findFirst({
         where: {
           walletId: wid,
           depositSessionKey: v.depositSessionKey,
           ...ACTIVE,
         },
-        select: { expectedAmountAtomic: true },
+        select: { expectedAmountAtomic: true, createdAt: true },
       });
-      const raw = ev?.expectedAmountAtomic?.trim();
+      const raw = assignmentForSession?.expectedAmountAtomic?.trim();
       if (raw && /^\d+$/.test(raw)) {
         const dec = tokenDecimalsForGatewayRail(w.currency, w.network);
         if (dec != null) {
@@ -281,6 +283,25 @@ router.get("/api/v1/gateway/payment-session/:token", async (req, res) => {
           expected_amount_decimal = formatAtomicAmountString(raw, dec);
         }
       }
+    }
+
+    /**
+     * Stable clock anchor for scan/hold/checkout JSON when `wallets.scan_expires_at` / `hold_expires_at`
+     * are null — prefer assignment event, else earliest `gateway-created:` tx for this session.
+     */
+    let sessionAnchorAt = assignmentForSession?.createdAt ?? null;
+    if (!sessionAnchorAt && v.depositSessionKey) {
+      const anchorTx = await prisma.transaction.findFirst({
+        where: {
+          walletId: wid,
+          depositSessionKey: v.depositSessionKey,
+          txHash: { startsWith: "gateway-created:" },
+          ...ACTIVE,
+        },
+        select: { createdAt: true },
+        orderBy: { id: "asc" },
+      });
+      sessionAnchorAt = anchorTx?.createdAt ?? null;
     }
 
     /** When scan/hold TTLs are disabled (null DB timestamps), still expose an unpaid-checkout deadline. */
@@ -305,22 +326,43 @@ router.get("/api/v1/gateway/payment-session/:token", async (req, res) => {
       }
     }
     if (!checkout_expires_at) {
-      checkout_expires_at = new Date(
-        Date.now() + paymentPageCheckoutFallbackMinutes * 60 * 1000,
-      ).toISOString();
+      if (sessionAnchorAt) {
+        checkout_expires_at = new Date(
+          sessionAnchorAt.getTime() +
+            paymentPageCheckoutFallbackMinutes * 60 * 1000,
+        ).toISOString();
+      } else {
+        checkout_expires_at = new Date(
+          Date.now() + paymentPageCheckoutFallbackMinutes * 60 * 1000,
+        ).toISOString();
+      }
     }
 
     let deposit_scan_expires_at = w.scanExpiresAt?.toISOString() ?? null;
     if (!deposit_scan_expires_at) {
-      deposit_scan_expires_at = new Date(
-        Date.now() + effectiveWalletScanTtlMinutes() * 60 * 1000,
-      ).toISOString();
+      const scanTtlMin = re.walletScanTtlMinutes;
+      if (scanTtlMin > 0 && sessionAnchorAt) {
+        deposit_scan_expires_at = new Date(
+          sessionAnchorAt.getTime() + scanTtlMin * 60 * 1000,
+        ).toISOString();
+      } else if (scanTtlMin > 0) {
+        deposit_scan_expires_at = new Date(
+          Date.now() + effectiveWalletScanTtlMinutes() * 60 * 1000,
+        ).toISOString();
+      }
     }
     let reservation_expires_at = w.holdExpiresAt?.toISOString() ?? null;
     if (!reservation_expires_at) {
-      reservation_expires_at = new Date(
-        Date.now() + effectiveWalletAssignmentHoldMinutes() * 60 * 1000,
-      ).toISOString();
+      const holdMin = re.walletAssignmentHoldMinutes;
+      if (holdMin > 0 && sessionAnchorAt) {
+        reservation_expires_at = new Date(
+          sessionAnchorAt.getTime() + holdMin * 60 * 1000,
+        ).toISOString();
+      } else if (holdMin > 0) {
+        reservation_expires_at = new Date(
+          Date.now() + effectiveWalletAssignmentHoldMinutes() * 60 * 1000,
+        ).toISOString();
+      }
     }
 
     res.json({

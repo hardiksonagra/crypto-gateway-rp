@@ -167,6 +167,54 @@ export function getResolvedInt(key, fallbackFn) {
   return fallbackFn();
 }
 
+/** Product default when DB + env yield no positive minutes (`0` / empty / invalid = unset). */
+const RESOLVED_WALLET_SCAN_TTL_FALLBACK_MINUTES = 10;
+const RESOLVED_WALLET_ASSIGNMENT_HOLD_FALLBACK_MINUTES = 30;
+
+/**
+ * `WALLET_SCAN_TTL_MINUTES`: app_settings (only if parsed integer > 0), else `env.walletScanTtlMinutes`
+ * if > 0, else {@link RESOLVED_WALLET_SCAN_TTL_FALLBACK_MINUTES}.
+ *
+ * @returns {number}
+ */
+export function resolvedWalletScanTtlMinutes() {
+  if (
+    APP_SETTING_DEF_BY_KEY.has("WALLET_SCAN_TTL_MINUTES") &&
+    hasDbOverride("WALLET_SCAN_TTL_MINUTES")
+  ) {
+    const raw = rawDbValue("WALLET_SCAN_TTL_MINUTES")?.trim() ?? "";
+    if (raw !== "") {
+      const n = parseInt(raw, 10);
+      if (Number.isFinite(n) && n > 0) return n;
+    }
+  }
+  const e = env.walletScanTtlMinutes;
+  if (typeof e === "number" && Number.isFinite(e) && e > 0) return e;
+  return RESOLVED_WALLET_SCAN_TTL_FALLBACK_MINUTES;
+}
+
+/**
+ * `WALLET_ASSIGNMENT_HOLD_MINUTES`: app_settings (only if parsed integer > 0), else
+ * `env.walletAssignmentHoldMinutes` if > 0, else {@link RESOLVED_WALLET_ASSIGNMENT_HOLD_FALLBACK_MINUTES}.
+ *
+ * @returns {number}
+ */
+export function resolvedWalletAssignmentHoldMinutes() {
+  if (
+    APP_SETTING_DEF_BY_KEY.has("WALLET_ASSIGNMENT_HOLD_MINUTES") &&
+    hasDbOverride("WALLET_ASSIGNMENT_HOLD_MINUTES")
+  ) {
+    const raw = rawDbValue("WALLET_ASSIGNMENT_HOLD_MINUTES")?.trim() ?? "";
+    if (raw !== "") {
+      const n = parseInt(raw, 10);
+      if (Number.isFinite(n) && n > 0) return n;
+    }
+  }
+  const e = env.walletAssignmentHoldMinutes;
+  if (typeof e === "number" && Number.isFinite(e) && e > 0) return e;
+  return RESOLVED_WALLET_ASSIGNMENT_HOLD_FALLBACK_MINUTES;
+}
+
 /**
  * @param {string} key
  * @param {() => boolean} fallbackFn

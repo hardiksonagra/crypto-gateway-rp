@@ -157,13 +157,10 @@ export const env = {
     const legacy = intEnv("EVM_SCAN_MAX_BLOCKS_PER_TICK", 4);
     return Math.min(50, Math.max(1, legacy));
   })(),
-  /** `0` = no assign TTL (`scan_expires_at` null); hot-path scan uses tx rows, one-shot, or full-scan cron. */
+  /** See `resolvedWalletScanTtlMinutes` in app-settings-runtime (Admin → env → default 10). */
   walletScanTtlMinutes: intEnv("WALLET_SCAN_TTL_MINUTES", 10),
-  /**
-   * How long a deposit address stays reserved for one end-user (minutes). Then it re-enters the merchant pool if unpaid.
-   * `0` = reserve until payment success only (no time-based release).
-   */
-  walletAssignmentHoldMinutes: intEnv("WALLET_ASSIGNMENT_HOLD_MINUTES", 10),
+  /** See `resolvedWalletAssignmentHoldMinutes` in app-settings-runtime (Admin → env → default 30). */
+  walletAssignmentHoldMinutes: intEnv("WALLET_ASSIGNMENT_HOLD_MINUTES", 30),
   /**
    * Maintenance cron (`crypto-gateway-cron-maintenance`): how often to clear expired pooled-wallet holds (minutes).
    * Clamped to 1–59 for the minute field (every N minutes in node-cron). Tunable in Admin → System settings.

@@ -79,10 +79,13 @@ export async function assignPooledWalletForDeposit(tx, p) {
     ? refTxRaw.slice(0, 256)
     : generateGatewayReferenceTransactionId();
 
-  const holdUntil =
+  const holdMin =
+    typeof re.walletAssignmentHoldMinutes === "number" &&
+    Number.isFinite(re.walletAssignmentHoldMinutes) &&
     re.walletAssignmentHoldMinutes > 0
-      ? new Date(Date.now() + re.walletAssignmentHoldMinutes * 60 * 1000)
-      : null;
+      ? re.walletAssignmentHoldMinutes
+      : 30;
+  const holdUntil = new Date(Date.now() + holdMin * 60 * 1000);
   const scanAt = nextScanExpiresAt();
 
   /** @type {import("@prisma/client").Wallet} */

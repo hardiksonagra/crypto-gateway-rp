@@ -9,6 +9,8 @@ import {
   getResolvedBoolTronGateway,
   getResolvedInt,
   getResolvedString,
+  resolvedWalletAssignmentHoldMinutes,
+  resolvedWalletScanTtlMinutes,
 } from "../lib/app-settings-runtime.js";
 import { parseChainEnabledRecord } from "../lib/chain-enable.js";
 
@@ -119,17 +121,11 @@ export const re = {
   },
 
   get walletScanTtlMinutes() {
-    return getResolvedInt(
-      "WALLET_SCAN_TTL_MINUTES",
-      () => env.walletScanTtlMinutes,
-    );
+    return resolvedWalletScanTtlMinutes();
   },
 
   get walletAssignmentHoldMinutes() {
-    return getResolvedInt(
-      "WALLET_ASSIGNMENT_HOLD_MINUTES",
-      () => env.walletAssignmentHoldMinutes,
-    );
+    return resolvedWalletAssignmentHoldMinutes();
   },
 
   get walletPoolHoldReleaseCronMinutes() {

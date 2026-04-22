@@ -106,13 +106,15 @@ export const APP_SETTING_DEFINITIONS = [
 
   {
     key: "WALLET_SCAN_TTL_MINUTES",
-    label: "Wallet scan TTL (minutes, 0 = none)",
+    label:
+      "Wallet scan TTL (minutes). Empty / 0 / invalid here → .env; same there → default 10",
     category: DEPOSIT_SCANNER_CATEGORIES.shared,
     type: "int",
   },
   {
     key: "WALLET_ASSIGNMENT_HOLD_MINUTES",
-    label: "Pooled address hold (minutes, 0 = until paid)",
+    label:
+      "Pooled address hold (minutes). Empty / 0 / invalid here → .env; same there → default 30",
     category: DEPOSIT_SCANNER_CATEGORIES.shared,
     type: "int",
   },

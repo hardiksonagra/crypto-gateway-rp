@@ -6,7 +6,7 @@ import { re } from "../config/runtime-env.js";
 import { resolveWalletInternalId } from "./entity-internal-id.js";
 
 /**
- * Minutes for assign-time deposit window (`scan_expires_at`). `0` = null TTL (hot path only via rescan flag or full-scan cron).
+ * Minutes for assign-time deposit window (`scan_expires_at`). Resolved via Admin → env → default 10.
  * @returns {number}
  */
 export function walletScanTtlMinutes() {
@@ -15,7 +15,7 @@ export function walletScanTtlMinutes() {
 
 /**
  * Resolved scan TTL, or **10** when admin/env set `0` (null `scan_expires_at` in DB). Used for payment
- * API fallbacks only — worker filter still follows raw `re.walletScanTtlMinutes`.
+ * API fallbacks only when DB `scan_expires_at` is null — uses `re.walletScanTtlMinutes` (always ≥ 1 after resolution).
  *
  * @returns {number}
  */
@@ -25,26 +25,31 @@ export function effectiveWalletScanTtlMinutes() {
 }
 
 /**
- * Resolved hold minutes, or **60** when set to `0` (null `hold_expires_at`). Payment / hosted checkout
- * consumers use this so countdowns always have a horizon; pool maintenance semantics stay on raw `0`.
+ * Resolved hold minutes, or **30** when `re` would be non-positive (should not happen after
+ * {@link resolvedWalletAssignmentHoldMinutes}). Payment / hosted checkout consumers use this for
+ * synthetic horizons when DB timestamps are null.
  *
  * @returns {number}
  */
 export function effectiveWalletAssignmentHoldMinutes() {
   const m = re.walletAssignmentHoldMinutes;
-  return m > 0 ? m : 60;
+  return m > 0 ? m : 30;
 }
 
 /** When checkout placeholder metadata is unavailable, payment page uses this many minutes from now. */
 export const paymentPageCheckoutFallbackMinutes = 10;
 
 /**
- * @returns {Date | null}
+ * Always returns a future instant — assigned wallets must never get `scan_expires_at` null or deposits
+ * can miss the live worker hot path and stay `pending`.
+ *
+ * @returns {Date}
  */
 export function nextScanExpiresAt() {
   const m = re.walletScanTtlMinutes;
-  if (m <= 0) return null;
-  return new Date(Date.now() + m * 60 * 1000);
+  const minutes =
+    typeof m === "number" && Number.isFinite(m) && m > 0 ? m : 10;
+  return new Date(Date.now() + minutes * 60 * 1000);
 }
 
 /**
