@@ -1,6 +1,12 @@
 import { Link, Outlet, useNavigate } from "react-router-dom";
 import { useEffect, useRef, useState } from "react";
-import { api, getToken, setToken } from "../api";
+import {
+  api,
+  getToken,
+  isAuthSessionFailure,
+  isTransientApiFailure,
+  setToken,
+} from "../api";
 import { useSidebarLayout } from "../hooks/useSidebarLayout.js";
 import { useMerchantPortalEnvironment } from "../hooks/useMerchantPortalEnvironment.js";
 import { useTheme } from "../hooks/useTheme.js";
@@ -102,16 +108,42 @@ export default function AdminShell() {
       navigate("/control/login", { replace: true });
       return;
     }
-    api("/api/v1/auth/me")
-      .then((u) => {
+    let cancelled = false;
+    let timeoutId = 0;
+
+    const goLogin = () => {
+      setToken(null);
+      navigate("/control/login", { replace: true });
+    };
+
+    const run = async () => {
+      try {
+        const u = await api("/api/v1/auth/me");
+        if (cancelled) return;
         if (u.role !== "ADMIN") {
-          setToken(null);
-          navigate("/control/login", { replace: true });
+          goLogin();
           return;
         }
         setEmail(u.email);
-      })
-      .catch(() => navigate("/control/login", { replace: true }));
+      } catch (e) {
+        if (cancelled) return;
+        if (isTransientApiFailure(e)) {
+          timeoutId = window.setTimeout(run, 3000);
+          return;
+        }
+        if (isAuthSessionFailure(e)) {
+          goLogin();
+          return;
+        }
+        timeoutId = window.setTimeout(run, 5000);
+      }
+    };
+
+    void run();
+    return () => {
+      cancelled = true;
+      if (timeoutId) window.clearTimeout(timeoutId);
+    };
   }, [navigate]);
 
   useEffect(() => {

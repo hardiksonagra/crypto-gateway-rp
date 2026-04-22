@@ -76,6 +76,8 @@ export const env = {
   databaseUrl: required("DATABASE_URL"),
   mnemonic: loadNormalizedMnemonic(),
   jwtSecret: required("JWT_SECRET"),
+  /** Portal JWT lifetime (e.g. `24h`, `7d`). `jsonwebtoken` `expiresIn` string. */
+  jwtExpiresIn: optional("JWT_EXPIRES_IN", "7d"),
   clientOrigins: listEnv(
     "CLIENT_ORIGINS",
     "https://portal.cryptovapay.com",

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { Navigate, useLocation } from "react-router-dom";
-import { api, getToken } from "../api";
+import { api, getToken, isAuthSessionFailure, isTransientApiFailure } from "../api";
 import { BrandLoader } from "./BrandLoader.js";
 
 /**
@@ -30,19 +30,33 @@ export function AuthEntryGate({ children }) {
       return;
     }
     let cancelled = false;
-    (async () => {
+    let timeoutId = 0;
+
+    const run = async () => {
       try {
         const u = await api("/api/v1/auth/me");
         if (cancelled) return;
         if (u?.role === "ADMIN") setPhase("admin");
         else if (u?.role === "MERCHANT") setPhase("merchant");
         else setPhase("anonymous");
-      } catch {
-        if (!cancelled) setPhase("anonymous");
+      } catch (e) {
+        if (cancelled) return;
+        if (isTransientApiFailure(e)) {
+          timeoutId = window.setTimeout(run, 3000);
+          return;
+        }
+        if (isAuthSessionFailure(e)) {
+          setPhase("anonymous");
+          return;
+        }
+        timeoutId = window.setTimeout(run, 5000);
       }
-    })();
+    };
+
+    void run();
     return () => {
       cancelled = true;
+      if (timeoutId) window.clearTimeout(timeoutId);
     };
   }, [allowResetWithLink, location.pathname, location.search]);
 

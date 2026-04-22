@@ -2,7 +2,7 @@ import jwt from "jsonwebtoken";
 import { env } from "../config/env.js";
 
 export function signAuthToken(payload) {
-  return jwt.sign(payload, env.jwtSecret, { expiresIn: "7d" });
+  return jwt.sign(payload, env.jwtSecret, { expiresIn: env.jwtExpiresIn || "7d" });
 }
 
 export function verifyAuthToken(token) {

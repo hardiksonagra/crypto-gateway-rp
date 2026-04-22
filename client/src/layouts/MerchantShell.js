@@ -5,6 +5,8 @@ import {
   clearImpersonationAdminToken,
   getImpersonationAdminToken,
   getToken,
+  isAuthSessionFailure,
+  isTransientApiFailure,
   setToken,
 } from "../api";
 import { useSidebarLayout } from "../hooks/useSidebarLayout.js";
@@ -104,18 +106,44 @@ export default function MerchantShell() {
       navigate("/login", { replace: true });
       return;
     }
-    api("/api/v1/auth/me")
-      .then((u) => {
+    let cancelled = false;
+    let timeoutId = 0;
+
+    const goLogin = () => {
+      clearImpersonationAdminToken();
+      setToken(null);
+      navigate("/login", { replace: true });
+    };
+
+    const run = async () => {
+      try {
+        const u = await api("/api/v1/auth/me");
+        if (cancelled) return;
         if (u.role !== "MERCHANT") {
-          clearImpersonationAdminToken();
-          setToken(null);
-          navigate("/login", { replace: true });
+          goLogin();
           return;
         }
         setEmail(u.email);
         setAdminImpersonation(Boolean(getImpersonationAdminToken()));
-      })
-      .catch(() => navigate("/login", { replace: true }));
+      } catch (e) {
+        if (cancelled) return;
+        if (isTransientApiFailure(e)) {
+          timeoutId = window.setTimeout(run, 3000);
+          return;
+        }
+        if (isAuthSessionFailure(e)) {
+          goLogin();
+          return;
+        }
+        timeoutId = window.setTimeout(run, 5000);
+      }
+    };
+
+    void run();
+    return () => {
+      cancelled = true;
+      if (timeoutId) window.clearTimeout(timeoutId);
+    };
   }, [navigate]);
 
   useEffect(() => {
