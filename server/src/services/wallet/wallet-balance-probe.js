@@ -23,6 +23,19 @@ import {
 } from "../../lib/etherscan-client.js";
 import { pickUsdtTrc20Contract } from "../sweep/tron-usdt-sweep.js";
 
+/** Space out explorer calls so bulk “Refresh balances” stays under third-party rate caps. */
+const REFRESH_BALANCE_GAP_MS = 1000;
+
+/**
+ * @param {number} ms
+ * @returns {Promise<void>}
+ */
+function sleep(ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
 /**
  * @param {import("@prisma/client").Chain} chain
  * @returns {{ address: string, decimals: number } | null}
@@ -142,6 +155,8 @@ export async function probeWalletOnChainBalance(w) {
 
 /**
  * Fetches on-chain balance for every wallet and persists cache columns.
+ * Waits {@link REFRESH_BALANCE_GAP_MS} between each wallet so Etherscan / TronScan
+ * are not hit in one tight burst (admin “Refresh balances”).
  *
  * @returns {Promise<{ total: number, ok: number, failed: number }>}
  */
@@ -163,7 +178,11 @@ export async function refreshAllWalletCachedBalances() {
   let failed = 0;
   const now = new Date();
 
-  for (const w of rows) {
+  for (let i = 0; i < rows.length; i++) {
+    const w = rows[i];
+    if (i > 0) {
+      await sleep(REFRESH_BALANCE_GAP_MS);
+    }
     const r = await probeWalletOnChainBalance(w);
     if (r.error) failed++;
     else ok++;
