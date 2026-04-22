@@ -4,8 +4,8 @@ import { logger } from "crypto-payment-gateway/src/lib/logger.js";
 import { expireStaleCreatedCheckoutTransactions } from "crypto-payment-gateway/src/services/checkout-session-expiry.js";
 
 /**
- * Marks fixed-amount checkout placeholders (`status: created`) as `failed` after
- * {@link re.checkoutCreatedExpiryHours} and sends `status: failed` payment webhooks.
+ * Marks stale unpaid checkout placeholders (`gateway-created:*`, `created` or stuck `pending`+`amount` 0)
+ * as `failed` after {@link re.checkoutCreatedExpiryHours} and sends `status: failed` payment webhooks.
  * Interval: {@link re.checkoutExpiryCronMinutes} (default 30), env / Admin.
  *
  * @param {{ schedule: (expression: string, handler: () => void, options?: object) => import("node-cron").ScheduledTask }} ctx

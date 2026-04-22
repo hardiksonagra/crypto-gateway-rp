@@ -29,23 +29,6 @@ function parseExpiryMs(iso) {
 }
 
 /**
- * Latest of scan, pool hold, and unpaid-checkout deadlines (ISO) so the payer always sees a countdown
- * when any bound exists.
- *
- * @param {...unknown} isos
- * @returns {string | null}
- */
-function latestExpiryIso(...isos) {
-  let best = -Infinity;
-  for (const iso of isos) {
-    const t = parseExpiryMs(iso);
-    if (t != null && t > best) best = t;
-  }
-  if (best === -Infinity || !Number.isFinite(best)) return null;
-  return new Date(best).toISOString();
-}
-
-/**
  * @param {unknown} v
  * @returns {number | null}
  */
@@ -150,19 +133,11 @@ export default function PaymentPage() {
     };
   }, [token]);
 
-  const displayExpiresAt = useMemo(
-    () =>
-      latestExpiryIso(
-        session?.deposit_scan_expires_at,
-        session?.reservation_expires_at,
-        session?.checkout_expires_at,
-      ),
-    [
-      session?.deposit_scan_expires_at,
-      session?.reservation_expires_at,
-      session?.checkout_expires_at,
-    ],
-  );
+  /** Deposit scan window only — pool hold / checkout may run longer server-side without extending this countdown. */
+  const displayExpiresAt = useMemo(() => {
+    const ms = parseExpiryMs(session?.deposit_scan_expires_at);
+    return ms != null ? new Date(ms).toISOString() : null;
+  }, [session?.deposit_scan_expires_at]);
 
   const redirectUrl =
     typeof session?.redirect_url === "string" && session.redirect_url.trim()
@@ -175,14 +150,23 @@ export default function PaymentPage() {
       setRemainSec(null);
       return;
     }
+    const end = new Date(displayExpiresAt).getTime();
+    if (!Number.isFinite(end)) {
+      setRemainSec(null);
+      return;
+    }
     const tick = () => {
-      const end = new Date(displayExpiresAt).getTime();
-      setRemainSec(Math.max(0, Math.floor((end - Date.now()) / 1000)));
+      const sec = Math.max(0, Math.floor((end - Date.now()) / 1000));
+      setRemainSec(sec);
+      if (sec <= 0) {
+        const url = redirectUrlRef.current;
+        if (url) assignRedirect(url);
+      }
     };
     tick();
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
-  }, [displayExpiresAt]);
+  }, [displayExpiresAt, assignRedirect]);
 
   useEffect(() => {
     if (!token || !session || paidNoReturnUrl) return;
@@ -204,7 +188,15 @@ export default function PaymentPage() {
           else setPaidNoReturnUrl(true);
           return;
         }
-        if (data?.has_underpaid_deposit) setUnderpaidNotice(true);
+        if (data?.has_underpaid_deposit) {
+          const url = redirectUrlRef.current;
+          if (url) {
+            setUnderpaidNotice(false);
+            assignRedirect(url);
+          } else {
+            setUnderpaidNotice(true);
+          }
+        }
       } catch {
         /* ignore transient errors */
       }
@@ -222,14 +214,9 @@ export default function PaymentPage() {
     [session?.deposit_scan_ttl_minutes],
   );
 
-  /** Show whenever API returned a usable end time (scan-only, hold-only, or combined). */
+  /** Show when `deposit_scan_expires_at` is a usable instant (admin Wallet scan TTL window). */
   const showTimer = displayExpiresAt != null && parseExpiryMs(displayExpiresAt) != null;
   const timerDone = showTimer && remainSec !== null && remainSec <= 0;
-
-  useEffect(() => {
-    if (!redirectUrl || !timerDone) return;
-    assignRedirect(redirectUrl);
-  }, [redirectUrl, timerDone, assignRedirect]);
 
   const onCopy = useCallback(async () => {
     if (!session?.address) return;

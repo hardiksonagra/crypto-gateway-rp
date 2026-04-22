@@ -49,6 +49,8 @@ function isWalletAssignmentTableMissingError(e) {
  * If this user already holds a row for the rail, refreshes hold/scan and returns it (including expired holds).
  * Otherwise picks a **free** pool row, preferring any wallet this user has prior `transactions` on (any status);
  * then oldest by `created_at`. If none available, creates a new address.
+ * Same on-chain `(environment, chain, address)` is never assigned while **any** merchant’s row for that address
+ * still has `assigned_user_id` set (HD can produce identical addresses across merchants at the same index).
  *
  * @param {Tx} tx
  * @param {{
@@ -252,6 +254,15 @@ async function tryPickFreePoolWallet(tx, args) {
           w2."assigned_user_id" IS NULL
           OR (w2."hold_expires_at" IS NOT NULL AND w2."hold_expires_at" < NOW())
         )
+        AND NOT EXISTS (
+          SELECT 1 FROM "wallets" wo
+          WHERE wo."deleted_at" IS NULL
+            AND wo."chain" = w2."chain"
+            AND wo."address" = w2."address"
+            AND wo."environment" = w2."environment"
+            AND wo."id" <> w2."id"
+            AND wo."assigned_user_id" IS NOT NULL
+        )
       ORDER BY
         EXISTS (
           SELECT 1 FROM "transactions" t
@@ -312,20 +323,45 @@ async function createNewPooledWallet(tx, args) {
    * New pool rows must each get a **distinct** `(merchant, env, chain, currency, network, address)`
    * (partial unique on active wallets). Reusing the first EVM row’s address for a second row always
    * collides — TRC20 avoids this by deriving a new address per row; EVM must do the same here.
+   * Skip derivation indices whose address string is still assigned on **any** merchant row so two
+   * merchants never checkout the same on-chain destination while another hold is active.
    */
-  const derivationIndex = await nextDerivationIndex(
+  const derivationBase = await nextDerivationIndex(
     tx,
     merchantId,
     environment,
     chain,
   );
-  let address;
-  if (isEvmChain(chain)) {
-    address = deriveEvmAddress(derivationIndex);
-  } else if (chain === Chain.TRON) {
-    address = deriveTronAddress(derivationIndex, env.mnemonic);
-  } else {
-    throw new Error(`Unsupported chain: ${chain}`);
+  const maxBump = 256;
+  /** @type {number | null} */
+  let derivationIndex = null;
+  let address = /** @type {string | null} */ (null);
+  for (let bump = 0; bump < maxBump; bump += 1) {
+    derivationIndex = derivationBase + bump;
+    let candidate;
+    if (isEvmChain(chain)) {
+      candidate = deriveEvmAddress(derivationIndex);
+    } else if (chain === Chain.TRON) {
+      candidate = deriveTronAddress(derivationIndex, env.mnemonic);
+    } else {
+      throw new Error(`Unsupported chain: ${chain}`);
+    }
+    const globallyAssignedConflict = await tx.wallet.findFirst({
+      where: {
+        environment,
+        chain,
+        address: candidate,
+        ...ACTIVE,
+        assignedUserId: { not: null },
+      },
+      select: { id: true },
+    });
+    if (globallyAssignedConflict) continue;
+    address = candidate;
+    break;
+  }
+  if (address == null || derivationIndex == null) {
+    throw new Error("POOL_WALLET_NO_FREE_DERIVATION_INDEX");
   }
 
   return tx.wallet.create({

@@ -3,17 +3,23 @@ import { ACTIVE } from "../lib/active-row.js";
 import { prisma } from "../lib/prisma.js";
 import { logger } from "../lib/logger.js";
 import { re } from "../config/runtime-env.js";
+import { prismaClientKnowsTxStatusCreated } from "../lib/prisma-tx-status.js";
+import {
+  findStaleCreatedCheckoutPlaceholderBatchRaw,
+  markStaleCreatedCheckoutPlaceholderFailedRaw,
+} from "../lib/checkout-created-expiry-prisma-raw.js";
 import { releaseWalletAfterDepositSuccess } from "./wallet/wallet-service.js";
 import { notifyPaymentFailed } from "./callback-service.js";
 
 const DEFAULT_BATCH = 80;
 
 /**
- * Mark stale `created` checkout placeholder rows as `failed`, release the wallet reservation,
+ * Mark stale unpaid checkout placeholders as `failed`, release the wallet reservation,
  * and enqueue the payment webhook (`notifyPaymentFailed`).
  *
- * Placeholder rows: one `created` transaction per `deposit-address` call (see
- * assign-pooled-wallet), with or without optional fixed `amount`.
+ * Rows: `tx_hash` starts with `gateway-created:` and either `status: created`, or anomalous
+ * `status: pending` with `amount` `0` (stuck placeholder). Does **not** fail real on-chain `pending`
+ * deposits (different `tx_hash`).
  *
  * @param {{ batchSize?: number }} [opts]
  * @returns {Promise<number>} number of rows transitioned to `failed`
@@ -27,39 +33,67 @@ export async function expireStaleCreatedCheckoutTransactions(opts = {}) {
       ? Math.min(500, opts.batchSize)
       : DEFAULT_BATCH;
 
+  const stalePlaceholderWhere = {
+    ...ACTIVE,
+    createdAt: { lt: cutoff },
+    txHash: { startsWith: "gateway-created:" },
+    OR: [
+      { status: TxStatus.created },
+      {
+        AND: [{ status: TxStatus.pending }, { amount: "0" }],
+      },
+    ],
+  };
+
+  const usePrismaCreatedEnum = prismaClientKnowsTxStatusCreated();
+  if (!usePrismaCreatedEnum) {
+    logger.warn("checkout_expiry_raw_sql_path", {
+      event: "checkout_expiry_raw_sql_path",
+      message:
+        "Prisma client lacks TxStatus.created; using raw SQL for checkout expiry (gateway-created placeholders: created or pending+amount 0).",
+    });
+  }
+
   let totalExpired = 0;
 
   for (;;) {
-    const stale = await prisma.transaction.findMany({
-      where: {
-        ...ACTIVE,
-        status: TxStatus.created,
-        createdAt: { lt: cutoff },
-      },
-      select: { id: true, walletId: true },
-      take: batchSize,
-      orderBy: { createdAt: "asc" },
-    });
+    const stale = usePrismaCreatedEnum
+      ? await prisma.transaction.findMany({
+          where: stalePlaceholderWhere,
+          select: { id: true, walletId: true },
+          take: batchSize,
+          orderBy: { createdAt: "asc" },
+        })
+      : await findStaleCreatedCheckoutPlaceholderBatchRaw(prisma, {
+          cutoff,
+          batchSize,
+        });
     if (stale.length === 0) break;
 
     for (const row of stale) {
-      const upd = await prisma.transaction.updateMany({
-        where: {
-          id: row.id,
-          ...ACTIVE,
-          status: TxStatus.created,
-          createdAt: { lt: cutoff },
-        },
-        data: { status: TxStatus.failed, updatedAt: new Date() },
-      });
-      if (upd.count !== 1) continue;
+      const walletId = usePrismaCreatedEnum ? row.walletId : row.wallet_id;
+      const updated = usePrismaCreatedEnum
+        ? (
+            await prisma.transaction.updateMany({
+              where: {
+                id: row.id,
+                ...stalePlaceholderWhere,
+              },
+              data: { status: TxStatus.failed, updatedAt: new Date() },
+            })
+          ).count === 1
+        : await markStaleCreatedCheckoutPlaceholderFailedRaw(prisma, {
+            id: row.id,
+            cutoff,
+          });
+      if (!updated) continue;
       totalExpired += 1;
       try {
-        await releaseWalletAfterDepositSuccess(row.walletId);
+        await releaseWalletAfterDepositSuccess(walletId);
       } catch (e) {
         logger.error("checkout_expiry_wallet_release_failed", {
           txId: row.id,
-          walletId: row.walletId,
+          walletId,
           err: String(e),
         });
       }
