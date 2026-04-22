@@ -11,6 +11,7 @@
  * First on-chain credit for a checkout **updates** the existing `status: created` placeholder row
  * (same `id` as after `deposit-address`) when session + `gateway-created:*` hash match; further
  * transfers for the same session use new rows as before. Legacy raw underpaid upsert still inserts.
+ * Underpaid closes the checkout: wallet returns to pool (no further session top-ups promoted to success).
  */
 import { Chain, MerchantGatewayEnv, TxStatus } from "@prisma/client";
 import {
@@ -18,10 +19,7 @@ import {
   prismaClientKnowsTxStatusUnderpaid,
   TX_STATUS_UNDERPAID,
 } from "../../lib/prisma-tx-status.js";
-import {
-  promoteUnderpaidSessionToSuccessRaw,
-  upsertTransactionRowUnderpaidRaw,
-} from "../../lib/underpaid-prisma-raw.js";
+import { upsertTransactionRowUnderpaidRaw } from "../../lib/underpaid-prisma-raw.js";
 import { utils } from "tronweb";
 import { prisma } from "../../lib/prisma.js";
 import { ACTIVE } from "../../lib/active-row.js";
@@ -377,33 +375,6 @@ export async function upsertIncomingTransaction(input) {
         });
   }
 
-  if (
-    nextStatus === TxStatus.success &&
-    row.depositSessionKey != null &&
-    (await expectedAtomicForDepositSession(
-      walletInternalId,
-      row.depositSessionKey,
-    )) != null
-  ) {
-    if (prismaClientKnowsTxStatusUnderpaid()) {
-      await prisma.transaction.updateMany({
-        where: {
-          walletId: row.walletId,
-          depositSessionKey: row.depositSessionKey,
-          status: TxStatus.underpaid,
-          ...ACTIVE,
-        },
-        data: { status: TxStatus.success, updatedAt: new Date() },
-      });
-    } else {
-      await promoteUnderpaidSessionToSuccessRaw(prisma, {
-        walletId: row.walletId,
-        depositSessionKey: row.depositSessionKey,
-        now: new Date(),
-      });
-    }
-  }
-
   // After merge, no `created` row remains for this session. If we inserted a new on-chain row
   // instead, soft-remove any leftover checkout placeholder(s) for the same session.
   //
@@ -442,13 +413,13 @@ export async function upsertIncomingTransaction(input) {
   const becameSuccess =
     nextStatus === TxStatus.success &&
     (!prior || prior.status !== TxStatus.success);
-  if (becameSuccess) {
-    await releaseWalletAfterDepositSuccess(row.walletId);
-  }
-
   const becameUnderpaid =
     nextStatus === TX_STATUS_UNDERPAID &&
     (!prior || prior.status !== TX_STATUS_UNDERPAID);
+
+  if (becameSuccess || becameUnderpaid) {
+    await releaseWalletAfterDepositSuccess(row.walletId);
+  }
 
   const notifyPk = coerceTransactionPrimaryKey(row.id);
   if (notifyPk == null) {
