@@ -714,6 +714,7 @@ export function buildAppSettingsAdminList() {
         has_db_override: Boolean(dbVal != null && hasDbOverride(def.key)),
         env_display: coerceEnvStringForDisplay(def, envVal),
         effective_display: displayEffective,
+        help_text: def.helpText ?? "",
         /**
          * For Formik: sensitive values prefilled from DB so “Save” does not wipe them when other fields change.
          * Empty sensitive + DB row still means “remove override” on save. `.env`-only secrets stay out of the form.

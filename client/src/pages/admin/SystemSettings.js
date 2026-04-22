@@ -10,6 +10,19 @@ const label = "mb-1 block text-xs font-medium text-white/60";
 const textarea = `${input} min-h-[120px] font-mono text-xs leading-relaxed`;
 
 /**
+ * @param {{ text?: string }} props
+ */
+function SettingHelp({ text }) {
+  const t = typeof text === "string" ? text.trim() : "";
+  if (!t) return null;
+  return (
+    <p className="mt-1 max-w-prose text-[11px] text-white/45 text-pretty">
+      {t}
+    </p>
+  );
+}
+
+/**
  * @typedef {{
  *   key: string,
  *   label: string,
@@ -20,6 +33,7 @@ const textarea = `${input} min-h-[120px] font-mono text-xs leading-relaxed`;
  *   env_display: string,
  *   effective_display: string,
  *   form_initial: string,
+ *   help_text?: string,
  * }} SettingItem
  */
 
@@ -47,6 +61,7 @@ function FieldForItem({ it }) {
             clear it.
           </p>
         ) : null}
+        <SettingHelp text={it.help_text} />
       </div>
     );
   }
@@ -89,6 +104,7 @@ function FieldForItem({ it }) {
           component="p"
           className="mt-1 text-xs text-rose-400"
         />
+        <SettingHelp text={it.help_text} />
       </div>
     );
   }
@@ -114,6 +130,7 @@ function FieldForItem({ it }) {
           component="p"
           className="mt-1 text-xs text-rose-400"
         />
+        <SettingHelp text={it.help_text} />
       </div>
     );
   }
@@ -166,6 +183,20 @@ function FieldForItem({ it }) {
         component="p"
         className="mt-1 text-xs text-rose-400"
       />
+      {!isSecret && it.type === "int" ? (
+        <p className="mt-1 text-[11px] text-white/40">
+          Effective now:{" "}
+          <span className="font-mono text-emerald-200/90">
+            {it.effective_display || "—"}
+          </span>
+          {" · "}
+          <span className="font-mono text-white/55">.env</span> default:{" "}
+          <span className="font-mono text-white/55">
+            {it.env_display || "—"}
+          </span>
+        </p>
+      ) : null}
+      <SettingHelp text={it.help_text} />
     </div>
   );
 }
@@ -290,6 +321,17 @@ export default function SystemSettings() {
           WALLET_POOL_HOLD_RELEASE_CRON_MINUTES
         </span>
         , or other cron-only behavior (cron schedules are fixed at process start).
+      </p>
+      <p className="mt-2 max-w-3xl text-sm text-white/55 text-pretty">
+        Unpaid checkout expiry (
+        <span className="font-mono text-white/80">
+          CHECKOUT_CREATED_EXPIRY_HOURS
+        </span>
+        ) lives under{" "}
+        <span className="text-white/70">Checkout · abandoned fixed-amount</span>
+        . Saving applies to the API immediately; the maintenance cron reloads
+        settings on each stale-checkout run, so you do not need to restart
+        processes just to change the hours threshold.
       </p>
 
       <div className="glass mt-8 w-full rounded-2xl p-6 lg:p-8">

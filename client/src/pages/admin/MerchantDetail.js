@@ -29,6 +29,7 @@ import {
   UserPayerDepositHistoryModal,
 } from "../../components/UserHistoryModals.js";
 import { useBreadcrumbExtras } from "../../contexts/BreadcrumbExtrasContext.js";
+import { StatusBadge } from "../../components/StatusBadge.js";
 
 const DEFAULT_PAGE_SIZE = DEFAULT_LIST_PAGE_SIZE;
 const TX_STATUS_OPTIONS = ["created", "pending", "success", "failed", "underpaid"];
@@ -778,7 +779,9 @@ export default function MerchantDetail() {
                           raw {t.amount}
                         </span>
                       </td>
-                      <td className="text-xs">{t.status}</td>
+                      <td className="text-xs">
+                        <StatusBadge status={t.status} />
+                      </td>
                       <td className="max-w-[120px] truncate font-mono text-xs">{t.external_user_id}</td>
                       <td className="max-w-[140px] truncate font-mono text-[10px] text-white/50">
                         {t.tx_hash}

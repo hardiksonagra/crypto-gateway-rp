@@ -549,6 +549,20 @@ html.light .badge-pending {
 .badge-pending .badge-dot { background: #fbbf24; }
 html.light .badge-pending .badge-dot { background: #d97706; }
 
+/* Underpaid — same structure as other badges; sky (distinct from pending yellow / failed red). */
+.badge-underpaid {
+  background: rgba(14, 165, 233, 0.12);
+  border-color: rgba(14, 165, 233, 0.25);
+  color: #38bdf8;
+}
+html.light .badge-underpaid {
+  background: rgba(2, 132, 199, 0.08);
+  border-color: rgba(2, 132, 199, 0.2);
+  color: #0369a1;
+}
+.badge-underpaid .badge-dot { background: #38bdf8; }
+html.light .badge-underpaid .badge-dot { background: #0284c7; }
+
 .badge-failed {
   background: rgba(239, 68, 68, 0.12);
   border-color: rgba(239, 68, 68, 0.25);

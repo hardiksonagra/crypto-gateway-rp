@@ -93,6 +93,8 @@ function portalListParams(args) {
 }
 
 /**
+ * Last 7 days of **success** deposits only (merchant dashboard “Recent Success”).
+ *
  * @param {import("@prisma/client").PrismaClient} prisma
  * @param {{ mid: number, environment: import("@prisma/client").MerchantGatewayEnv, since: Date }} p
  * @returns {Promise<object[]>}
@@ -120,6 +122,7 @@ export async function listMerchantDashboardRecentTxRaw(prisma, p) {
           Prisma.sql`w.merchant_id = ${p.mid}`,
           Prisma.sql`w.environment = ${p.environment}::"MerchantGatewayEnv"`,
           Prisma.sql`t.created_at >= ${p.since}`,
+          Prisma.sql`(t.status)::text = 'success'`,
         ],
         " AND ",
       )}

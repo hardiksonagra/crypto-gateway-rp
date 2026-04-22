@@ -4,6 +4,20 @@ import { api } from "../../api";
 import ListPaginationBar, { DEFAULT_LIST_PAGE_SIZE } from "../../components/ListPaginationBar";
 import { BrandLoader } from "../../components/BrandLoader.js";
 
+/**
+ * @param {{ cached_balance_atomic?: string | null }} w
+ * @returns {boolean}
+ */
+function hasPositiveCachedBalance(w) {
+  const a = w.cached_balance_atomic;
+  if (typeof a !== "string" || !/^[0-9]+$/.test(a.trim())) return false;
+  try {
+    return BigInt(a.trim()) > 0n;
+  } catch {
+    return false;
+  }
+}
+
 /** All wallets: one row per gateway wallet (pool address); balances cached after full refresh. */
 export default function AdminWallets() {
   const queryClient = useQueryClient();
@@ -117,7 +131,15 @@ export default function AdminWallets() {
                   </td>
                   <td className={td}>
                     {w.cached_balance_display ? (
-                      <span className="text-white/90">{w.cached_balance_display}</span>
+                      <span
+                        className={
+                          hasPositiveCachedBalance(w)
+                            ? "font-medium text-emerald-300"
+                            : "text-white/90"
+                        }
+                      >
+                        {w.cached_balance_display}
+                      </span>
                     ) : w.cached_balance_error ? (
                       <span className="text-amber-200/85 text-xs" title={w.cached_balance_error}>
                         {w.cached_balance_error.length > 48

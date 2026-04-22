@@ -142,6 +142,7 @@ export default function WalletDepositActivityModal({ open, walletId, panel, onCl
                         <span style={{
                           color: ev.status === "success" ? "#34d399"
                             : ev.status === "failed" ? "#f87171"
+                            : ev.status === "underpaid" ? "#38bdf8"
                             : "#fbbf24"
                         }}>
                           {ev.status}

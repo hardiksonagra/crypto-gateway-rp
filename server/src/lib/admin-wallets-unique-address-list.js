@@ -1,5 +1,6 @@
 import { isEvmChain } from "../config/chains.js";
 import { prisma } from "./prisma.js";
+import { parseCachedBalanceAtomicToBigInt } from "./wallet-balance-sort.js";
 
 /**
  * Normalize address for grouping: EVM is case-insensitive; other chains use exact string.
@@ -69,9 +70,32 @@ export async function listWalletsUniqueByOnChainIdentity(where, skip, take) {
     }
   }
 
-  const list = [...merged.values()].sort(
-    (a, b) => b.representativeId - a.representativeId,
-  );
+  let list = [...merged.values()];
+  const repIdsForBalanceSort = list.map((x) => x.representativeId);
+  if (repIdsForBalanceSort.length > 0) {
+    const balMap = new Map();
+    const BATCH = 2000;
+    for (let i = 0; i < repIdsForBalanceSort.length; i += BATCH) {
+      const chunk = repIdsForBalanceSort.slice(i, i + BATCH);
+      const balRows = await prisma.wallet.findMany({
+        where: { id: { in: chunk } },
+        select: { id: true, cachedBalanceAtomic: true },
+      });
+      for (const r of balRows) {
+        balMap.set(
+          r.id,
+          parseCachedBalanceAtomicToBigInt(r.cachedBalanceAtomic),
+        );
+      }
+    }
+    list.sort((a, b) => {
+      const ba = balMap.get(a.representativeId) ?? 0n;
+      const bb = balMap.get(b.representativeId) ?? 0n;
+      if (ba > bb) return -1;
+      if (ba < bb) return 1;
+      return b.representativeId - a.representativeId;
+    });
+  }
   const total = list.length;
   const slice = list.slice(skip, skip + take);
   const representativeIds = slice.map((x) => x.representativeId);

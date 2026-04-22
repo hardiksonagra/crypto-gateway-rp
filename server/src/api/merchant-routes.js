@@ -262,6 +262,7 @@ router.get("/api/v1/merchant/dashboard", async (req, res) => {
     ? prisma.transaction.findMany({
         where: {
           ...ACTIVE,
+          status: TxStatus.success,
           wallet: {
             is: { merchantId: mid, environment, ...ACTIVE },
           },

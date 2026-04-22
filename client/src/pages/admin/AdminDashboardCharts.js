@@ -119,7 +119,7 @@ export default function AdminDashboardCharts({
     const colors = {
       success: "rgba(52,211,153,0.9)",
       pending: "rgba(251,191,36,0.9)",
-      underpaid: "rgba(249,115,22,0.9)",
+      underpaid: "rgba(56,189,248,0.9)",
       failed: "rgba(248,113,113,0.9)",
     };
     const map = Object.fromEntries(

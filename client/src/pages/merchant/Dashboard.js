@@ -26,7 +26,7 @@ function TxStatusBadge({ status }) {
       : s === "pending"
         ? "bg-amber-500/12 text-amber-100/90 ring-amber-400/25"
         : s === "underpaid"
-          ? "bg-orange-500/14 text-orange-100/90 ring-orange-400/30"
+          ? "bg-sky-500/12 text-sky-100/90 ring-sky-400/30"
           : s === "failed"
             ? "bg-rose-500/12 text-rose-100/90 ring-rose-400/25"
             : "bg-white/[0.06] text-white/50 ring-white/10";
@@ -274,7 +274,9 @@ export default function MerchantDashboard() {
       </section>
 
       <section className="mt-12">
-        <h2 className="text-sm font-semibold tracking-wide text-white/40 uppercase">Recent (7d)</h2>
+        <h2 className="text-sm font-semibold tracking-wide text-white/40 uppercase">
+          Recent Success (7d)
+        </h2>
         <div className="surface-adaptive-inset mt-4 overflow-hidden rounded-2xl border border-white/[0.08] bg-[#0a0d14]/60 ring-1 ring-inset ring-white/[0.04]">
           <div className="data-table-surface border-0 !shadow-none">
             <table className="data-table">
@@ -291,7 +293,7 @@ export default function MerchantDashboard() {
                 {data.recent_transactions.length === 0 ? (
                   <tr>
                     <td colSpan={5} className="!py-12 text-center text-sm text-white/45">
-                      No record found.
+                      No successful deposits in the last 7 days.
                     </td>
                   </tr>
                 ) : (

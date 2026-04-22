@@ -2,7 +2,7 @@
  * Admin-editable settings: DB row overrides process env when present.
  * Bootstrap secrets (DATABASE_URL, MNEMONIC, JWT_SECRET, ENCRYPTION_KEY, funder private key) stay env-only.
  *
- * @typedef {{ key: string, label: string, category: string, type: "string" | "int" | "bool" | "bool_tron_gateway" | "bigint" | "usdt6" | "json" | "comma_origins", sensitive?: boolean, hideFromAdminList?: boolean }} AppSettingDef
+ * @typedef {{ key: string, label: string, category: string, type: "string" | "int" | "bool" | "bool_tron_gateway" | "bigint" | "usdt6" | "json" | "comma_origins", sensitive?: boolean, hideFromAdminList?: boolean, helpText?: string }} AppSettingDef
  */
 
 /**
@@ -127,14 +127,18 @@ export const APP_SETTING_DEFINITIONS = [
   {
     key: "CHECKOUT_CREATED_EXPIRY_HOURS",
     label:
-      "Expire unpaid `created` checkout placeholder after N hours (1–8760); then `failed` webhook",
+      "Unpaid checkout → failed after N hours (1–8760); payment webhook checkout_expired_unpaid",
+    helpText:
+      "Applies to gateway-created placeholders (status created, or stuck pending with amount 0). After N hours the row becomes failed and the wallet is released. Real on-chain pending deposits are not expired here. Same as env CHECKOUT_CREATED_EXPIRY_HOURS; Admin value overrides .env when set.",
     category: CHECKOUT_SETTINGS_CATEGORY,
     type: "int",
   },
   {
     key: "CHECKOUT_EXPIRY_CRON_MINUTES",
     label:
-      "Run stale-checkout pass every N minutes (1–59); PM2 `crypto-gateway-cron-maintenance` (restart to apply)",
+      "Run stale-checkout pass every N minutes (1–59); PM2 crypto-gateway-cron-maintenance (restart to apply)",
+    helpText:
+      "How often maintenance cron looks for checkouts past the hours threshold above. Restart the maintenance PM2 app after changing this.",
     category: CHECKOUT_SETTINGS_CATEGORY,
     type: "int",
   },

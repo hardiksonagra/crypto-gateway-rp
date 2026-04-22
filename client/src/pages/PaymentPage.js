@@ -281,8 +281,8 @@ export default function PaymentPage() {
     <div className="mesh-bg flex min-h-screen flex-col items-center justify-center px-4 py-10">
       <div className="glass w-full max-w-lg rounded-2xl p-6 sm:p-8">
         {underpaidNotice && !paidNoReturnUrl && (
-          <div className="mb-4 rounded-xl border border-rose-400/35 bg-rose-500/10 px-4 py-3 text-center">
-            <p className="text-sm font-medium text-rose-100/95">
+          <div className="mb-4 rounded-xl border border-sky-400/30 bg-sky-500/12 px-4 py-3 text-center">
+            <p className="text-sm font-medium text-sky-100/95">
               Insufficient amount received
             </p>
             <p className="mt-1 text-xs text-white/55">
