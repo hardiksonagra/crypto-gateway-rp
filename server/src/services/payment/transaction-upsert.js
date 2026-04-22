@@ -12,6 +12,8 @@
  * (same `id` as after `deposit-address`) when session + `gateway-created:*` hash match; further
  * transfers for the same session use new rows as before. Legacy raw underpaid upsert still inserts.
  * Underpaid closes the checkout: wallet returns to pool (no further session top-ups promoted to success).
+ * Once a row is `underpaid`, later `upsertIncomingTransaction` calls for the same on-chain key no-op
+ * (no field updates), like a frozen terminal row.
  */
 import { Chain, MerchantGatewayEnv, TxStatus } from "@prisma/client";
 import {
@@ -113,6 +115,14 @@ export async function upsertIncomingTransaction(input) {
   }
 
   const hadRowBefore = Boolean(prior);
+  if (
+    prior &&
+    String(prior.status ?? "")
+      .trim()
+      .toLowerCase() === TX_STATUS_UNDERPAID
+  ) {
+    return;
+  }
 
   let payerUserIdForCreate = input.payerUserId ?? null;
   if (!hadRowBefore && payerUserIdForCreate == null) {
