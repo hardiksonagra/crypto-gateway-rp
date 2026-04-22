@@ -353,13 +353,16 @@ function StatCard({ meta, value, envLabel, isDark }) {
 }
 
 /**
- * @param {Array<{ date: string, pending: number, success: number, failed: number }>} daily
+ * @param {Array<{ date: string, pending: number, success: number, failed: number, underpaid?: number }>} daily
  * @param {string} timeZone
  */
 function normalizeDailySeries(daily, timeZone) {
   const keys = lastNDatesInZone(14, timeZone);
   const map = new Map((daily ?? []).map((row) => [row.date, row]));
-  return keys.map((date) => map.get(date) ?? { date, pending: 0, success: 0, failed: 0 });
+  return keys.map(
+    (date) =>
+      map.get(date) ?? { date, pending: 0, success: 0, failed: 0, underpaid: 0 },
+  );
 }
 
 export default function AdminDashboard() {

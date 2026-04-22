@@ -92,17 +92,22 @@ export default function AdminDashboardCharts({
       series: [
         {
           name: "Pending",
-          data: daily.map((d) => d.pending),
+          data: daily.map((d) => d.pending ?? 0),
           color: "rgba(251,191,36,0.92)",
         },
         {
+          name: "Underpaid",
+          data: daily.map((d) => d.underpaid ?? 0),
+          color: "rgba(249,115,22,0.92)",
+        },
+        {
           name: "Success",
-          data: daily.map((d) => d.success),
+          data: daily.map((d) => d.success ?? 0),
           color: "rgba(52,211,153,0.92)",
         },
         {
           name: "Failed",
-          data: daily.map((d) => d.failed),
+          data: daily.map((d) => d.failed ?? 0),
           color: "rgba(248,113,113,0.92)",
         },
       ],
@@ -110,16 +115,23 @@ export default function AdminDashboardCharts({
   }, [daily, isDark, p]);
 
   const donutOptions = useMemo(() => {
-    const order = ["success", "pending", "failed"];
+    const order = ["success", "pending", "underpaid", "failed"];
     const colors = {
       success: "rgba(52,211,153,0.9)",
       pending: "rgba(251,191,36,0.9)",
+      underpaid: "rgba(249,115,22,0.9)",
       failed: "rgba(248,113,113,0.9)",
     };
-    const map = Object.fromEntries(byStatus.map((x) => [x.status, x.count]));
+    const map = Object.fromEntries(
+      byStatus.map((x) => [String(x.status).toLowerCase(), x.count]),
+    );
     const data = order
       .filter((s) => (map[s] ?? 0) > 0)
-      .map((s) => ({ name: s.charAt(0).toUpperCase() + s.slice(1), y: map[s] ?? 0, color: colors[s] }));
+      .map((s) => ({
+        name: s === "underpaid" ? "Underpaid" : s.charAt(0).toUpperCase() + s.slice(1),
+        y: map[s] ?? 0,
+        color: colors[s],
+      }));
     if (data.length === 0) {
       data.push({ name: "No data", y: 1, color: "rgba(148,163,184,0.35)" });
     }
