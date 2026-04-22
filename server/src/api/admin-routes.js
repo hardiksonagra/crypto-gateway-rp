@@ -64,6 +64,7 @@ import {
 } from "../lib/merchant-default-pair.js";
 import { pruneMerchantsAfterSupportedChainsChange } from "../lib/prune-merchants-after-supported-chains-change.js";
 import { redeliverPaymentSuccessWebhookAdmin } from "../services/callback-service.js";
+import { adminRescanTronDepositForTransaction } from "../services/admin-tron-deposit-rescan.js";
 import { refreshAllWalletCachedBalances } from "../services/wallet/wallet-balance-probe.js";
 import { listWalletsUniqueByOnChainIdentity } from "../lib/admin-wallets-unique-address-list.js";
 import {
@@ -1551,6 +1552,44 @@ router.post(
       ...(result.message ? { message: result.message } : {}),
       ...(result.httpStatus != null ? { upstream_status: result.httpStatus } : {}),
       ...(result.bodySnippet ? { upstream_body_snippet: result.bodySnippet } : {}),
+    });
+  },
+);
+
+router.post(
+  "/api/v1/admin/transactions/:transactionId/rescan-tron-deposit",
+  async (req, res) => {
+    const transactionId =
+      typeof req.params.transactionId === "string"
+        ? req.params.transactionId.trim()
+        : "";
+    if (!transactionId) {
+      res.status(400).json({ error: "transaction_id_required" });
+      return;
+    }
+    const result = await adminRescanTronDepositForTransaction(transactionId);
+    if (result.ok) {
+      res.status(200).json({
+        ok: true,
+        wallet_id: result.wallet_id,
+        transaction: result.transaction,
+      });
+      return;
+    }
+    if (result.code === "transaction_not_found") {
+      res.status(404).json({ error: result.code });
+      return;
+    }
+    if (result.code === "tronscan_not_configured") {
+      res.status(503).json({
+        error: result.code,
+        ...(result.message ? { message: result.message } : {}),
+      });
+      return;
+    }
+    res.status(400).json({
+      error: result.code,
+      ...(result.message ? { message: result.message } : {}),
     });
   },
 );

@@ -2,10 +2,12 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { api } from "../../api";
 import { PendingSettlementBucketCard } from "../../components/PendingSettlementBucketCard.js";
+import { BrandLoader } from "../../components/BrandLoader.js";
+import AdminDashboardCharts from "../admin/AdminDashboardCharts.js";
 import { useMerchantPortalEnvironment } from "../../hooks/useMerchantPortalEnvironment.js";
+import { useTheme } from "../../hooks/useTheme.js";
 import { formatTokenAmount } from "../../lib/formatTokenAmount.js";
 import { formatLocalDateTime } from "../../lib/formatLocalDateTime.js";
-import { BrandLoader } from "../../components/BrandLoader.js";
 
 const cardShell =
   "surface-adaptive-card group relative overflow-hidden rounded-2xl border border-white/[0.09] bg-gradient-to-br from-[#141a2e]/92 via-[#0e1222]/96 to-[#090c18] p-5 shadow-[0_20px_40px_-14px_rgba(0,0,0,0.5)] ring-1 ring-inset ring-white/[0.04]";
@@ -41,6 +43,13 @@ export default function MerchantDashboard() {
     sandboxGatewayEnabled,
     flagsLoading,
   } = useMerchantPortalEnvironment();
+  const { theme } = useTheme();
+  const isDark = theme === "dark";
+
+  const dashTz =
+    typeof Intl !== "undefined" && typeof Intl.DateTimeFormat === "function"
+      ? Intl.DateTimeFormat().resolvedOptions().timeZone
+      : "UTC";
 
   const envQueryEnabled =
     !flagsLoading &&
@@ -48,8 +57,9 @@ export default function MerchantDashboard() {
       (environment === "sandbox" && sandboxGatewayEnabled));
 
   const { data, isPending, isError, error } = useQuery({
-    queryKey: ["m-dash", portalEnvironmentKey],
-    queryFn: () => api("/api/v1/merchant/dashboard"),
+    queryKey: ["m-dash", portalEnvironmentKey, dashTz],
+    queryFn: () =>
+      api(`/api/v1/merchant/dashboard?tz=${encodeURIComponent(dashTz)}`),
     enabled: envQueryEnabled,
   });
 
@@ -170,6 +180,26 @@ export default function MerchantDashboard() {
           <p className="mt-2 text-xs text-white/40">All time in this environment</p>
         </article>
       </div>
+
+      {data.charts ? (
+        <section className="mt-10" aria-label="Transaction charts">
+          <h2 className="text-sm font-semibold tracking-wide text-white/40 uppercase">Activity charts</h2>
+          <p className="mt-2 max-w-3xl text-xs leading-relaxed text-white/42">
+            Daily volume by status (last 14 days, timezone{" "}
+            <span className="font-mono text-white/55">{data.charts.viewer_timezone}</span>), success rate, status
+            mix, and deposits by chain — all in {envLabel.toLowerCase()}.
+          </p>
+          <div className="mt-5">
+            <AdminDashboardCharts
+              daily={data.charts.transactions_daily_by_status}
+              byStatus={data.charts.transactions_by_status}
+              byChain={data.charts.transactions_by_chain}
+              successRatePct={data.charts.success_rate_pct}
+              isDark={isDark}
+            />
+          </div>
+        </section>
+      ) : null}
 
       <section className="mt-12">
         <h2 className="text-sm font-semibold tracking-wide text-white/40 uppercase">Next settlement (estimate)</h2>

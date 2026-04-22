@@ -17,6 +17,48 @@ function formatCountdown(totalSec) {
 }
 
 /**
+ * @param {unknown} iso
+ * @returns {number | null}
+ */
+function parseExpiryMs(iso) {
+  if (iso == null) return null;
+  const s = String(iso).trim();
+  if (!s) return null;
+  const t = Date.parse(s);
+  return Number.isFinite(t) ? t : null;
+}
+
+/**
+ * Latest of scan, pool hold, and unpaid-checkout deadlines (ISO) so the payer always sees a countdown
+ * when any bound exists.
+ *
+ * @param {...unknown} isos
+ * @returns {string | null}
+ */
+function latestExpiryIso(...isos) {
+  let best = -Infinity;
+  for (const iso of isos) {
+    const t = parseExpiryMs(iso);
+    if (t != null && t > best) best = t;
+  }
+  if (best === -Infinity || !Number.isFinite(best)) return null;
+  return new Date(best).toISOString();
+}
+
+/**
+ * @param {unknown} v
+ * @returns {number | null}
+ */
+function parsePositiveMinutes(v) {
+  if (typeof v === "number" && Number.isFinite(v) && v > 0) return v;
+  if (typeof v === "string") {
+    const n = parseInt(v.trim(), 10);
+    if (Number.isInteger(n) && n > 0) return n;
+  }
+  return null;
+}
+
+/**
  * @param {unknown} d
  * @returns {d is Record<string, unknown>}
  */
@@ -108,7 +150,20 @@ export default function PaymentPage() {
     };
   }, [token]);
 
-  const expiresAt = session?.deposit_scan_expires_at ?? null;
+  const displayExpiresAt = useMemo(
+    () =>
+      latestExpiryIso(
+        session?.deposit_scan_expires_at,
+        session?.reservation_expires_at,
+        session?.checkout_expires_at,
+      ),
+    [
+      session?.deposit_scan_expires_at,
+      session?.reservation_expires_at,
+      session?.checkout_expires_at,
+    ],
+  );
+
   const redirectUrl =
     typeof session?.redirect_url === "string" && session.redirect_url.trim()
       ? session.redirect_url.trim()
@@ -116,18 +171,18 @@ export default function PaymentPage() {
   redirectUrlRef.current = redirectUrl;
 
   useEffect(() => {
-    if (!expiresAt) {
+    if (!displayExpiresAt) {
       setRemainSec(null);
       return;
     }
     const tick = () => {
-      const end = new Date(expiresAt).getTime();
+      const end = new Date(displayExpiresAt).getTime();
       setRemainSec(Math.max(0, Math.floor((end - Date.now()) / 1000)));
     };
     tick();
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
-  }, [expiresAt]);
+  }, [displayExpiresAt]);
 
   useEffect(() => {
     if (!token || !session || paidNoReturnUrl) return;
@@ -162,13 +217,13 @@ export default function PaymentPage() {
     };
   }, [token, session, assignRedirect, paidNoReturnUrl]);
 
-  const ttlNote = useMemo(() => {
-    const m = session?.deposit_scan_ttl_minutes;
-    if (typeof m !== "number" || m <= 0) return null;
-    return m;
-  }, [session?.deposit_scan_ttl_minutes]);
+  const scanTtlMin = useMemo(
+    () => parsePositiveMinutes(session?.deposit_scan_ttl_minutes),
+    [session?.deposit_scan_ttl_minutes],
+  );
 
-  const showTimer = expiresAt != null && ttlNote != null;
+  /** Show whenever API returned a usable end time (scan-only, hold-only, or combined). */
+  const showTimer = displayExpiresAt != null && parseExpiryMs(displayExpiresAt) != null;
   const timerDone = showTimer && remainSec !== null && remainSec <= 0;
 
   useEffect(() => {
@@ -295,8 +350,13 @@ export default function PaymentPage() {
             }`}
           >
             <p className="text-[10px] font-semibold tracking-wide text-white/40 uppercase">
-              Deposit scan window
+              Time remaining
             </p>
+            {scanTtlMin != null ? (
+              <p className="mt-0.5 text-[10px] text-white/35">
+                Deposit scan TTL: {scanTtlMin} min (wallet may stay active longer for late sends)
+              </p>
+            ) : null}
             {timerDone ? (
               <p className="mt-1 text-sm text-amber-100/90">
                 {redirectUrl
@@ -330,6 +390,14 @@ export default function PaymentPage() {
             <QRCode value={qrPayload} size={200} level="M" />
           </div>
         </div>
+
+        {String(session?.gateway_environment ?? "").toLowerCase() === "sandbox" ? (
+          <p className="mt-6 rounded-xl border border-sky-400/25 bg-sky-500/10 px-3 py-2 text-center text-[11px] leading-relaxed text-sky-100/90">
+            Sandbox checkout: automatic on-chain deposit scanning may not run for this link unless
+            your operator runs workers against sandbox data. Use merchant test tools or a live checkout
+            to verify production scanning.
+          </p>
+        ) : null}
 
         <p className="mt-8 text-center text-xs text-white/35">
           Send only {currency} on {network}. Wrong asset or network may result

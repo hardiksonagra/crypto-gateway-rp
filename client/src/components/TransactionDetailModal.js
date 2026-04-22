@@ -9,10 +9,16 @@ function DetailRow(label, value) {
       ? "—"
       : String(value);
   return (
-    <div className="grid grid-cols-[minmax(0,140px)_1fr] gap-x-3 gap-y-1 border-b py-2.5 last:border-0"
-         style={{ borderColor: "var(--border)" }}>
-      <dt className="text-xs font-medium" style={{ color: "var(--text-3)" }}>{label}</dt>
-      <dd className="break-all font-mono text-xs" style={{ color: "var(--text-1)" }}>{v}</dd>
+    <div
+      className="grid grid-cols-1 gap-x-3 gap-y-1 border-b py-2.5 last:border-0 sm:grid-cols-[minmax(0,11rem)_1fr] sm:items-baseline"
+      style={{ borderColor: "var(--border)" }}
+    >
+      <dt className="shrink-0 text-xs font-medium sm:pt-0.5" style={{ color: "var(--text-3)" }}>
+        {label}
+      </dt>
+      <dd className="min-w-0 break-words font-mono text-xs [overflow-wrap:anywhere]" style={{ color: "var(--text-1)" }}>
+        {v}
+      </dd>
     </div>
   );
 }
@@ -58,6 +64,10 @@ function DetailRow(label, value) {
  * @param {() => void} props.onRedeliverCallback
  * @param {boolean} [props.redeliverLoading]
  * @param {string | null} [props.redeliverError]
+ * @param {boolean} [props.rescanTronDepositVisible]
+ * @param {() => void} [props.onRescanTronDeposit]
+ * @param {boolean} [props.rescanTronDepositLoading]
+ * @param {string | null} [props.rescanTronDepositError]
  */
 export default function TransactionDetailModal({
   open,
@@ -66,15 +76,21 @@ export default function TransactionDetailModal({
   onRedeliverCallback,
   redeliverLoading = false,
   redeliverError = null,
+  rescanTronDepositVisible = false,
+  onRescanTronDeposit,
+  rescanTronDepositLoading = false,
+  rescanTronDepositError = null,
 }) {
+  const blockClose = redeliverLoading || rescanTronDepositLoading;
+
   useEffect(() => {
     if (!open) return;
     function onKey(e) {
-      if (e.key === "Escape" && !redeliverLoading) onClose();
+      if (e.key === "Escape" && !blockClose) onClose();
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open, redeliverLoading, onClose]);
+  }, [open, blockClose, onClose]);
 
   if (!open || !transaction) return null;
 
@@ -83,27 +99,30 @@ export default function TransactionDetailModal({
 
   return (
     <div
-      className="fixed inset-0 z-[60] flex items-center justify-center p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto overscroll-contain p-4 pb-8 backdrop-blur-sm sm:items-center sm:py-8"
       style={{ background: "rgba(0,0,0,0.6)" }}
       role="presentation"
-      onClick={() => !redeliverLoading && onClose()}
+      onClick={() => !blockClose && onClose()}
     >
       <div
-        className="modal-shell max-h-[min(90vh,720px)] w-full max-w-lg overflow-hidden rounded-2xl shadow-2xl"
+        className="modal-shell my-auto flex max-h-[min(90vh,56rem)] w-full min-h-0 max-w-2xl flex-col overflow-hidden rounded-2xl shadow-2xl"
         role="dialog"
         aria-modal="true"
         aria-labelledby="tx-detail-title"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="border-b px-6 py-4" style={{ borderColor: "var(--border)" }}>
+        <div className="shrink-0 border-b px-5 py-4 sm:px-6" style={{ borderColor: "var(--border)" }}>
           <h2 id="tx-detail-title" className="text-lg font-semibold" style={{ color: "var(--text-1)" }}>
             Transaction details
           </h2>
-          <p className="mt-1 break-all font-mono text-xs" style={{ color: "var(--link-active-color, #818cf8)" }}>
+          <p
+            className="mt-1 font-mono text-xs [overflow-wrap:anywhere] break-words"
+            style={{ color: "var(--link-active-color, #818cf8)" }}
+          >
             {t.id}
           </p>
         </div>
-        <div className="max-h-[min(52vh,420px)] overflow-y-auto px-6 py-2">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-3 sm:px-6">
           <dl>
             {DetailRow("Reference / order ID", t.transaction_id)}
             {DetailRow("Tx hash", t.tx_hash)}
@@ -152,8 +171,29 @@ export default function TransactionDetailModal({
             {DetailRow("Updated at", formatLocalDateTime(t.updated_at))}
           </dl>
         </div>
-        <div className="space-y-3 border-t px-6 py-4" style={{ borderColor: "var(--border)" }}>
-          <p className="text-xs leading-relaxed" style={{ color: "var(--text-3)" }}>
+        <div className="shrink-0 space-y-3 border-t px-5 py-4 sm:px-6" style={{ borderColor: "var(--border)" }}>
+          {rescanTronDepositVisible ? (
+            <p className="text-xs leading-relaxed [overflow-wrap:anywhere]" style={{ color: "var(--text-3)" }}>
+              <span style={{ color: "var(--text-2)" }}>Rescan TRON deposit</span> runs the same TronScan
+              USDT·TRC20 ingest as the deposit worker for this wallet. If this row is still the checkout
+              placeholder (<span className="font-mono">gateway-created:…</span>), the same internal
+              transaction id is updated in place when a matching transfer is found (does not change
+              callback settings).
+            </p>
+          ) : null}
+          {rescanTronDepositError ? (
+            <p
+              className="rounded-lg border px-3 py-2 text-xs"
+              style={{
+                borderColor: "rgba(239,68,68,0.3)",
+                background: "rgba(239,68,68,0.1)",
+                color: "#f87171",
+              }}
+            >
+              {rescanTronDepositError}
+            </p>
+          ) : null}
+          <p className="text-xs leading-relaxed [overflow-wrap:anywhere]" style={{ color: "var(--text-3)" }}>
             <span style={{ color: "var(--text-2)" }}>Resend webhook</span> posts the same{" "}
             <span className="font-mono" style={{ color: "var(--text-2)" }}>payment</span> payload (
             <span className="font-mono" style={{ color: "var(--text-2)" }}>X-Webhook-Event: payment</span>,{" "}
@@ -168,23 +208,36 @@ export default function TransactionDetailModal({
               {redeliverError}
             </p>
           ) : null}
-          <div className="flex flex-wrap justify-end gap-3">
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:flex-wrap sm:justify-end sm:gap-3">
             <button
               type="button"
-              disabled={redeliverLoading}
+              disabled={blockClose}
               onClick={onClose}
-              className="rounded-xl border px-4 py-2.5 text-sm transition disabled:opacity-40"
+              className="w-full rounded-xl border px-4 py-2.5 text-sm transition disabled:opacity-40 sm:w-auto"
               style={{ borderColor: "var(--border-mid)", color: "var(--text-2)" }}
               onMouseEnter={(e) => { e.currentTarget.style.background = "var(--bg-surface3)"; }}
               onMouseLeave={(e) => { e.currentTarget.style.background = ""; }}
             >
               Close
             </button>
+            {rescanTronDepositVisible && onRescanTronDeposit ? (
+              <button
+                type="button"
+                disabled={rescanTronDepositLoading || redeliverLoading}
+                onClick={onRescanTronDeposit}
+                className="w-full rounded-xl border px-4 py-2.5 text-sm font-semibold transition disabled:opacity-40 sm:w-auto"
+                style={{ borderColor: "var(--border-mid)", color: "var(--text-1)" }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = "var(--bg-surface3)"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = ""; }}
+              >
+                {rescanTronDepositLoading ? "Scanning…" : "Rescan TRON deposit"}
+              </button>
+            ) : null}
             <button
               type="button"
               disabled={!canRedeliver || redeliverLoading}
               onClick={onRedeliverCallback}
-              className="rounded-xl px-4 py-2.5 text-sm font-semibold transition disabled:opacity-40 btn-primary"
+              className="w-full rounded-xl px-4 py-2.5 text-sm font-semibold transition disabled:opacity-40 btn-primary sm:w-auto"
               title={
                 canRedeliver
                   ? undefined

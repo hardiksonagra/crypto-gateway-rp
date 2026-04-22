@@ -93,7 +93,10 @@ function rowTxId(row) {
 }
 
 /**
- * @param {{ wallets?: Array<{ id: string, address: string, currency: string, network: string }> }} [options]
+ * @param {{
+ *   wallets?: Array<{ id: string, address: string, currency: string, network: string, merchantId?: number }>;
+ *   adminDepositRescan?: { walletId: number; mergeTransactionId: number } | null;
+ * }} [options]
  */
 export async function scanTronChain(options = {}) {
   const chain = Chain.TRON;
@@ -129,8 +132,24 @@ export async function scanTronChain(options = {}) {
 
   const cap = effectiveDepositScannerMaxPerSecond("trc20");
   const parallel = cap > 0 ? cap : 1;
+  const adminRescan =
+    options.adminDepositRescan &&
+    Number.isInteger(options.adminDepositRescan.walletId) &&
+    options.adminDepositRescan.walletId >= 1 &&
+    Number.isInteger(options.adminDepositRescan.mergeTransactionId) &&
+    options.adminDepositRescan.mergeTransactionId >= 1
+      ? options.adminDepositRescan
+      : null;
+
   await runWithConcurrency(work, parallel, async ({ address, usdtTargets }) => {
-    await ingestTrc20ViaTronscan(base, address, usdtTargets, chain, trc20Map);
+    await ingestTrc20ViaTronscan(
+      base,
+      address,
+      usdtTargets,
+      chain,
+      trc20Map,
+      adminRescan,
+    );
   });
   recordDepositScanPolledAddresses(
     Chain.TRON,
@@ -140,8 +159,17 @@ export async function scanTronChain(options = {}) {
 
 /**
  * TronScan: TRC20 transfers for contract + related account.
+ *
+ * @param {{ walletId: number; mergeTransactionId: number } | null} [adminRescan]
  */
-async function ingestTrc20ViaTronscan(base, address, targets, chain, trc20Map) {
+async function ingestTrc20ViaTronscan(
+  base,
+  address,
+  targets,
+  chain,
+  trc20Map,
+  adminRescan = null,
+) {
   let usdtContract;
   try {
     usdtContract = pickUsdtTrc20Contract();
@@ -232,6 +260,10 @@ async function ingestTrc20ViaTronscan(base, address, targets, chain, trc20Map) {
       deposit_address: address,
     });
     if (!w) continue;
+    const adminMergeTargetTransactionId =
+      adminRescan && Number(w.id) === Number(adminRescan.walletId)
+        ? adminRescan.mergeTransactionId
+        : undefined;
     await upsertIncomingTransaction({
       walletId: w.id,
       currency: w.currency,
@@ -247,6 +279,9 @@ async function ingestTrc20ViaTronscan(base, address, targets, chain, trc20Map) {
       confirmations: confirmationsForChain(chain),
       blockNumber: null,
       logIndex: -1,
+      ...(adminMergeTargetTransactionId != null
+        ? { adminMergeTargetTransactionId }
+        : {}),
     });
   }
 }

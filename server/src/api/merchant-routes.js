@@ -2,6 +2,7 @@ import { Router } from "express";
 import {
   Chain,
   MerchantGatewayEnv,
+  Prisma,
   TxStatus,
   WithdrawalStatus,
 } from "@prisma/client";
@@ -44,6 +45,7 @@ import { proofPathForFileName } from "../lib/settlement-upload.js";
 import fs from "fs";
 import { re } from "../config/runtime-env.js";
 import { logger } from "../lib/logger.js";
+import { lastNDatesInZone } from "../lib/ianaTimeZone.js";
 import { redeliverPaymentSuccessWebhook } from "../services/callback-service.js";
 import { parseDefaultChainsArray } from "../lib/default-chains.js";
 import {
@@ -196,6 +198,66 @@ router.get("/api/v1/merchant/dashboard", async (req, res) => {
   const { environment } = gate;
 
   const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+  const tzRaw = typeof req.query.tz === "string" ? req.query.tz.trim() : "";
+  const viewerTz = tzRaw || "UTC";
+  const tzSql = `'${viewerTz.replace(/'/g, "''")}'`;
+  const dayKeys = lastNDatesInZone(14, viewerTz);
+  const wideFrom = new Date(Date.now() - 20 * 24 * 60 * 60 * 1000);
+
+  const txWhere = {
+    ...ACTIVE,
+    wallet: { is: { merchantId: mid, environment, ...ACTIVE } },
+  };
+
+  const byStatusPromise = prismaClientKnowsTxStatusCreated()
+    ? prisma.transaction.groupBy({
+        by: ["status"],
+        where: txWhere,
+        _count: { _all: true },
+      })
+    : prisma
+        .$queryRaw(
+          Prisma.sql`
+          SELECT t.status::text AS status, COUNT(*)::int AS cnt
+          FROM transactions t
+          INNER JOIN wallets w ON w.id = t.wallet_id
+          WHERE w.merchant_id = ${mid}
+            AND w.environment = ${environment}::"MerchantGatewayEnv"
+            AND w.deleted_at IS NULL
+            AND t.deleted_at IS NULL
+          GROUP BY t.status
+        `,
+        )
+        .then((rows) =>
+          rows.map((r) => ({
+            status: r.status,
+            _count: { _all: Number(r.cnt) },
+          })),
+        );
+
+  const byChainPromise = prisma.transaction.groupBy({
+    by: ["chain"],
+    where: txWhere,
+    _count: { _all: true },
+  });
+
+  const dailyStatusPromise = prisma.$queryRaw(
+    Prisma.sql`
+      SELECT ((t.created_at AT TIME ZONE ${Prisma.raw(tzSql)}))::date AS day,
+             t.status::text AS status,
+             COUNT(*)::int AS cnt
+      FROM transactions t
+      INNER JOIN wallets w ON w.id = t.wallet_id
+      WHERE w.merchant_id = ${mid}
+        AND w.environment = ${environment}::"MerchantGatewayEnv"
+        AND w.deleted_at IS NULL
+        AND t.deleted_at IS NULL
+        AND t.created_at >= ${wideFrom}
+      GROUP BY 1, 2
+      ORDER BY 1, 2
+    `,
+  );
+
   const recentPromise = prismaClientKnowsTxStatusCreated()
     ? prisma.transaction.findMany({
         where: {
@@ -213,27 +275,31 @@ router.get("/api/v1/merchant/dashboard", async (req, res) => {
       })
     : listMerchantDashboardRecentTxRaw(prisma, { mid, environment, since });
 
-  const [merchRates, recent, users, txs] = await Promise.all([
-    prisma.merchant.findFirst({
-      where: { id: mid, ...ACTIVE },
-      select: {
-        mdrPercent: true,
-        settlementRatePercent: true,
-        minSettlementAmount: true,
-        settlementPeriodDays: true,
-      },
-    }),
-    recentPromise,
-    prisma.user.count({
-      where: { merchantId: mid, environment, ...ACTIVE },
-    }),
-    prisma.transaction.count({
-      where: {
-        ...ACTIVE,
-        wallet: { is: { merchantId: mid, environment, ...ACTIVE } },
-      },
-    }),
-  ]);
+  const [merchRates, recent, users, txs, byStatus, byChain, dailyStatusRows] =
+    await Promise.all([
+      prisma.merchant.findFirst({
+        where: { id: mid, ...ACTIVE },
+        select: {
+          mdrPercent: true,
+          settlementRatePercent: true,
+          minSettlementAmount: true,
+          settlementPeriodDays: true,
+        },
+      }),
+      recentPromise,
+      prisma.user.count({
+        where: { merchantId: mid, environment, ...ACTIVE },
+      }),
+      prisma.transaction.count({
+        where: {
+          ...ACTIVE,
+          wallet: { is: { merchantId: mid, environment, ...ACTIVE } },
+        },
+      }),
+      byStatusPromise,
+      byChainPromise,
+      dailyStatusPromise,
+    ]);
   if (!merchRates) {
     res.status(404).json({ error: "not_found" });
     return;
@@ -249,6 +315,62 @@ router.get("/api/v1/merchant/dashboard", async (req, res) => {
     environment,
     merchRates,
   );
+
+  /** @type {Map<string, { pending: number, success: number, failed: number, underpaid: number }>} */
+  const dailyMap = new Map();
+  for (const row of dailyStatusRows) {
+    const dayVal = row.day;
+    const key =
+      dayVal instanceof Date
+        ? dayVal.toISOString().slice(0, 10)
+        : String(dayVal).slice(0, 10);
+    if (!dailyMap.has(key)) {
+      dailyMap.set(key, { pending: 0, success: 0, failed: 0, underpaid: 0 });
+    }
+    const bucket = /** @type {{ pending: number, success: number, failed: number, underpaid: number }} */ (
+      dailyMap.get(key)
+    );
+    const st = String(row.status);
+    const c = Number(row.cnt);
+    if (st === "pending" || st === "created") bucket.pending += c;
+    else if (st === "success") bucket.success += c;
+    else if (st === "failed") bucket.failed += c;
+    else if (st === "underpaid") bucket.underpaid += c;
+  }
+
+  const transactions_daily_by_status = dayKeys.map((date) => {
+    const b = dailyMap.get(date) ?? {
+      pending: 0,
+      success: 0,
+      failed: 0,
+      underpaid: 0,
+    };
+    return {
+      date,
+      pending: b.pending,
+      success: b.success,
+      failed: b.failed,
+      underpaid: b.underpaid,
+    };
+  });
+
+  const transactions_by_status = byStatus.map((r) => ({
+    status: String(r.status),
+    count: r._count._all,
+  }));
+  const successCount =
+    transactions_by_status.find((x) => x.status === "success")?.count ?? 0;
+  const totalForRate = transactions_by_status.reduce((s, x) => s + x.count, 0);
+  const success_rate_pct =
+    totalForRate > 0 ? Math.round((100 * successCount) / totalForRate) : 0;
+
+  const transactions_by_chain = byChain
+    .map((r) => ({
+      chain: String(r.chain),
+      count: r._count._all,
+    }))
+    .sort((a, b) => b.count - a.count);
+
   res.json({
     environment,
     portal: {
@@ -264,6 +386,13 @@ router.get("/api/v1/merchant/dashboard", async (req, res) => {
     balances,
     pending_settlement_batches: pendingSettlementBatches,
     stats: { end_users: users, transactions: txs },
+    charts: {
+      viewer_timezone: viewerTz,
+      success_rate_pct,
+      transactions_daily_by_status,
+      transactions_by_status,
+      transactions_by_chain,
+    },
     recent_transactions: recent.map((t) => ({
       id: t.id,
       transaction_id: t.referenceTransactionId ?? null,

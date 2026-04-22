@@ -87,6 +87,21 @@ export default function AdminTransactions() {
     },
   });
 
+  const rescanTronMutation = useMutation({
+    mutationFn: (txId) =>
+      api(`/api/v1/admin/transactions/${encodeURIComponent(txId)}/rescan-tron-deposit`, {
+        method: "POST",
+        json: {},
+      }),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["admin-txs"] });
+      const patch = data && typeof data === "object" ? data.transaction : null;
+      if (patch && typeof patch === "object") {
+        setDetailTx((prev) => (prev ? { ...prev, ...patch } : null));
+      }
+    },
+  });
+
   const total = res.data?.total ?? 0;
   const rows = res.data?.transactions ?? [];
   const showEmpty = !res.isLoading && rows.length === 0;
@@ -129,15 +144,27 @@ export default function AdminTransactions() {
       ? String(redeliverMutation.error?.message ?? "Request failed")
       : null;
 
+  const rescanTronErr =
+    rescanTronMutation.isError && detailTx?.id === rescanTronMutation.variables
+      ? String(rescanTronMutation.error?.message ?? "Request failed")
+      : null;
+
+  const rescanTronVisible =
+    Boolean(detailTx) &&
+    detailTx.chain === "TRON" &&
+    String(detailTx.currency ?? "").toUpperCase() === "USDT" &&
+    String(detailTx.network ?? "").toUpperCase() === "TRC20";
+
   return (
     <div>
       <TransactionDetailModal
         open={Boolean(detailTx)}
         transaction={detailTx}
         onClose={() => {
-          if (!redeliverMutation.isPending) {
+          if (!redeliverMutation.isPending && !rescanTronMutation.isPending) {
             setDetailTx(null);
             redeliverMutation.reset();
+            rescanTronMutation.reset();
           }
         }}
         onRedeliverCallback={() => {
@@ -145,6 +172,12 @@ export default function AdminTransactions() {
         }}
         redeliverLoading={redeliverMutation.isPending}
         redeliverError={redeliverErr}
+        rescanTronDepositVisible={rescanTronVisible}
+        onRescanTronDeposit={() => {
+          if (detailTx) rescanTronMutation.mutate(detailTx.id);
+        }}
+        rescanTronDepositLoading={rescanTronMutation.isPending}
+        rescanTronDepositError={rescanTronErr}
       />
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
@@ -490,6 +523,7 @@ export default function AdminTransactions() {
                         type="button"
                         onClick={() => {
                           redeliverMutation.reset();
+                          rescanTronMutation.reset();
                           setDetailTx(t);
                         }}
                         className="max-w-full truncate text-left font-mono text-xs text-sky-300/95 underline decoration-sky-500/40 underline-offset-2 transition hover:text-sky-200 hover:decoration-sky-300/70"

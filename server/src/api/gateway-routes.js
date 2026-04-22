@@ -1,6 +1,9 @@
 import { Router } from "express";
 import { TxStatus } from "@prisma/client";
-import { prismaClientKnowsTxStatusUnderpaid } from "../lib/prisma-tx-status.js";
+import {
+  prismaClientKnowsTxStatusCreated,
+  prismaClientKnowsTxStatusUnderpaid,
+} from "../lib/prisma-tx-status.js";
 import {
   findGatewayBlockingPendingCallbackRaw,
   findGatewayPollUnderpaidRowRaw,
@@ -48,7 +51,11 @@ import {
   createPaymentLinkToken,
   verifyPaymentLinkToken,
 } from "../lib/payment-link-token.js";
-import { walletScanTtlMinutes } from "../lib/wallet-scan.js";
+import {
+  effectiveWalletAssignmentHoldMinutes,
+  effectiveWalletScanTtlMinutes,
+  paymentPageCheckoutFallbackMinutes,
+} from "../lib/wallet-scan.js";
 import { resolveWalletInternalId } from "../lib/entity-internal-id.js";
 import { MAX_AUTO_CALLBACK_ATTEMPTS } from "../services/callback-service.js";
 
@@ -246,6 +253,7 @@ router.get("/api/v1/gateway/payment-session/:token", async (req, res) => {
         chain: true,
         currency: true,
         network: true,
+        environment: true,
         scanExpiresAt: true,
         holdExpiresAt: true,
       },
@@ -274,14 +282,57 @@ router.get("/api/v1/gateway/payment-session/:token", async (req, res) => {
         }
       }
     }
+
+    /** When scan/hold TTLs are disabled (null DB timestamps), still expose an unpaid-checkout deadline. */
+    let checkout_expires_at = null;
+    if (v.depositSessionKey && prismaClientKnowsTxStatusCreated()) {
+      const ph = await prisma.transaction.findFirst({
+        where: {
+          walletId: wid,
+          depositSessionKey: v.depositSessionKey,
+          status: TxStatus.created,
+          txHash: { startsWith: "gateway-created:" },
+          ...ACTIVE,
+        },
+        select: { createdAt: true },
+        orderBy: { id: "desc" },
+      });
+      if (ph?.createdAt) {
+        const hours = Math.max(1, re.checkoutCreatedExpiryHours);
+        checkout_expires_at = new Date(
+          ph.createdAt.getTime() + hours * 60 * 60 * 1000,
+        ).toISOString();
+      }
+    }
+    if (!checkout_expires_at) {
+      checkout_expires_at = new Date(
+        Date.now() + paymentPageCheckoutFallbackMinutes * 60 * 1000,
+      ).toISOString();
+    }
+
+    let deposit_scan_expires_at = w.scanExpiresAt?.toISOString() ?? null;
+    if (!deposit_scan_expires_at) {
+      deposit_scan_expires_at = new Date(
+        Date.now() + effectiveWalletScanTtlMinutes() * 60 * 1000,
+      ).toISOString();
+    }
+    let reservation_expires_at = w.holdExpiresAt?.toISOString() ?? null;
+    if (!reservation_expires_at) {
+      reservation_expires_at = new Date(
+        Date.now() + effectiveWalletAssignmentHoldMinutes() * 60 * 1000,
+      ).toISOString();
+    }
+
     res.json({
       address: w.address,
       chain: w.chain,
       currency: w.currency,
       network: w.network,
-      deposit_scan_expires_at: w.scanExpiresAt?.toISOString() ?? null,
-      deposit_scan_ttl_minutes: walletScanTtlMinutes(),
-      reservation_expires_at: w.holdExpiresAt?.toISOString() ?? null,
+      gateway_environment: w.environment,
+      deposit_scan_expires_at,
+      deposit_scan_ttl_minutes: effectiveWalletScanTtlMinutes(),
+      reservation_expires_at,
+      checkout_expires_at,
       redirect_url: redirectUrl,
       ...(expected_amount_atomic != null
         ? {
@@ -579,6 +630,30 @@ router.post("/api/v1/gateway/deposit-address", async (req, res) => {
           referenceTransactionId: assigned.referenceTransactionId,
         };
       });
+    let checkout_expires_at =
+      prismaClientKnowsTxStatusCreated() && depositSessionKey
+        ? new Date(
+            Date.now() +
+              Math.max(1, re.checkoutCreatedExpiryHours) * 60 * 60 * 1000,
+          ).toISOString()
+        : null;
+    if (!checkout_expires_at) {
+      checkout_expires_at = new Date(
+        Date.now() + paymentPageCheckoutFallbackMinutes * 60 * 1000,
+      ).toISOString();
+    }
+    let deposit_scan_expires_at = wallet.scanExpiresAt?.toISOString() ?? null;
+    if (!deposit_scan_expires_at) {
+      deposit_scan_expires_at = new Date(
+        Date.now() + effectiveWalletScanTtlMinutes() * 60 * 1000,
+      ).toISOString();
+    }
+    let reservation_expires_at = wallet.holdExpiresAt?.toISOString() ?? null;
+    if (!reservation_expires_at) {
+      reservation_expires_at = new Date(
+        Date.now() + effectiveWalletAssignmentHoldMinutes() * 60 * 1000,
+      ).toISOString();
+    }
     const responseOut = {
       status: 200,
       wallet_id: wallet.id,
@@ -625,9 +700,10 @@ router.post("/api/v1/gateway/deposit-address", async (req, res) => {
       transaction_id: referenceTransactionId,
       reference_id: referenceTransactionId,
       ...(payment_link ? { payment_link } : {}),
-      deposit_scan_expires_at: wallet.scanExpiresAt?.toISOString() ?? null,
-      deposit_scan_ttl_minutes: walletScanTtlMinutes(),
-      reservation_expires_at: wallet.holdExpiresAt?.toISOString() ?? null,
+      deposit_scan_expires_at,
+      deposit_scan_ttl_minutes: effectiveWalletScanTtlMinutes(),
+      reservation_expires_at,
+      checkout_expires_at,
       redirect_url: redirectUrl,
       ...(expectedAmountAtomic != null && tokenDecimals != null
         ? {

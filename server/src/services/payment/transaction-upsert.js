@@ -58,6 +58,8 @@ import { UNDERPAY_TOLERANCE_ATOMIC } from "../../lib/gateway-expected-amount.js"
  * @param {string} [input.currency] — wallet rail; with `network`, enables new-row tick metrics
  * @param {string} [input.network]
  * @param {string} [input.payerUserId] — when creating a row, prefer this over live `wallet.assigned_user_id`
+ * @param {string | number} [input.adminMergeTargetTransactionId] — optional internal `transactions.id` to merge
+ *   into when it is still the `gateway-created:*` checkout placeholder (admin TRON rescan); avoids a second row.
  */
 export async function upsertIncomingTransaction(input) {
   const threshold = confirmationsForChain(input.chain);
@@ -223,7 +225,63 @@ export async function upsertIncomingTransaction(input) {
   /** @type {import("@prisma/client").Transaction | Awaited<ReturnType<typeof upsertTransactionRowUnderpaidRaw>> | undefined} */
   let row;
 
+  const adminMergeTid = coerceTransactionPrimaryKey(
+    input.adminMergeTargetTransactionId,
+  );
   if (
+    !hadRowBefore &&
+    !useRawUnderpaidUpsert &&
+    adminMergeTid != null
+  ) {
+    const target = await prisma.transaction.findFirst({
+      where: {
+        id: adminMergeTid,
+        walletId: walletInternalId,
+        chain: input.chain,
+        txHash: { startsWith: "gateway-created:" },
+        ...ACTIVE,
+      },
+      select: { id: true, status: true, amount: true },
+    });
+    const amt0 = String(target?.amount ?? "").trim() === "0";
+    const st = target?.status;
+    const mergeablePlaceholder =
+      Boolean(target) &&
+      amt0 &&
+      (st === TxStatus.created ||
+        st === "created" ||
+        (st === TxStatus.pending || st === "pending"));
+    if (target && mergeablePlaceholder) {
+      row = await prisma.transaction.update({
+        where: { id: target.id },
+        data: {
+          txHash: input.txHash,
+          fromAddress: input.fromAddress,
+          toAddress: input.toAddress,
+          amount: input.amount,
+          tokenSymbol: input.tokenSymbol,
+          tokenDecimals: input.tokenDecimals,
+          confirmations: input.confirmations,
+          blockNumber: input.blockNumber ?? undefined,
+          logIndex: input.logIndex,
+          status: nextStatus,
+          ...(payerUserIdForCreate != null
+            ? { payerUserId: payerUserIdForCreate }
+            : {}),
+          updatedAt: new Date(),
+        },
+      });
+      mergedIntoPlaceholder = true;
+      logger.info("checkout_placeholder_merged_on_chain", {
+        wallet_id: walletInternalId,
+        transaction_id: row.id,
+        admin_merge_target: true,
+      });
+    }
+  }
+
+  if (
+    !row &&
     !hadRowBefore &&
     !useRawUnderpaidUpsert &&
     prismaClientKnowsTxStatusCreated()

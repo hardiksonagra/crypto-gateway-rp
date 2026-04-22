@@ -14,6 +14,31 @@ export function walletScanTtlMinutes() {
 }
 
 /**
+ * Resolved scan TTL, or **10** when admin/env set `0` (null `scan_expires_at` in DB). Used for payment
+ * API fallbacks only — worker filter still follows raw `re.walletScanTtlMinutes`.
+ *
+ * @returns {number}
+ */
+export function effectiveWalletScanTtlMinutes() {
+  const m = re.walletScanTtlMinutes;
+  return m > 0 ? m : 10;
+}
+
+/**
+ * Resolved hold minutes, or **60** when set to `0` (null `hold_expires_at`). Payment / hosted checkout
+ * consumers use this so countdowns always have a horizon; pool maintenance semantics stay on raw `0`.
+ *
+ * @returns {number}
+ */
+export function effectiveWalletAssignmentHoldMinutes() {
+  const m = re.walletAssignmentHoldMinutes;
+  return m > 0 ? m : 60;
+}
+
+/** When checkout placeholder metadata is unavailable, payment page uses this many minutes from now. */
+export const paymentPageCheckoutFallbackMinutes = 10;
+
+/**
  * @returns {Date | null}
  */
 export function nextScanExpiresAt() {
