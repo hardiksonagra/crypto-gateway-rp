@@ -1,5 +1,5 @@
 import { Chain } from "@prisma/client";
-import { getErc20Contracts } from "../../config/env.js";
+import { env, getErc20Contracts } from "../../config/env.js";
 import { re } from "../../config/runtime-env.js";
 import { isEvmChain } from "../../config/chains.js";
 import { walletAcceptsEvmErc20 } from "../../config/payment-rails.js";
@@ -22,6 +22,7 @@ import {
   fetchErc20BalanceAtomicViaEtherscan,
 } from "../../lib/etherscan-client.js";
 import { pickUsdtTrc20Contract } from "../sweep/tron-usdt-sweep.js";
+import { hasActiveDepositScannerExplorerPool } from "../../lib/deposit-scanner-explorer-key-pool.js";
 
 /** Space out explorer calls so bulk “Refresh balances” stays under third-party rate caps. */
 const REFRESH_BALANCE_GAP_MS = 1000;
@@ -94,11 +95,13 @@ export async function probeWalletOnChainBalance(w) {
           error: "no_usdt_contract_for_chain",
         };
       }
-      if (!re.etherscanApiKey?.trim()) {
+      const poolErc20 = await hasActiveDepositScannerExplorerPool("erc20");
+      const envEthKey = env.etherscanApiKey?.trim() ?? "";
+      if (!poolErc20 && !envEthKey) {
         return {
           display: null,
           atomic: null,
-          error: "etherscan_api_key_required_for_eth_usdt_balance",
+          error: "etherscan_explorer_pool_or_env_key_required_for_eth_usdt_balance",
         };
       }
       const key = evmRpcBudgetKey(w.chain);
@@ -135,13 +138,13 @@ export async function probeWalletOnChainBalance(w) {
       Object.assign(base, {
         tronscan_api_host: tronscanApiHostnameForLog(),
         tron_full_node_host: tronFullNodeHostnameForLog(),
-        note: "TRON admin balance refresh uses TronScan /api/account (TRONSCAN_API_KEY)",
+        note: "TRON admin balance refresh uses TronScan /api/account (explorer pool or TRONSCAN_API_KEY in .env)",
       });
     }
     if (w.chain === Chain.ETH) {
       Object.assign(base, {
         etherscan_host: etherscanApiHostnameForLog(),
-        note: "ETH USDT admin balance uses Etherscan tokenbalance (ETHERSCAN_API_KEY)",
+        note: "ETH USDT admin balance uses Etherscan tokenbalance (explorer pool or ETHERSCAN_API_KEY in .env)",
       });
     }
     logger.error("wallet_balance_probe_failed", base);
@@ -158,9 +161,10 @@ export async function probeWalletOnChainBalance(w) {
  * Waits {@link REFRESH_BALANCE_GAP_MS} between each wallet so Etherscan / TronScan
  * are not hit in one tight burst (admin “Refresh balances”).
  *
+ * @param {{ onProgress?: (processed: number, total: number) => void }} [opts]
  * @returns {Promise<{ total: number, ok: number, failed: number }>}
  */
-export async function refreshAllWalletCachedBalances() {
+export async function refreshAllWalletCachedBalances(opts) {
   const rows = await prisma.wallet.findMany({
     where: { ...ACTIVE },
     orderBy: { createdAt: "desc" },
@@ -173,6 +177,9 @@ export async function refreshAllWalletCachedBalances() {
       derivationIndex: true,
     },
   });
+
+  const total = rows.length;
+  opts?.onProgress?.(0, total);
 
   let ok = 0;
   let failed = 0;
@@ -196,7 +203,75 @@ export async function refreshAllWalletCachedBalances() {
         cachedBalanceUpdatedAt: now,
       },
     });
+    opts?.onProgress?.(i + 1, total);
   }
 
-  return { total: rows.length, ok, failed };
+  return { total, ok, failed };
+}
+
+/** @type {{ running: boolean, lastResult: { total: number, ok: number, failed: number } | null, lastError: string | null, scanTotal: number, scanProcessed: number }} */
+const adminBulkRefreshState = {
+  running: false,
+  lastResult: null,
+  lastError: null,
+  scanTotal: 0,
+  scanProcessed: 0,
+};
+
+/**
+ * Snapshot for admin UI polling while a bulk balance refresh runs in the background.
+ *
+ * @returns {{ running: boolean, lastResult: { total: number, ok: number, failed: number } | null, lastError: string | null, scanTotal: number, scanProcessed: number }}
+ */
+export function getAdminBulkWalletBalanceRefreshStatus() {
+  return {
+    running: adminBulkRefreshState.running,
+    lastResult: adminBulkRefreshState.lastResult,
+    lastError: adminBulkRefreshState.lastError,
+    scanTotal: adminBulkRefreshState.scanTotal,
+    scanProcessed: adminBulkRefreshState.scanProcessed,
+  };
+}
+
+/**
+ * Starts {@link refreshAllWalletCachedBalances} in the background if idle.
+ * HTTP handlers should respond immediately (202) so proxies do not time out on large wallets tables.
+ *
+ * @returns {{ started: true } | { started: false, reason: "in_progress" }}
+ */
+export function startAdminBulkWalletBalanceRefresh() {
+  if (adminBulkRefreshState.running) {
+    return { started: false, reason: "in_progress" };
+  }
+  adminBulkRefreshState.running = true;
+  adminBulkRefreshState.lastResult = null;
+  adminBulkRefreshState.lastError = null;
+  adminBulkRefreshState.scanTotal = 0;
+  adminBulkRefreshState.scanProcessed = 0;
+
+  void (async () => {
+    try {
+      const result = await refreshAllWalletCachedBalances({
+        onProgress: (processed, total) => {
+          adminBulkRefreshState.scanTotal = total;
+          adminBulkRefreshState.scanProcessed = processed;
+        },
+      });
+      adminBulkRefreshState.lastResult = result;
+      adminBulkRefreshState.scanTotal = result.total;
+      adminBulkRefreshState.scanProcessed = result.total;
+      logger.info("admin_wallet_balances_refreshed", {
+        total: result.total,
+        ok: result.ok,
+        failed: result.failed,
+      });
+    } catch (e) {
+      adminBulkRefreshState.lastError = String(e);
+      logger.error("admin_wallet_balances_refresh_failed", { err: String(e) });
+    } finally {
+      adminBulkRefreshState.running = false;
+    }
+  })();
+
+  return { started: true };
 }

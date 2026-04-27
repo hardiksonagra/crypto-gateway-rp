@@ -17,6 +17,7 @@ import AdminWalletDetails from "./pages/admin/AdminWalletDetails";
 import AdminTransactions from "./pages/admin/Transactions";
 import AdminActivityLog from "./pages/admin/ActivityLog";
 import AdminSystemSettings from "./pages/admin/SystemSettings";
+import AdminDepositExplorerKeys from "./pages/admin/DepositExplorerKeys";
 import AdminSupportedChains from "./pages/admin/SupportedChains";
 import DecodeGatewayData from "./pages/admin/DecodeGatewayData";
 import ToolSendUsdt from "./pages/admin/ToolSendUsdt";
@@ -105,6 +106,7 @@ export default function App() {
         <Route path="activity" element={<AdminActivityLog />} />
         <Route path="supported-chains" element={<AdminSupportedChains />} />
         <Route path="settings" element={<AdminSystemSettings />} />
+        <Route path="deposit-explorer-keys" element={<AdminDepositExplorerKeys />} />
         <Route path="profile" element={<Profile />} />
         <Route path="decode-gateway-data" element={<DecodeGatewayData />} />
         <Route path="tool-send-usdt" element={<ToolSendUsdt />} />

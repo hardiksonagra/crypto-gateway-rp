@@ -11,8 +11,9 @@ logger.info("blockchain deposit / transaction tracker started (combined worker)"
   note: "Both ERC20 + TRC20 rails in one process; each rail has its own work queue so a long TRC20 tick (sweep/callbacks) does not delay ERC20 polling. Production PM2: prefer crypto-gateway-worker-erc20 + crypto-gateway-worker-trc20. Poll: WORKER_POLL_INTERVAL_SEC_ERC20 / WORKER_POLL_INTERVAL_SEC_TRC20 (seconds in Admin; restart workers to apply). Full deposit scan: crypto-gateway-cron-deposit-full-scan",
   tron_deposit_scan: "tronscan",
   deposit_scanner_tron_only: re.depositScannerTronOnly,
-  tronscan_key_configured: Boolean(re.tronscanApiKey?.trim()),
-  etherscan_key_configured: Boolean(re.etherscanApiKey?.trim()),
+  deposit_scan_explorer_pool_only: true,
+  env_balance_fallback_etherscan: Boolean(re.etherscanApiKey?.trim()),
+  env_balance_fallback_tronscan: Boolean(re.tronscanApiKey?.trim()),
   etherscan_api_host: etherscanApiHostnameForLog(),
   tronscan_host: (() => {
     try {

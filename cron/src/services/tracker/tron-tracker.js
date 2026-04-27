@@ -3,10 +3,13 @@ import { utils } from "tronweb";
 import { confirmationsForChain } from "crypto-payment-gateway/src/config/chains.js";
 import { getTrc20Contracts } from "crypto-payment-gateway/src/config/env.js";
 import { re } from "crypto-payment-gateway/src/config/runtime-env.js";
+import { acquireOutboundRpcSlot } from "crypto-payment-gateway/src/lib/network-rpc-rate-limit.js";
 import {
-  acquireDepositScannerApiSlot,
-  acquireOutboundRpcSlot,
-} from "crypto-payment-gateway/src/lib/network-rpc-rate-limit.js";
+  acquireDepositScannerExplorerApiLease,
+  hasActiveDepositScannerExplorerPool,
+  recordDepositScannerExplorerSuccessfulRequest,
+  sumMaxRequestsPerSecondForPool,
+} from "crypto-payment-gateway/src/lib/deposit-scanner-explorer-key-pool.js";
 import { getTronscanFetchHeaders } from "crypto-payment-gateway/src/lib/tron-node-client.js";
 import { pickSingleDepositWallet } from "crypto-payment-gateway/src/lib/deposit-scan-dedupe.js";
 import {
@@ -103,7 +106,7 @@ export async function scanTronChain(options = {}) {
   const wallets = options.wallets ?? (await loadWalletsForChain(chain));
 
   if (wallets.length === 0) return;
-  if (!re.tronscanApiKey?.trim()) {
+  if (!(await hasActiveDepositScannerExplorerPool("trc20"))) {
     return;
   }
 
@@ -130,8 +133,15 @@ export async function scanTronChain(options = {}) {
     }
   }
 
-  const cap = effectiveDepositScannerMaxPerSecond("trc20");
-  const parallel = cap > 0 ? cap : 1;
+  if (work.length === 0) {
+    return;
+  }
+
+  const sumPoolSec = await sumMaxRequestsPerSecondForPool("trc20");
+  const legacyCap = effectiveDepositScannerMaxPerSecond("trc20");
+  const parallelBudget =
+    sumPoolSec > 0 ? sumPoolSec : legacyCap > 0 ? legacyCap : 1;
+  const parallel = Math.min(parallelBudget, work.length);
   const adminRescan =
     options.adminDepositRescan &&
     Number.isInteger(options.adminDepositRescan.walletId) &&
@@ -158,7 +168,7 @@ export async function scanTronChain(options = {}) {
 }
 
 /**
- * TronScan: TRC20 transfers for contract + related account.
+ * TronScan: TRC20 transfers for contract + related account (explorer key pool only).
  *
  * @param {{ walletId: number; mergeTransactionId: number } | null} [adminRescan]
  */
@@ -190,9 +200,11 @@ async function ingestTrc20ViaTronscan(
     message: `TRC20: START API CALL (${address})`,
   });
   try {
-    await acquireDepositScannerApiSlot("trc20");
+    const poolLease = await acquireDepositScannerExplorerApiLease("trc20");
     await acquireOutboundRpcSlot("TRON");
-    const res = await fetch(url, { headers: getTronscanFetchHeaders() });
+    const res = await fetch(url, {
+      headers: getTronscanFetchHeaders(poolLease.apiKey),
+    });
     const text = await res.text();
     const duration_ms = Date.now() - t0;
     let parse_ok = false;
@@ -221,6 +233,7 @@ async function ingestTrc20ViaTronscan(
     if (!parse_ok) {
       return;
     }
+    void recordDepositScannerExplorerSuccessfulRequest(poolLease.keyId);
   } catch (e) {
     const duration_ms = Date.now() - t0;
     const err = e instanceof Error ? e.message : String(e);

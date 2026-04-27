@@ -376,3 +376,30 @@ model AppSetting {
   @@index([deletedAt])
   @@map("app_settings")
 }
+
+/// Deposit worker: Etherscan (USDT·ERC20) or TronScan (USDT·TRC20). When a rail has ≥1 active row,
+/// workers use this pool (per-key daily + per-second caps); deposit scan does not read explorer keys from `app_settings`.
+enum DepositScannerExplorerRail {
+  erc20
+  trc20
+}
+
+model DepositScannerExplorerApiKey {
+  id                   Int                        @id @default(autoincrement())
+  rail                 DepositScannerExplorerRail @map("rail")
+  name                 String                     @db.VarChar(160)
+  apiKeyCipher         String                     @map("api_key_cipher") @db.Text
+  apiKeyHint           String?                    @map("api_key_hint") @db.VarChar(24)
+  maxRequestsPerDay    Int                        @map("max_requests_per_day")
+  maxRequestsPerSecond Int                        @map("max_requests_per_second")
+  requestsToday        Int                        @default(0) @map("requests_today")
+  /// Calendar date (UTC) for which `requests_today` applies; reset via increment path when date advances.
+  usageDayUtc          DateTime                   @map("usage_day_utc") @db.Date
+  sortOrder            Int                        @default(0) @map("sort_order")
+  isActive             Boolean                    @default(true) @map("is_active")
+  createdAt            DateTime                   @default(now()) @map("created_at")
+  updatedAt            DateTime                   @updatedAt @map("updated_at")
+
+  @@index([rail, isActive, sortOrder])
+  @@map("deposit_scanner_explorer_api_keys")
+}

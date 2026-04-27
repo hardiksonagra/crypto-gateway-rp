@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
+import { useState } from "react";
 import { api } from "../../api";
 import { useMerchantPortalEnvironment } from "../../hooks/useMerchantPortalEnvironment.js";
 import { useTheme } from "../../hooks/useTheme.js";
@@ -13,7 +13,15 @@ const HUB_LINKS = [
     label: "Merchants",
     desc: "Accounts & keys",
     icon: (
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden>
+      <svg
+        width="22"
+        height="22"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        aria-hidden
+      >
         <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
         <polyline points="9 22 9 12 15 12 15 22" />
       </svg>
@@ -24,7 +32,15 @@ const HUB_LINKS = [
     label: "Users",
     desc: "End customers",
     icon: (
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden>
+      <svg
+        width="22"
+        height="22"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        aria-hidden
+      >
         <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
         <circle cx="9" cy="7" r="4" />
         <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
@@ -36,7 +52,15 @@ const HUB_LINKS = [
     label: "All wallets",
     desc: "Balances list",
     icon: (
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden>
+      <svg
+        width="22"
+        height="22"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        aria-hidden
+      >
         <rect x="2" y="6" width="20" height="14" rx="2" />
         <path d="M2 10h20" />
         <circle cx="16" cy="14" r="1.5" fill="currentColor" stroke="none" />
@@ -48,7 +72,15 @@ const HUB_LINKS = [
     label: "Transactions",
     desc: "Deposits & status",
     icon: (
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden>
+      <svg
+        width="22"
+        height="22"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        aria-hidden
+      >
         <path d="M7.5 21L3 16.5m0 0L7.5 12M3 16.5h13.5m0-13.5L21 7.5m0 0L16.5 12M21 7.5H7.5" />
       </svg>
     ),
@@ -58,7 +90,15 @@ const HUB_LINKS = [
     label: "Settlements",
     desc: "Batches & proofs",
     icon: (
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden>
+      <svg
+        width="22"
+        height="22"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        aria-hidden
+      >
         <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
       </svg>
     ),
@@ -68,7 +108,15 @@ const HUB_LINKS = [
     label: "Sweep",
     desc: "Treasury moves",
     icon: (
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden>
+      <svg
+        width="22"
+        height="22"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        aria-hidden
+      >
         <circle cx="12" cy="12" r="10" />
         <path d="M12 6v6l4 2" />
       </svg>
@@ -79,7 +127,15 @@ const HUB_LINKS = [
     label: "Activity",
     desc: "Audit trail",
     icon: (
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden>
+      <svg
+        width="22"
+        height="22"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        aria-hidden
+      >
         <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
         <polyline points="14 2 14 8 20 8" />
         <line x1="16" y1="13" x2="8" y2="13" />
@@ -92,7 +148,15 @@ const HUB_LINKS = [
     label: "Chains",
     desc: "Enable / disable networks",
     icon: (
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden>
+      <svg
+        width="22"
+        height="22"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        aria-hidden
+      >
         <ellipse cx="12" cy="5" rx="9" ry="3" />
         <path d="M3 5v6c0 1.7 4 3 9 3s9-1.3 9-3V5" />
         <path d="M3 11v6c0 1.7 4 3 9 3s9-1.3 9-3v-6" />
@@ -104,7 +168,15 @@ const HUB_LINKS = [
     label: "Settings",
     desc: "System config",
     icon: (
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden>
+      <svg
+        width="22"
+        height="22"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        aria-hidden
+      >
         <circle cx="12" cy="12" r="3" />
         <path d="M12 1v2m0 18v2M4.22 4.22l1.42 1.42m12.72 12.72l1.42 1.42M1 12h2m18 0h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
       </svg>
@@ -117,8 +189,8 @@ const CARDS_META = [
   {
     key: "merchants",
     label: "Merchants",
-    sublabel: "All time",
-    scope: "global",
+    sublabel: "With deposit wallets",
+    scope: "env",
     darkBg: "rgba(90,100,255,0.07)",
     darkBorder: "rgba(110,120,255,0.18)",
     darkHighlight: "rgba(120,130,255,0.12)",
@@ -142,7 +214,7 @@ const CARDS_META = [
   {
     key: "wallets_in_env",
     label: "All wallets",
-    sublabel: "Deposit rails",
+    sublabel: "Unique address · rail",
     scope: "env",
     darkBg: "rgba(14,165,233,0.07)",
     darkBorder: "rgba(56,189,248,0.2)",
@@ -167,7 +239,7 @@ const CARDS_META = [
   {
     key: "users",
     label: "Users",
-    sublabel: "Registered",
+    sublabel: "Active · merchant has wallets",
     scope: "env",
     darkBg: "rgba(6,182,212,0.06)",
     darkBorder: "rgba(34,211,238,0.16)",
@@ -192,7 +264,7 @@ const CARDS_META = [
   {
     key: "transactions_total",
     label: "Transactions",
-    sublabel: "All time",
+    sublabel: "Selected range",
     scope: "env",
     darkBg: "rgba(147,51,234,0.07)",
     darkBorder: "rgba(192,132,252,0.17)",
@@ -217,7 +289,7 @@ const CARDS_META = [
   {
     key: "transactions_success",
     label: "Successful",
-    sublabel: "Completed",
+    sublabel: "Selected range",
     scope: "env",
     darkBg: "rgba(16,185,129,0.06)",
     darkBorder: "rgba(52,211,153,0.15)",
@@ -238,15 +310,25 @@ const CARDS_META = [
     lightIconColor: "#15803d",
     lightGlow: "rgba(21,128,61,0.18)",
     icon: (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <svg
+        width="20"
+        height="20"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden
+      >
         <polyline points="20 6 9 17 4 12" />
       </svg>
     ),
   },
   {
-    key: "transactions_last_24h",
-    label: "Last 24h",
-    sublabel: "Recent activity",
+    key: "transactions_failed_underpaid",
+    label: "Failed / underpaid",
+    sublabel: "Selected range",
     scope: "env",
     darkBg: "rgba(245,158,11,0.06)",
     darkBorder: "rgba(251,191,36,0.16)",
@@ -267,7 +349,17 @@ const CARDS_META = [
     lightIconColor: "#b45309",
     lightGlow: "rgba(180,83,9,0.18)",
     icon: (
-      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <svg
+        width="20"
+        height="20"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden
+      >
         <circle cx="12" cy="12" r="10" />
         <polyline points="12 6 12 12 16 14" />
       </svg>
@@ -276,9 +368,9 @@ const CARDS_META = [
 ];
 
 /**
- * @param {{ meta: typeof CARDS_META[0], value: number | undefined, envLabel: string, isDark: boolean }} props
+ * @param {{ meta: typeof CARDS_META[0], value: number | undefined, envLabel: string, isDark: boolean, sublabelOverride?: string }} props
  */
-function StatCard({ meta, value, envLabel, isDark }) {
+function StatCard({ meta, value, envLabel, isDark, sublabelOverride }) {
   const bg = isDark ? meta.darkBg : meta.lightBg;
   const border = isDark ? meta.darkBorder : meta.lightBorder;
   const highlight = isDark ? meta.darkHighlight : null;
@@ -305,7 +397,9 @@ function StatCard({ meta, value, envLabel, isDark }) {
       {isDark && (
         <div
           className="pointer-events-none absolute inset-x-0 top-0 h-px"
-          style={{ background: `linear-gradient(90deg, transparent, ${highlight}, transparent)` }}
+          style={{
+            background: `linear-gradient(90deg, transparent, ${highlight}, transparent)`,
+          }}
         />
       )}
       {!isDark && (
@@ -330,12 +424,18 @@ function StatCard({ meta, value, envLabel, isDark }) {
             {meta.icon}
           </div>
           {meta.scope === "env" && (
-            <span className="text-[9px] font-bold uppercase tracking-wider" style={{ color: sub }}>
+            <span
+              className="text-[9px] font-bold uppercase tracking-wider"
+              style={{ color: sub }}
+            >
               {envLabel}
             </span>
           )}
         </div>
-        <p className="text-[10px] font-bold uppercase tracking-[0.14em]" style={{ color: label }}>
+        <p
+          className="text-[10px] font-bold uppercase tracking-[0.14em]"
+          style={{ color: label }}
+        >
           {meta.label}
         </p>
         <p
@@ -345,7 +445,7 @@ function StatCard({ meta, value, envLabel, isDark }) {
           {value ?? 0}
         </p>
         <p className="mt-2 text-[11px] font-medium" style={{ color: sub }}>
-          {meta.sublabel}
+          {sublabelOverride ?? meta.sublabel}
         </p>
       </div>
     </div>
@@ -361,14 +461,82 @@ function normalizeDailySeries(daily, timeZone) {
   const map = new Map((daily ?? []).map((row) => [row.date, row]));
   return keys.map(
     (date) =>
-      map.get(date) ?? { date, pending: 0, success: 0, failed: 0, underpaid: 0 },
+      map.get(date) ?? {
+        date,
+        pending: 0,
+        success: 0,
+        failed: 0,
+        underpaid: 0,
+      },
   );
+}
+
+/** Local calendar date YYYY-MM-DD (browser timezone). */
+function ymdLocal(d = new Date()) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+/** @param {string} ymd @param {number} deltaDays */
+function addCalendarDaysYmd(ymd, deltaDays) {
+  const [y, mo, d] = ymd.split("-").map(Number);
+  const dt = new Date(y, mo - 1, d + deltaDays);
+  return ymdLocal(dt);
+}
+
+/**
+ * @param {boolean} metricsAll
+ * @param {string} from
+ * @param {string} to
+ */
+function resolveDashRangePreset(metricsAll, from, to) {
+  if (metricsAll) return "all";
+  const t = ymdLocal();
+  if (from === t && to === t) return "today";
+  if (from === addCalendarDaysYmd(t, -6) && to === t) return "7d";
+  if (from === addCalendarDaysYmd(t, -29) && to === t) return "30d";
+  return "custom";
+}
+
+/** @param {boolean} isDark */
+function dashDateInputClass(isDark) {
+  return `min-h-[2.5rem] w-full rounded-lg border px-3 py-2 text-sm font-medium tabular-nums outline-none transition focus:ring-2 focus:ring-offset-0 disabled:cursor-not-allowed disabled:opacity-40 ${
+    isDark
+      ? "border-white/[0.12] bg-black/40 text-white/95 focus:border-sky-400/45 focus:ring-sky-500/25 [color-scheme:dark]"
+      : "border-slate-200/90 bg-white text-slate-900 shadow-sm focus:border-sky-300 focus:ring-sky-400/30 [color-scheme:light]"
+  }`;
+}
+
+/**
+ * @param {boolean} isDark
+ * @param {boolean} active
+ */
+function dashRangePillClass(isDark, active) {
+  const base =
+    "rounded-lg px-3 py-2 text-xs font-semibold tracking-wide transition disabled:cursor-not-allowed disabled:opacity-40";
+  if (active) {
+    return `${base} ${
+      isDark
+        ? "bg-sky-500/30 text-sky-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] ring-1 ring-sky-400/25"
+        : "bg-white text-slate-900 shadow-sm ring-1 ring-slate-200/90"
+    }`;
+  }
+  return `${base} ${
+    isDark
+      ? "text-white/55 hover:bg-white/[0.07] hover:text-white/90"
+      : "text-slate-600 hover:bg-white hover:text-slate-900"
+  }`;
 }
 
 export default function AdminDashboard() {
   const { portalEnvironmentKey, environment } = useMerchantPortalEnvironment();
   const { theme } = useTheme();
   const isDark = theme === "dark";
+  const [metricsAll, setMetricsAll] = useState(false);
+  const [dateFrom, setDateFrom] = useState(() => ymdLocal());
+  const [dateTo, setDateTo] = useState(() => ymdLocal());
 
   const dashTz =
     typeof Intl !== "undefined"
@@ -376,11 +544,33 @@ export default function AdminDashboard() {
       : "UTC";
 
   const { data, isLoading } = useQuery({
-    queryKey: ["admin-dash", portalEnvironmentKey, dashTz],
-    queryFn: () =>
-      api(
-        `/api/v1/admin/dashboard?tz=${encodeURIComponent(dashTz)}`,
-      ),
+    queryKey: [
+      "admin-dash",
+      portalEnvironmentKey,
+      dashTz,
+      metricsAll,
+      dateFrom,
+      dateTo,
+    ],
+    queryFn: () => {
+      const p = new URLSearchParams({ tz: dashTz });
+      if (metricsAll) {
+        p.set("metrics_preset", "all");
+      } else {
+        const from =
+          dateFrom && /^\d{4}-\d{2}-\d{2}$/.test(dateFrom)
+            ? dateFrom
+            : ymdLocal();
+        const to =
+          dateTo && /^\d{4}-\d{2}-\d{2}$/.test(dateTo) ? dateTo : ymdLocal();
+        const lo = from <= to ? from : to;
+        const hi = from <= to ? to : from;
+        p.set("metrics_preset", "today");
+        p.set("metrics_from", lo);
+        p.set("metrics_to", hi);
+      }
+      return api(`/api/v1/admin/dashboard?${p}`);
+    },
   });
 
   if (isLoading || !data) {
@@ -402,7 +592,7 @@ export default function AdminDashboard() {
     users: data.end_users,
     transactions_total: data.transactions_total,
     transactions_success: data.transactions_success,
-    transactions_last_24h: data.transactions_last_24h,
+    transactions_failed_underpaid: data.transactions_failed_underpaid,
   };
 
   const txs = Number(data.transactions_total) || 0;
@@ -413,164 +603,210 @@ export default function AdminDashboard() {
   const byStatus = data.transactions_by_status ?? [];
   const byChain = data.transactions_by_chain ?? [];
 
+  const rangePreset = resolveDashRangePreset(metricsAll, dateFrom, dateTo);
+
   return (
     <div className="w-full max-w-none space-y-10 pb-8">
-      {/* Hub — whole console in one surface */}
-      <section
-        className={`relative overflow-hidden rounded-3xl border p-6 sm:p-8 ${
-          isDark
-            ? ""
-            : "border-indigo-200/60 bg-gradient-to-br from-indigo-50/95 via-white to-violet-50/90 shadow-[0_1px_0_rgba(255,255,255,0.8)_inset,0_20px_50px_-20px_rgba(79,70,229,0.2)]"
-        }`}
-        style={
-          isDark
-            ? {
-                borderColor: "var(--border)",
-                background:
-                  "linear-gradient(145deg, rgba(15,23,42,0.92) 0%, rgba(30,27,75,0.55) 42%, rgba(15,23,42,0.88) 100%)",
-                boxShadow: "0 0 0 1px rgba(255,255,255,0.04) inset, 0 24px 48px -24px rgba(0,0,0,0.5)",
-              }
-            : undefined
-        }
-      >
-        <div
-          className="pointer-events-none absolute -left-1/4 top-0 h-[min(420px,55vw)] w-[min(420px,55vw)] rounded-full opacity-40 blur-3xl"
-          style={{ background: "radial-gradient(circle, rgba(56,189,248,0.35) 0%, transparent 65%)" }}
-        />
-        <div
-          className="pointer-events-none absolute -right-1/4 bottom-0 h-[min(380px,50vw)] w-[min(380px,50vw)] rounded-full opacity-35 blur-3xl"
-          style={{ background: "radial-gradient(circle, rgba(139,92,246,0.4) 0%, transparent 65%)" }}
-        />
-        <div
-          className={`pointer-events-none absolute left-1/2 top-1/2 h-px w-[min(90%,48rem)] -translate-x-1/2 -translate-y-1/2 ${isDark ? "opacity-[0.07]" : "opacity-[0.12]"}`}
-          style={{
-            background: isDark
-              ? "linear-gradient(90deg, transparent, rgba(255,255,255,0.9), transparent)"
-              : "linear-gradient(90deg, transparent, rgba(79,70,229,0.35), transparent)",
-          }}
-        />
-
-        <div className="relative">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-            <div>
-              <p
-                className={`text-[10px] font-bold uppercase tracking-[0.35em] ${isDark ? "text-sky-300/80" : "text-indigo-600/90"}`}
-              >
-                Operator console
-              </p>
-              <h1
-                className={`font-display mt-2 text-3xl font-bold tracking-tight sm:text-4xl ${isDark ? "text-white" : "text-slate-900"}`}
-              >
-                Gateway control center
-              </h1>
-              <p
-                className={`mt-2 max-w-xl text-sm leading-relaxed ${isDark ? "text-white/55" : "text-slate-600"}`}
-              >
-                One hub for merchants, wallets, deposits, settlements, and rails. Jump to any area or scan
-                metrics and charts below — all scoped to{" "}
-                <span className={`font-semibold ${isDark ? "text-white/85" : "text-slate-900"}`}>
-                  {envLabel}
-                </span>{" "}
-                lists and transaction data.
-              </p>
-            </div>
-            <div
-              className={`flex shrink-0 items-center gap-2 rounded-2xl border px-4 py-3 backdrop-blur-sm ${
-                isDark ? "border-white/10 bg-black/25" : "border-indigo-200/70 bg-white/70"
-              }`}
-              title="Portal list & transaction environment"
-            >
-              <span
-                className={`text-[10px] font-bold uppercase tracking-wider ${isDark ? "text-white/40" : "text-slate-700"}`}
-              >
-                Data plane
-              </span>
-              <span
-                className={`rounded-lg px-2.5 py-1 text-xs font-bold uppercase tracking-wide ${
-                  environment === "sandbox"
-                    ? isDark
-                      ? "border border-sky-400/35 bg-sky-500/15 text-sky-100"
-                      : "border border-sky-300 bg-sky-100 text-sky-900"
-                    : isDark
-                      ? "border border-emerald-400/35 bg-emerald-500/15 text-emerald-100"
-                      : "border border-emerald-300 bg-emerald-100 text-emerald-900"
-                }`}
-              >
-                {envLabel}
-              </span>
-            </div>
-          </div>
-
-          <nav
-            className="relative mt-8 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-8"
-            aria-label="Admin sections"
+      {/* KPI grid */}
+      <section aria-labelledby="dash-kpi-heading" className="space-y-4">
+        <div>
+          <h2
+            id="dash-kpi-heading"
+            className="font-display text-lg font-bold"
+            style={{ color: "var(--text-1)" }}
           >
-            {HUB_LINKS.map((item) => (
-              <Link
-                key={item.to}
-                to={item.to}
-                className={`group flex flex-col items-center gap-2 rounded-2xl border px-2 py-4 text-center transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500/80 ${
-                  isDark
-                    ? "border-white/[0.08] bg-white/[0.04] hover:border-sky-400/35 hover:bg-white/[0.07] hover:shadow-[0_0_24px_-4px_rgba(56,189,248,0.35)]"
-                    : "border-slate-200/90 bg-white/80 hover:border-indigo-300 hover:bg-white hover:shadow-[0_8px_28px_-8px_rgba(79,70,229,0.25)]"
-                }`}
+            Live metrics
+          </h2>
+          <p className="mt-1 max-w-3xl text-sm leading-relaxed text-pretty" style={{ color: "var(--text-2)" }}>
+            Merchants are global; wallet and user counts follow your portal environment (
+            <span className="font-medium" style={{ color: "var(--text-1)" }}>
+              {envLabel}
+            </span>
+            ). Transaction totals respect the date range (local calendar days).
+          </p>
+        </div>
+
+        <div className="glass rounded-2xl p-5 sm:p-6">
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between lg:gap-8">
+            <div className="min-w-0 flex-1 space-y-3">
+              <div>
+                <p
+                  className="text-[10px] font-bold uppercase tracking-[0.2em]"
+                  style={{ color: "var(--text-3)" }}
+                >
+                  Date range
+                </p>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <span
+                    className={`inline-flex items-center rounded-lg border px-3 py-1.5 font-mono text-xs font-semibold tabular-nums ${
+                      isDark
+                        ? "border-white/12 bg-white/[0.06] text-white/90"
+                        : "border-slate-200/90 bg-white text-slate-800 shadow-sm"
+                    }`}
+                  >
+                    {data.metrics_range_label}
+                  </span>
+                  <span className="text-[11px]" style={{ color: "var(--text-3)" }}>
+                    {dashTz}
+                  </span>
+                </div>
+              </div>
+
+              <div
+                className={`rounded-xl border p-1 ${isDark ? "border-white/10 bg-black/25" : "border-slate-200/80 bg-slate-100/60"}`}
+                role="group"
+                aria-label="Quick range presets"
               >
+                <div className="grid grid-cols-2 gap-1 sm:inline-flex sm:flex-wrap sm:gap-1">
+                  <button
+                    type="button"
+                    disabled={metricsAll}
+                    onClick={() => {
+                      setMetricsAll(false);
+                      const t = ymdLocal();
+                      setDateFrom(t);
+                      setDateTo(t);
+                    }}
+                    className={dashRangePillClass(isDark, rangePreset === "today")}
+                  >
+                    Today
+                  </button>
+                  <button
+                    type="button"
+                    disabled={metricsAll}
+                    onClick={() => {
+                      setMetricsAll(false);
+                      const t = ymdLocal();
+                      setDateFrom(addCalendarDaysYmd(t, -6));
+                      setDateTo(t);
+                    }}
+                    className={dashRangePillClass(isDark, rangePreset === "7d")}
+                  >
+                    Last 7 days
+                  </button>
+                  <button
+                    type="button"
+                    disabled={metricsAll}
+                    onClick={() => {
+                      setMetricsAll(false);
+                      const t = ymdLocal();
+                      setDateFrom(addCalendarDaysYmd(t, -29));
+                      setDateTo(t);
+                    }}
+                    className={dashRangePillClass(isDark, rangePreset === "30d")}
+                  >
+                    Last 30 days
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMetricsAll(true)}
+                    className={dashRangePillClass(isDark, rangePreset === "all")}
+                  >
+                    All time
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="w-full shrink-0 space-y-3 lg:max-w-md">
+              <p
+                className="text-[10px] font-bold uppercase tracking-[0.2em]"
+                style={{ color: "var(--text-3)" }}
+              >
+                Custom range
+              </p>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                <div className="min-w-0 flex-1 space-y-1.5">
+                  <label htmlFor="admin-dash-metrics-from" className="text-xs font-medium" style={{ color: "var(--text-2)" }}>
+                    From
+                  </label>
+                  <input
+                    id="admin-dash-metrics-from"
+                    type="date"
+                    value={dateFrom}
+                    max={dateTo}
+                    disabled={metricsAll}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setMetricsAll(false);
+                      setDateFrom(v);
+                      if (v && dateTo && v > dateTo) setDateTo(v);
+                    }}
+                    className={dashDateInputClass(isDark)}
+                  />
+                </div>
                 <span
-                  className={`flex h-11 w-11 items-center justify-center rounded-xl border bg-gradient-to-br transition ${
-                    isDark
-                      ? "border-white/10 from-white/10 to-white/[0.02] text-sky-200/90 group-hover:border-sky-400/30 group-hover:text-white"
-                      : "border-indigo-100 from-indigo-50 to-violet-50/80 text-indigo-600 group-hover:border-indigo-300 group-hover:text-indigo-800"
-                  }`}
+                  className="hidden pb-2 text-center text-sm font-medium sm:block sm:w-8 sm:shrink-0"
+                  style={{ color: "var(--text-3)" }}
                   aria-hidden
                 >
-                  {item.icon}
+                  →
                 </span>
-                <span
-                  className={`text-[11px] font-bold uppercase tracking-wide ${isDark ? "text-white/80" : "text-slate-800"}`}
-                >
-                  {item.label}
-                </span>
-                <span
-                  className={`hidden text-[10px] sm:block ${isDark ? "text-white/40" : "text-slate-700"}`}
-                >
-                  {item.desc}
-                </span>
-              </Link>
-            ))}
-          </nav>
+                <div className="min-w-0 flex-1 space-y-1.5">
+                  <label htmlFor="admin-dash-metrics-to" className="text-xs font-medium" style={{ color: "var(--text-2)" }}>
+                    To
+                  </label>
+                  <input
+                    id="admin-dash-metrics-to"
+                    type="date"
+                    value={dateTo}
+                    min={dateFrom}
+                    disabled={metricsAll}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      setMetricsAll(false);
+                      setDateTo(v);
+                      if (v && dateFrom && v < dateFrom) setDateFrom(v);
+                    }}
+                    className={dashDateInputClass(isDark)}
+                  />
+                </div>
+              </div>
+              {rangePreset === "custom" && !metricsAll ? (
+                <p className="text-[11px] leading-snug" style={{ color: "var(--text-3)" }}>
+                  Custom selection — totals update automatically when dates change.
+                </p>
+              ) : null}
+            </div>
+          </div>
         </div>
-      </section>
 
-      {/* KPI grid */}
-      <section aria-labelledby="dash-kpi-heading">
-        <h2 id="dash-kpi-heading" className="font-display text-lg font-bold" style={{ color: "var(--text-1)" }}>
-          Live metrics
-        </h2>
-        <p className="mt-1 text-sm" style={{ color: "var(--text-2)" }}>
-          Counts update with your portal environment; merchants are global.
-        </p>
-        <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-          {CARDS_META.map((meta) => (
-            <StatCard
-              key={meta.key}
-              meta={meta}
-              value={values[meta.key]}
-              envLabel={envLabel}
-              isDark={isDark}
-            />
-          ))}
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 lg:gap-5 xl:grid-cols-6">
+          {CARDS_META.map((meta) => {
+            const rangeScoped =
+              meta.key === "transactions_total" ||
+              meta.key === "transactions_success" ||
+              meta.key === "transactions_failed_underpaid";
+            return (
+              <StatCard
+                key={meta.key}
+                meta={meta}
+                value={values[meta.key]}
+                envLabel={envLabel}
+                isDark={isDark}
+                sublabelOverride={
+                  rangeScoped ? data.metrics_range_label : undefined
+                }
+              />
+            );
+          })}
         </div>
       </section>
 
       {/* Highcharts */}
       <section aria-labelledby="dash-charts-heading">
-        <h2 id="dash-charts-heading" className="font-display text-lg font-bold" style={{ color: "var(--text-1)" }}>
+        <h2
+          id="dash-charts-heading"
+          className="font-display text-lg font-bold"
+          style={{ color: "var(--text-1)" }}
+        >
           Trends & breakdown
         </h2>
         <p className="mt-1 text-sm" style={{ color: "var(--text-2)" }}>
-          Stacked columns, donut, solid gauge, and horizontal bars — powered by Highcharts.
+          Stacked columns, donut, solid gauge, and horizontal bars — powered by
+          Highcharts.
         </p>
-        <div className="mt-5">
+        <div className="glass mt-5 rounded-2xl p-4 sm:p-5">
           <AdminDashboardCharts
             daily={daily}
             byStatus={byStatus}
@@ -583,3 +819,4 @@ export default function AdminDashboard() {
     </div>
   );
 }
+

@@ -5,10 +5,15 @@ import { getErc20Contracts } from "crypto-payment-gateway/src/config/env.js";
 import { walletAcceptsEvmErc20 } from "crypto-payment-gateway/src/config/payment-rails.js";
 import { re } from "crypto-payment-gateway/src/config/runtime-env.js";
 import {
-  acquireDepositScannerApiSlot,
   acquireOutboundRpcSlot,
   evmRpcBudgetKey,
 } from "crypto-payment-gateway/src/lib/network-rpc-rate-limit.js";
+import {
+  acquireDepositScannerExplorerApiLease,
+  hasActiveDepositScannerExplorerPool,
+  recordDepositScannerExplorerSuccessfulRequest,
+  sumMaxRequestsPerSecondForPool,
+} from "crypto-payment-gateway/src/lib/deposit-scanner-explorer-key-pool.js";
 import { pickSingleDepositWallet } from "crypto-payment-gateway/src/lib/deposit-scan-dedupe.js";
 import {
   advanceScanner,
@@ -107,9 +112,10 @@ async function fetchTransferLogsViaEtherscan(
   budgetKey,
   monitoredDepositAddresses,
 ) {
-  const apiKey = re.etherscanApiKey?.trim();
   const chainId = etherscanChainId(chain);
-  if (!apiKey || chainId == null) return [];
+  if (chainId == null) return [];
+
+  if (!(await hasActiveDepositScannerExplorerPool("erc20"))) return [];
 
   const base = re.etherscanApiBase.replace(/\/$/, "");
   const blockStr = blockNum.toString();
@@ -127,6 +133,9 @@ async function fetchTransferLogsViaEtherscan(
     let result_count = 0;
 
     try {
+      const poolLease = await acquireDepositScannerExplorerApiLease("erc20");
+      const apiKey = poolLease.apiKey;
+
       const u = new URL(base.includes("://") ? base : `https://${base}`);
 
       u.searchParams.set("chainid", String(chainId));
@@ -150,7 +159,6 @@ async function fetchTransferLogsViaEtherscan(
         message: `ERC20: START API CALL (${String(chain)} block=${blockStr} page=${page} monitored=${addrLog.monitored_address_count})`,
       });
 
-      await acquireDepositScannerApiSlot("erc20");
       await acquireOutboundRpcSlot(budgetKey);
       const res = await fetch(u.toString(), { method: "GET" });
       http_status = res.status;
@@ -165,6 +173,7 @@ async function fetchTransferLogsViaEtherscan(
         if (msg.includes("no records") || msg.includes("no transactions")) {
           page_ok = true;
           result_count = 0;
+          void recordDepositScannerExplorerSuccessfulRequest(poolLease.keyId);
           break;
         }
         const errPart =
@@ -174,6 +183,7 @@ async function fetchTransferLogsViaEtherscan(
       const batch = Array.isArray(j.result) ? j.result : [];
       result_count = batch.length;
       page_ok = true;
+      void recordDepositScannerExplorerSuccessfulRequest(poolLease.keyId);
       for (const row of batch) {
         if (row && typeof row === "object") {
           out.push(
@@ -223,10 +233,12 @@ async function fetchLatestBlockNumberViaEtherscan(
   budgetKey,
   monitoredDepositAddresses,
 ) {
-  const apiKey = re.etherscanApiKey?.trim();
   const chainId = etherscanChainId(chain);
-  if (!apiKey || chainId == null) {
+  if (chainId == null) {
     throw new Error("etherscan_blockNumber_missing_key_or_chain");
+  }
+  if (!(await hasActiveDepositScannerExplorerPool("erc20"))) {
+    throw new Error("etherscan_blockNumber_missing_explorer_pool");
   }
   const base = re.etherscanApiBase.replace(/\/$/, "");
   const t0 = Date.now();
@@ -235,6 +247,9 @@ async function fetchLatestBlockNumberViaEtherscan(
   let errMsg = /** @type {string | null} */ (null);
 
   try {
+    const poolLease = await acquireDepositScannerExplorerApiLease("erc20");
+    const apiKey = poolLease.apiKey;
+
     const u = new URL(base.includes("://") ? base : `https://${base}`);
     u.searchParams.set("chainid", String(chainId));
     u.searchParams.set("module", "proxy");
@@ -252,7 +267,6 @@ async function fetchLatestBlockNumberViaEtherscan(
       message: `ERC20: START API CALL (${String(chain)} eth_blockNumber monitored=${addrLog.monitored_address_count})`,
     });
 
-    await acquireDepositScannerApiSlot("erc20");
     await acquireOutboundRpcSlot(budgetKey);
 
     const res = await fetch(u.toString(), { method: "GET" });
@@ -274,10 +288,12 @@ async function fetchLatestBlockNumberViaEtherscan(
     const s = raw.trim();
     if (s.startsWith("0x") || s.startsWith("0X")) {
       ok = true;
+      void recordDepositScannerExplorerSuccessfulRequest(poolLease.keyId);
       return BigInt(s);
     }
     if (/^\d+$/.test(s)) {
       ok = true;
+      void recordDepositScannerExplorerSuccessfulRequest(poolLease.keyId);
       return BigInt(s);
     }
     throw new Error("etherscan_blockNumber_unparseable");
@@ -328,7 +344,8 @@ export async function scanEvmChain(chain, options = {}) {
   if (!isEvmChain(chain)) return;
 
   const budgetKey = evmRpcBudgetKey(chain);
-  if (!re.etherscanApiKey?.trim()) {
+  const poolErc20 = await hasActiveDepositScannerExplorerPool("erc20");
+  if (!poolErc20) {
     return;
   }
 
@@ -371,8 +388,16 @@ export async function scanEvmChain(chain, options = {}) {
     blockNums.push(b);
   }
 
-  const cap = effectiveDepositScannerMaxPerSecond("erc20");
-  const parallel = Math.min(cap, blockNums.length);
+  const sumPoolSec = poolErc20
+    ? await sumMaxRequestsPerSecondForPool("erc20")
+    : 0;
+  const legacyCap = effectiveDepositScannerMaxPerSecond("erc20");
+  const parallelBudget =
+    poolErc20 && sumPoolSec > 0 ? sumPoolSec : legacyCap;
+  const parallel = Math.min(
+    Math.max(1, parallelBudget),
+    blockNums.length,
+  );
 
   const blockResults = await runWithConcurrencyMap(
     blockNums,

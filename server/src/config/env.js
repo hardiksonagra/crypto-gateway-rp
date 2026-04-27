@@ -215,16 +215,15 @@ export const env = {
 
   /**
    * Etherscan HTTP API v2 base (same pattern as `TRONSCAN_API_BASE`). **USDT·ERC20 deposit scan** and admin
-   * ERC20 balance refresh use this + `ETHERSCAN_API_KEY` only (no `RPC_ETH`). Docs: https://docs.etherscan.io/
+   * ERC20 balance refresh use this + keys from Admin → Deposit explorer keys (pool), with optional `ETHERSCAN_API_KEY` in `.env` as fallback for balance only. Docs: https://docs.etherscan.io/
    */
   etherscanApiBase: optional(
     "ETHERSCAN_API_BASE",
     "https://api.etherscan.io/v2/api",
   ),
   /**
-   * Etherscan API key (same pattern as `TRONSCAN_API_KEY`): optional in .env if you store it in Admin → System settings
-   * (`app_settings.ETHERSCAN_API_KEY`); non-empty DB value overrides this env var after `loadAppSettingsFromDatabase`.
-   * Create a key at https://etherscan.io/apidashboard — use a v2 key for `chainid` 1 (Ethereum mainnet).
+   * Optional `.env` fallback for admin ETH USDT balance (Etherscan `tokenbalance`) when the ERC20 explorer pool has no active key.
+   * **Deposit scan** uses Admin → Deposit explorer keys only. Create a key at https://etherscan.io/apidashboard.
    */
   etherscanApiKey: optional("ETHERSCAN_API_KEY", ""),
 
@@ -236,8 +235,8 @@ export const env = {
   ),
   /**
    * TronScan `TRON-PRO-API-KEY` (deposit worker). Optional in .env if you store it in Admin → System settings
-   * (`app_settings.TRONSCAN_API_KEY`); non-empty DB value overrides this env var after `loadAppSettingsFromDatabase`.
-   * For per-address TronScan logs in PM2 (`tronscan_*` events), keep `LOG_LEVEL` at `info` (default) or lower.
+   * Optional `.env` fallback for admin TRON balance (TronScan `/api/account`) when the TRC20 explorer pool has no active key.
+   * **Deposit scan** uses Admin → Deposit explorer keys only. For per-address TronScan logs in PM2 (`tronscan_*` events), keep `LOG_LEVEL` at `info` (default) or lower.
    */
   tronscanApiKey: optional("TRONSCAN_API_KEY", ""),
   tronSolidityNode: optional("TRON_SOLIDITY_NODE", "https://api.trongrid.io"),

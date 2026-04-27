@@ -1,4 +1,5 @@
 import { utils as tronUtils } from "tronweb";
+import { env } from "../config/env.js";
 import { re } from "../config/runtime-env.js";
 import { logger } from "./logger.js";
 import { acquireOutboundRpcSlot } from "./network-rpc-rate-limit.js";
@@ -6,6 +7,10 @@ import {
   getTronscanFetchHeaders,
   tronscanApiHostnameForLog,
 } from "./tron-node-client.js";
+import {
+  peekFirstDepositScannerExplorerPoolCredential,
+  recordDepositScannerExplorerSuccessfulRequest,
+} from "./deposit-scanner-explorer-key-pool.js";
 
 /**
  * @param {string} addr
@@ -44,9 +49,11 @@ function balanceFieldToBigInt(raw) {
  * @returns {Promise<Record<string, unknown>>}
  */
 async function fetchTronscanAccountWithTokens(address) {
-  if (!re.tronscanApiKey?.trim()) {
+  const cred = await peekFirstDepositScannerExplorerPoolCredential("trc20");
+  const apiKey = cred?.apiKey?.trim() || (env.tronscanApiKey?.trim() ?? "");
+  if (!apiKey) {
     const err = new Error(
-      "TRONSCAN_API_KEY_REQUIRED — set TRONSCAN_API_KEY (.env or Admin → System settings)",
+      "TRONSCAN_EXPLORER_POOL_OR_ENV_KEY_REQUIRED — add an active TRC20 key under Admin → Deposit explorer keys, or set TRONSCAN_API_KEY in .env for balance fallback.",
     );
     /** @type {Error & { code?: string }} */
     const e = err;
@@ -56,7 +63,7 @@ async function fetchTronscanAccountWithTokens(address) {
   const base = re.tronscanApiBase.replace(/\/$/, "");
   const url = `${base}/api/account?address=${encodeURIComponent(address.trim())}&includeToken=true`;
   await acquireOutboundRpcSlot("TRON");
-  const res = await fetch(url, { headers: getTronscanFetchHeaders() });
+  const res = await fetch(url, { headers: getTronscanFetchHeaders(apiKey) });
   const text = await res.text();
   let data = null;
   try {
@@ -81,9 +88,14 @@ async function fetchTronscanAccountWithTokens(address) {
     });
     throw new Error(`tronscan_account_http_${res.status}`);
   }
-  return data && typeof data === "object"
-    ? /** @type {Record<string, unknown>} */ (data)
-    : {};
+  const out =
+    data && typeof data === "object"
+      ? /** @type {Record<string, unknown>} */ (data)
+      : {};
+  if (cred) {
+    void recordDepositScannerExplorerSuccessfulRequest(cred.keyId);
+  }
+  return out;
 }
 
 /**

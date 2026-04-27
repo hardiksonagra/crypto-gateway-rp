@@ -1,5 +1,10 @@
+import { env } from "../config/env.js";
 import { re } from "../config/runtime-env.js";
 import { acquireOutboundRpcSlot } from "./network-rpc-rate-limit.js";
+import {
+  peekFirstDepositScannerExplorerPoolCredential,
+  recordDepositScannerExplorerSuccessfulRequest,
+} from "./deposit-scanner-explorer-key-pool.js";
 
 /** Hostname for Etherscan API logs (no path / API key). Mirrors `tronscanApiHostnameForLog`. */
 export function etherscanApiHostnameForLog() {
@@ -23,9 +28,13 @@ export function etherscanApiHostnameForLog() {
  */
 export async function fetchErc20BalanceAtomicViaEtherscan(p) {
   const { chainId, tokenContract, walletAddress, budgetKey } = p;
-  const apiKey = re.etherscanApiKey?.trim();
+  const cred = await peekFirstDepositScannerExplorerPoolCredential("erc20");
+  const apiKey =
+    cred?.apiKey?.trim() || (env.etherscanApiKey?.trim() ?? "");
   if (!apiKey) {
-    throw new Error("ETHERSCAN_API_KEY_REQUIRED");
+    throw new Error(
+      "ETHERSCAN_EXPLORER_POOL_OR_ENV_KEY_REQUIRED — add an active ERC20 key under Admin → Deposit explorer keys, or set ETHERSCAN_API_KEY in .env for balance fallback.",
+    );
   }
 
   const base = re.etherscanApiBase.replace(/\/$/, "");
@@ -53,6 +62,9 @@ export async function fetchErc20BalanceAtomicViaEtherscan(p) {
   const raw = String(j.result).trim();
   if (!/^\d+$/.test(raw)) {
     throw new Error("etherscan_tokenbalance_bad_amount");
+  }
+  if (cred) {
+    void recordDepositScannerExplorerSuccessfulRequest(cred.keyId);
   }
   return BigInt(raw);
 }

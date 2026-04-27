@@ -14,11 +14,17 @@ export function getTronProgApiKeyHeaders() {
 
 /**
  * TronScan API (docs.tronscan.org): same header name as TronGrid — `TRON-PRO-API-KEY`.
+ *
+ * @param {string} [overrideApiKey] — deposit worker pool lease; falls back to runtime env.
  */
-export function getTronscanFetchHeaders() {
+export function getTronscanFetchHeaders(overrideApiKey) {
   const h = { "Content-Type": "application/json" };
-  if (re.tronscanApiKey?.trim()) {
-    h["TRON-PRO-API-KEY"] = re.tronscanApiKey.trim();
+  const k =
+    typeof overrideApiKey === "string" && overrideApiKey.trim()
+      ? overrideApiKey.trim()
+      : (re.tronscanApiKey?.trim() ?? "");
+  if (k) {
+    h["TRON-PRO-API-KEY"] = k;
   }
   return h;
 }

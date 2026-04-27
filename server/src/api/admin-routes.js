@@ -2,6 +2,7 @@ import { Router } from "express";
 import bcrypt from "bcrypt";
 import {
   Chain,
+  DepositScannerExplorerRail,
   MerchantGatewayEnv,
   Prisma,
   TxStatus,
@@ -32,7 +33,10 @@ import { requireAuth } from "../middleware/require-auth.js";
 import { logPanelMutations } from "../middleware/log-panel-mutations.js";
 import { parsePageQuery } from "../lib/pagination.js";
 import { generateApiKey, hashApiKey } from "../lib/api-key.js";
-import { encryptMerchantApiKey } from "../lib/merchant-api-key-cipher.js";
+import {
+  decryptMerchantApiKey,
+  encryptMerchantApiKey,
+} from "../lib/merchant-api-key-cipher.js";
 import { logger } from "../lib/logger.js";
 import { re } from "../config/runtime-env.js";
 import {
@@ -65,7 +69,10 @@ import {
 import { pruneMerchantsAfterSupportedChainsChange } from "../lib/prune-merchants-after-supported-chains-change.js";
 import { redeliverPaymentSuccessWebhookAdmin } from "../services/callback-service.js";
 import { adminRescanTronDepositForTransaction } from "../services/admin-tron-deposit-rescan.js";
-import { refreshAllWalletCachedBalances } from "../services/wallet/wallet-balance-probe.js";
+import {
+  getAdminBulkWalletBalanceRefreshStatus,
+  startAdminBulkWalletBalanceRefresh,
+} from "../services/wallet/wallet-balance-probe.js";
 import { listWalletsUniqueByOnChainIdentity } from "../lib/admin-wallets-unique-address-list.js";
 import {
   aggregateWalletTxStats,
@@ -75,6 +82,7 @@ import {
   lastNDatesInZone,
   sanitizeIanaTimeZone,
 } from "../lib/ianaTimeZone.js";
+import { countDistinctWalletDepositIdentitiesInEnv } from "../lib/admin-dashboard-env-identity-counts.js";
 import {
   batchUserAssignmentStats,
   batchUserPayerTxStats,
@@ -97,6 +105,15 @@ import {
   sweepUnifiedOne,
 } from "../services/sweep/unified-sweep.js";
 import { adminDirectionalUsdtSend } from "../services/sweep/admin-directional-usdt-send.js";
+import {
+  invalidateDepositScannerExplorerKeyCache,
+  effectiveRequestsTodayForUtc,
+  utcTodayMidnight,
+} from "../lib/deposit-scanner-explorer-key-pool.js";
+import {
+  DEPOSIT_SCANNER_EXPLORER_RAIL_TABS,
+  parseDepositScannerExplorerRailParam,
+} from "../lib/deposit-scanner-explorer-rails-meta.js";
 import crypto from "crypto";
 import fs from "fs";
 import {
@@ -170,17 +187,150 @@ async function adminListViewerEnvironment(req) {
     : MerchantGatewayEnv.live;
 }
 
+const ADMIN_DASH_METRICS_PRESETS = new Set(["today", "7d", "30d", "all"]);
+
+/**
+ * Calendar-day filter in `tzIana` for `transactions.created_at` (alias `t`).
+ *
+ * @param {"today" | "7d" | "30d" | "all"} preset
+ * @param {string} tzIana
+ */
+function adminDashboardTxMetricsLocalDateFilterSql(preset, tzIana) {
+  const z = `'${String(tzIana).replace(/'/g, "''")}'`;
+  const zlit = Prisma.raw(z);
+  if (preset === "today") {
+    return Prisma.sql`AND ((t.created_at AT TIME ZONE ${zlit}))::date = ((CURRENT_TIMESTAMP AT TIME ZONE ${zlit}))::date`;
+  }
+  if (preset === "7d") {
+    return Prisma.sql`AND ((t.created_at AT TIME ZONE ${zlit}))::date >= ((CURRENT_TIMESTAMP AT TIME ZONE ${zlit}))::date - 6`;
+  }
+  if (preset === "30d") {
+    return Prisma.sql`AND ((t.created_at AT TIME ZONE ${zlit}))::date >= ((CURRENT_TIMESTAMP AT TIME ZONE ${zlit}))::date - 29`;
+  }
+  return Prisma.sql``;
+}
+
+/**
+ * @param {"today" | "7d" | "30d" | "all"} preset
+ */
+function adminDashboardMetricsRangeLabel(preset) {
+  if (preset === "today") return "Today";
+  if (preset === "7d") return "Last 7 days";
+  if (preset === "30d") return "Last 30 days";
+  return "All time";
+}
+
+/** @param {unknown} s */
+function parseMetricsYmd(s) {
+  if (typeof s !== "string") return null;
+  const t = s.trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(t)) return null;
+  return t;
+}
+
+/**
+ * Inclusive day count between two YYYY-MM-DD strings (valid only for same-format dates).
+ *
+ * @param {string} a
+ * @param {string} b
+ */
+function ymdInclusiveDaySpan(a, b) {
+  const [y1, m1, d1] = a.split("-").map(Number);
+  const [y2, m2, d2] = b.split("-").map(Number);
+  const u1 = Date.UTC(y1, m1 - 1, d1);
+  const u2 = Date.UTC(y2, m2 - 1, d2);
+  return Math.floor((u2 - u1) / 86400000) + 1;
+}
+
+/**
+ * @param {string} fromYmd
+ * @param {string} toYmd
+ * @param {string} tzIana
+ */
+function adminDashboardTxMetricsBetweenYmdSql(fromYmd, toYmd, tzIana) {
+  const zlit = Prisma.raw(`'${String(tzIana).replace(/'/g, "''")}'`);
+  const flit = Prisma.raw(`'${fromYmd}'`);
+  const tlit = Prisma.raw(`'${toYmd}'`);
+  return Prisma.sql`AND ((t.created_at AT TIME ZONE ${zlit}))::date >= ${flit}::date AND ((t.created_at AT TIME ZONE ${zlit}))::date <= ${tlit}::date`;
+}
+
+/** Max inclusive span for custom metrics range (days). */
+const ADMIN_DASH_METRICS_MAX_RANGE_DAYS = 731;
+
 router.get("/api/v1/admin/dashboard", async (req, res) => {
   const listEnv = await adminListViewerEnvironment(req);
   const txEnvWhere = {
     wallet: { is: { environment: listEnv } },
   };
 
-  const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
   const viewerTz = sanitizeIanaTimeZone(req.query.tz) ?? "UTC";
   const tzSql = `'${viewerTz.replace(/'/g, "''")}'`;
   const dayKeys = lastNDatesInZone(14, viewerTz);
   const wideFrom = new Date(Date.now() - 20 * 24 * 60 * 60 * 1000);
+
+  const presetRaw =
+    typeof req.query.metrics_preset === "string"
+      ? req.query.metrics_preset.trim().toLowerCase()
+      : "";
+  const metricsPreset = ADMIN_DASH_METRICS_PRESETS.has(presetRaw)
+    ? presetRaw
+    : "today";
+
+  const metricsFromParsed = parseMetricsYmd(req.query.metrics_from);
+  const metricsToParsed = parseMetricsYmd(req.query.metrics_to);
+  const useMetricsBetween =
+    metricsFromParsed != null &&
+    metricsToParsed != null &&
+    metricsFromParsed <= metricsToParsed &&
+    ymdInclusiveDaySpan(metricsFromParsed, metricsToParsed) <=
+      ADMIN_DASH_METRICS_MAX_RANGE_DAYS;
+
+  const txEnvBase = { ...txEnvWhere, ...ACTIVE };
+
+  const txMetricsPromise = (async () => {
+    if (metricsPreset === "all") {
+      const [total, ok, issues] = await Promise.all([
+        prisma.transaction.count({ where: txEnvBase }),
+        prisma.transaction.count({
+          where: { ...txEnvBase, status: TxStatus.success },
+        }),
+        prisma.transaction.count({
+          where: {
+            ...txEnvBase,
+            status: { in: [TxStatus.failed, TxStatus.underpaid] },
+          },
+        }),
+      ]);
+      return { total, ok, issues };
+    }
+    const df = useMetricsBetween
+      ? adminDashboardTxMetricsBetweenYmdSql(
+          metricsFromParsed,
+          metricsToParsed,
+          viewerTz,
+        )
+      : adminDashboardTxMetricsLocalDateFilterSql(metricsPreset, viewerTz);
+    const rows = await prisma.$queryRaw(
+      Prisma.sql`
+        SELECT
+          COUNT(*)::int AS c_total,
+          COUNT(*) FILTER (WHERE t.status = 'success')::int AS c_success,
+          COUNT(*) FILTER (WHERE t.status IN ('failed','underpaid'))::int AS c_issues
+        FROM transactions t
+        INNER JOIN wallets w ON w.id = t.wallet_id
+        WHERE w.environment = ${listEnv}::"MerchantGatewayEnv"
+          AND w.deleted_at IS NULL
+          AND t.deleted_at IS NULL
+          ${df}
+      `,
+    );
+    const r = rows[0];
+    return {
+      total: Number(r?.c_total ?? 0),
+      ok: Number(r?.c_success ?? 0),
+      issues: Number(r?.c_issues ?? 0),
+    };
+  })();
 
   const byStatusPromise = prismaClientKnowsTxStatusCreated()
     ? prisma.transaction.groupBy({
@@ -205,33 +355,40 @@ router.get("/api/v1/admin/dashboard", async (req, res) => {
         })),
       );
 
+  const merchantHasWalletInEnv = {
+    pooledWallets: {
+      some: { environment: listEnv, deletedAt: null },
+    },
+  };
+
   const [
     merchants,
     users,
-    txs,
-    successTxs,
-    txs24h,
     walletsInEnv,
     byStatus,
     byChain,
     dailyStatusRows,
+    txMetrics,
   ] = await Promise.all([
     prisma.merchant.count({
-      where: { deletedAt: null },
-    }),
-    prisma.user.count({ where: { environment: listEnv, ...ACTIVE } }),
-    prisma.transaction.count({ where: { ...txEnvWhere, ...ACTIVE } }),
-    prisma.transaction.count({
-      where: { ...txEnvWhere, ...ACTIVE, status: TxStatus.success },
-    }),
-    prisma.transaction.count({
       where: {
-        ...txEnvWhere,
-        ...ACTIVE,
-        createdAt: { gte: since },
+        deletedAt: null,
+        isActive: true,
+        ...merchantHasWalletInEnv,
       },
     }),
-    prisma.wallet.count({ where: { environment: listEnv, ...ACTIVE } }),
+    prisma.user.count({
+      where: {
+        environment: listEnv,
+        ...ACTIVE,
+        merchant: {
+          deletedAt: null,
+          isActive: true,
+          ...merchantHasWalletInEnv,
+        },
+      },
+    }),
+    countDistinctWalletDepositIdentitiesInEnv(prisma, listEnv),
     byStatusPromise,
     prisma.transaction.groupBy({
       by: ["chain"],
@@ -253,7 +410,24 @@ router.get("/api/v1/admin/dashboard", async (req, res) => {
         ORDER BY 1, 2
       `,
     ),
+    txMetricsPromise,
   ]);
+
+  const txs = txMetrics.total;
+  const successTxs = txMetrics.ok;
+  const txsIssues = txMetrics.issues;
+
+  let metricsRangeLabel;
+  if (metricsPreset === "all") {
+    metricsRangeLabel = "All time";
+  } else if (useMetricsBetween) {
+    metricsRangeLabel =
+      metricsFromParsed === metricsToParsed
+        ? metricsFromParsed
+        : `${metricsFromParsed} → ${metricsToParsed}`;
+  } else {
+    metricsRangeLabel = adminDashboardMetricsRangeLabel(metricsPreset);
+  }
 
   /** @type {Map<string, { pending: number, success: number, failed: number, underpaid: number }>} */
   const dailyMap = new Map();
@@ -295,11 +469,15 @@ router.get("/api/v1/admin/dashboard", async (req, res) => {
 
   res.json({
     viewer_environment: listEnv,
+    metrics_preset: useMetricsBetween ? "custom" : metricsPreset,
+    metrics_from: useMetricsBetween ? metricsFromParsed : null,
+    metrics_to: useMetricsBetween ? metricsToParsed : null,
+    metrics_range_label: metricsRangeLabel,
     merchants,
     end_users: users,
     transactions_total: txs,
     transactions_success: successTxs,
-    transactions_last_24h: txs24h,
+    transactions_failed_underpaid: txsIssues,
     wallets_in_env: walletsInEnv,
     transactions_by_status: byStatus.map((r) => ({
       status: r.status,
@@ -1814,22 +1992,33 @@ router.get("/api/v1/admin/wallets/:walletId/deposit-activity", async (req, res) 
   });
 });
 
-router.post("/api/v1/admin/wallets/refresh-balances", async (_req, res) => {
-  try {
-    const result = await refreshAllWalletCachedBalances();
-    logger.info("admin_wallet_balances_refreshed", {
-      total: result.total,
-      ok: result.ok,
-      failed: result.failed,
+router.get("/api/v1/admin/wallets/refresh-balances/status", (_req, res) => {
+  const s = getAdminBulkWalletBalanceRefreshStatus();
+  res.json({
+    running: s.running,
+    total: s.lastResult?.total,
+    ok: s.lastResult?.ok,
+    failed: s.lastResult?.failed,
+    error: s.lastError,
+    scan_total: s.scanTotal,
+    scan_processed: s.scanProcessed,
+  });
+});
+
+router.post("/api/v1/admin/wallets/refresh-balances", (_req, res) => {
+  const started = startAdminBulkWalletBalanceRefresh();
+  if (!started.started) {
+    res.status(409).json({
+      error: "refresh_in_progress",
+      message: "A balance refresh is already running. Poll GET …/refresh-balances/status until it finishes.",
     });
-    res.json(result);
-  } catch (e) {
-    logger.error("admin_wallet_balances_refresh_failed", { err: String(e) });
-    res.status(500).json({
-      error: "refresh_failed",
-      message: String(e),
-    });
+    return;
   }
+  res.status(202).json({
+    accepted: true,
+    message:
+      "Balance refresh started in the background. Poll GET /api/v1/admin/wallets/refresh-balances/status until running is false.",
+  });
 });
 
 router.post(
@@ -2517,6 +2706,240 @@ router.put("/api/v1/admin/supported-chains", async (req, res) => {
     res.json({ ok: true, chains, merchants_pruned: prune });
   } catch (e) {
     res.status(400).json({ error: "invalid_body", message: String(e) });
+  }
+});
+
+/**
+ * @param {string} cipher
+ * @returns {string}
+ */
+function adminDecryptExplorerPoolApiKey(cipher) {
+  try {
+    return decryptMerchantApiKey(cipher).trim();
+  } catch {
+    return "";
+  }
+}
+
+router.get("/api/v1/admin/deposit-scanner-explorer-key-rails", async (_req, res) => {
+  const [totals, actives] = await Promise.all([
+    prisma.depositScannerExplorerApiKey.groupBy({
+      by: ["rail"],
+      _count: { _all: true },
+    }),
+    prisma.depositScannerExplorerApiKey.groupBy({
+      by: ["rail"],
+      where: { isActive: true },
+      _count: { _all: true },
+    }),
+  ]);
+  /** @type {Record<string, number>} */
+  const totalMap = {};
+  for (const t of totals) {
+    totalMap[String(t.rail)] = t._count._all;
+  }
+  /** @type {Record<string, number>} */
+  const activeMap = {};
+  for (const t of actives) {
+    activeMap[String(t.rail)] = t._count._all;
+  }
+  res.json({
+    rails: DEPOSIT_SCANNER_EXPLORER_RAIL_TABS.map((tab) => ({
+      id: tab.id,
+      label: tab.label,
+      keys_total: totalMap[tab.id] ?? 0,
+      keys_active: activeMap[tab.id] ?? 0,
+    })),
+  });
+});
+
+router.get("/api/v1/admin/deposit-scanner-explorer-keys", async (req, res) => {
+  const railRaw = parseDepositScannerExplorerRailParam(req.query.rail);
+  if (!railRaw) {
+    return res.status(400).json({
+      error: "invalid_rail",
+      message: `rail must be one of: ${DEPOSIT_SCANNER_EXPLORER_RAIL_TABS.map((t) => t.id).join(", ")}`,
+    });
+  }
+  const todayUtc = utcTodayMidnight();
+  const rows = await prisma.depositScannerExplorerApiKey.findMany({
+    where: {
+      rail: DepositScannerExplorerRail[railRaw],
+    },
+    orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
+  });
+  res.json({
+    items: rows.map((r) => ({
+      id: r.id,
+      rail: r.rail,
+      name: r.name,
+      api_key: adminDecryptExplorerPoolApiKey(r.apiKeyCipher),
+      api_key_hint: r.apiKeyHint ?? null,
+      max_requests_per_day: r.maxRequestsPerDay,
+      max_requests_per_second: r.maxRequestsPerSecond,
+      requests_today: effectiveRequestsTodayForUtc(r, todayUtc),
+      usage_day_utc: r.usageDayUtc.toISOString().slice(0, 10),
+      sort_order: r.sortOrder,
+      is_active: r.isActive,
+      created_at: r.createdAt.toISOString(),
+      updated_at: r.updatedAt.toISOString(),
+    })),
+  });
+});
+
+router.post("/api/v1/admin/deposit-scanner-explorer-keys", async (req, res) => {
+  try {
+    const body = req.body ?? {};
+    const rail = parseDepositScannerExplorerRailParam(body.rail);
+    if (!rail) {
+      return res.status(400).json({ error: "invalid_rail" });
+    }
+    const name = String(body.name ?? "").trim();
+    if (!name || name.length > 160) {
+      return res.status(400).json({ error: "invalid_name" });
+    }
+    const apiKey = String(body.api_key ?? "").trim();
+    if (!apiKey) {
+      return res.status(400).json({ error: "api_key_required" });
+    }
+    const maxDay = parseInt(String(body.max_requests_per_day ?? ""), 10);
+    const maxSec = parseInt(String(body.max_requests_per_second ?? ""), 10);
+    if (!Number.isFinite(maxDay) || maxDay < 1 || maxDay > 10_000_000) {
+      return res.status(400).json({ error: "invalid_max_requests_per_day" });
+    }
+    if (!Number.isFinite(maxSec) || maxSec < 1 || maxSec > 500) {
+      return res.status(400).json({ error: "invalid_max_requests_per_second" });
+    }
+    const sortOrder = parseInt(String(body.sort_order ?? "0"), 10);
+    const so = Number.isFinite(sortOrder) ? sortOrder : 0;
+    const cipher = encryptMerchantApiKey(apiKey);
+    const hint =
+      apiKey.length > 4 ? `…${apiKey.slice(-4)}` : apiKey.length ? "…" : null;
+    const row = await prisma.depositScannerExplorerApiKey.create({
+      data: {
+        rail: DepositScannerExplorerRail[rail],
+        name,
+        apiKeyCipher: cipher,
+        apiKeyHint: hint,
+        maxRequestsPerDay: maxDay,
+        maxRequestsPerSecond: maxSec,
+        requestsToday: 0,
+        usageDayUtc: new Date(Date.UTC(1970, 0, 1)),
+        sortOrder: so,
+        isActive: true,
+      },
+    });
+    invalidateDepositScannerExplorerKeyCache();
+    res.status(201).json({
+      id: row.id,
+      rail: row.rail,
+      name: row.name,
+      api_key: adminDecryptExplorerPoolApiKey(row.apiKeyCipher),
+      api_key_hint: row.apiKeyHint,
+      max_requests_per_day: row.maxRequestsPerDay,
+      max_requests_per_second: row.maxRequestsPerSecond,
+      requests_today: 0,
+      sort_order: row.sortOrder,
+      is_active: row.isActive,
+    });
+  } catch (e) {
+    logger.error("admin deposit-scanner-explorer-keys create failed", {
+      err: String(e),
+    });
+    res.status(400).json({ error: "create_failed", message: String(e) });
+  }
+});
+
+router.patch("/api/v1/admin/deposit-scanner-explorer-keys/:id", async (req, res) => {
+  const id = parseInt(String(req.params.id ?? ""), 10);
+  if (!Number.isInteger(id) || id < 1) {
+    return res.status(400).json({ error: "invalid_id" });
+  }
+  const body = req.body ?? {};
+  /** @type {import("@prisma/client").Prisma.DepositScannerExplorerApiKeyUpdateInput} */
+  const data = {};
+  if (typeof body.name === "string") {
+    const name = body.name.trim();
+    if (!name || name.length > 160) {
+      return res.status(400).json({ error: "invalid_name" });
+    }
+    data.name = name;
+  }
+  if (body.max_requests_per_day != null) {
+    const maxDay = parseInt(String(body.max_requests_per_day), 10);
+    if (!Number.isFinite(maxDay) || maxDay < 1 || maxDay > 10_000_000) {
+      return res.status(400).json({ error: "invalid_max_requests_per_day" });
+    }
+    data.maxRequestsPerDay = maxDay;
+  }
+  if (body.max_requests_per_second != null) {
+    const maxSec = parseInt(String(body.max_requests_per_second), 10);
+    if (!Number.isFinite(maxSec) || maxSec < 1 || maxSec > 500) {
+      return res.status(400).json({ error: "invalid_max_requests_per_second" });
+    }
+    data.maxRequestsPerSecond = maxSec;
+  }
+  if (body.sort_order != null) {
+    const sortOrder = parseInt(String(body.sort_order), 10);
+    if (!Number.isFinite(sortOrder)) {
+      return res.status(400).json({ error: "invalid_sort_order" });
+    }
+    data.sortOrder = sortOrder;
+  }
+  if (body.is_active != null) {
+    const v = String(body.is_active).toLowerCase();
+    if (!["true", "false", "1", "0"].includes(v)) {
+      return res.status(400).json({ error: "invalid_is_active" });
+    }
+    data.isActive = v === "true" || v === "1";
+  }
+  if (typeof body.api_key === "string" && body.api_key.trim()) {
+    const apiKey = body.api_key.trim();
+    data.apiKeyCipher = encryptMerchantApiKey(apiKey);
+    data.apiKeyHint =
+      apiKey.length > 4 ? `…${apiKey.slice(-4)}` : apiKey.length ? "…" : null;
+  }
+  if (Object.keys(data).length === 0) {
+    return res.status(400).json({ error: "empty_patch" });
+  }
+  try {
+    const row = await prisma.depositScannerExplorerApiKey.update({
+      where: { id },
+      data,
+    });
+    invalidateDepositScannerExplorerKeyCache();
+    const todayUtc = utcTodayMidnight();
+    res.json({
+      id: row.id,
+      rail: row.rail,
+      name: row.name,
+      api_key: adminDecryptExplorerPoolApiKey(row.apiKeyCipher),
+      api_key_hint: row.apiKeyHint,
+      max_requests_per_day: row.maxRequestsPerDay,
+      max_requests_per_second: row.maxRequestsPerSecond,
+      requests_today: effectiveRequestsTodayForUtc(row, todayUtc),
+      sort_order: row.sortOrder,
+      is_active: row.isActive,
+    });
+  } catch {
+    res.status(404).json({ error: "not_found" });
+  }
+});
+
+router.delete("/api/v1/admin/deposit-scanner-explorer-keys/:id", async (req, res) => {
+  const id = parseInt(String(req.params.id ?? ""), 10);
+  if (!Number.isInteger(id) || id < 1) {
+    return res.status(400).json({ error: "invalid_id" });
+  }
+  try {
+    await prisma.depositScannerExplorerApiKey.update({
+      where: { id },
+      data: { isActive: false },
+    });
+    invalidateDepositScannerExplorerKeyCache();
+    res.json({ ok: true });
+  } catch {
+    res.status(404).json({ error: "not_found" });
   }
 });
 

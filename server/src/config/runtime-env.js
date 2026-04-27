@@ -202,11 +202,9 @@ export const re = {
     ).replace(/\/$/, "");
   },
 
+  /** Explorer API keys live in `deposit_scanner_explorer_api_keys` (Admin); `.env` optional fallback for non-scanner ops. */
   get etherscanApiKey() {
-    return getResolvedString(
-      "ETHERSCAN_API_KEY",
-      () => env.etherscanApiKey ?? "",
-    );
+    return env.etherscanApiKey ?? "";
   },
 
   get tronFullNode() {
@@ -220,11 +218,9 @@ export const re = {
     ).replace(/\/$/, "");
   },
 
+  /** See {@link re.etherscanApiKey} — deposit scan uses DB pool only. */
   get tronscanApiKey() {
-    return getResolvedString(
-      "TRONSCAN_API_KEY",
-      () => env.tronscanApiKey ?? "",
-    );
+    return env.tronscanApiKey ?? "";
   },
 
   get tronSolidityNode() {

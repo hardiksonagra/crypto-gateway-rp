@@ -3,8 +3,8 @@ import { prisma } from "../lib/prisma.js";
 import { ACTIVE } from "../lib/active-row.js";
 import { reactivateWalletDepositScan } from "../lib/wallet-scan.js";
 import { transactionWhereFromRouteParam } from "../lib/entity-internal-id.js";
-import { re } from "../config/runtime-env.js";
 import { logger } from "../lib/logger.js";
+import { hasActiveDepositScannerExplorerPool } from "../lib/deposit-scanner-explorer-key-pool.js";
 import { scanTronChain } from "../../../cron/src/services/tracker/tron-tracker.js";
 
 /**
@@ -50,11 +50,13 @@ export async function adminRescanTronDepositForTransaction(transactionIdParam) {
     };
   }
 
-  if (!re.tronscanApiKey?.trim()) {
+  const tronPool = await hasActiveDepositScannerExplorerPool("trc20");
+  if (!tronPool) {
     return {
       ok: false,
       code: "tronscan_not_configured",
-      message: "TronScan API key is not configured (TRONSCAN_API_KEY / runtime).",
+      message:
+        "TronScan is not configured: add at least one active key under Admin → Deposit explorer keys (TRC20).",
     };
   }
 

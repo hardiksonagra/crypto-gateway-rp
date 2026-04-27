@@ -229,13 +229,6 @@ export const APP_SETTING_DEFINITIONS = [
     type: "string",
   },
   {
-    key: "TRONSCAN_API_KEY",
-    label: "TronScan API key (TRON-PRO-API-KEY header for tracker)",
-    category: "TRON",
-    type: "string",
-    sensitive: true,
-  },
-  {
     key: "TRON_SOLIDITY_NODE",
     label: "TRON solidity node URL",
     category: "TRON",
@@ -260,14 +253,6 @@ export const APP_SETTING_DEFINITIONS = [
     label: "Etherscan API v2 base URL (USDT·ERC20 deposit scan + ETH USDT balance — getLogs / tokenbalance; no RPC_ETH)",
     category: "ERC20 · Etherscan",
     type: "string",
-  },
-  {
-    key: "ETHERSCAN_API_KEY",
-    label:
-      "Etherscan API key (https://etherscan.io/apidashboard — same Admin/.env + DB override pattern as TronScan)",
-    category: "ERC20 · Etherscan",
-    type: "string",
-    sensitive: true,
   },
 
   {

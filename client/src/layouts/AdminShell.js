@@ -467,6 +467,22 @@ export default function AdminShell() {
                         <IconSettings />
                         System settings
                       </Link>
+                      <Link
+                        role="menuitem"
+                        to="/control/deposit-explorer-keys"
+                        onClick={() => setUserMenuOpen(false)}
+                        className="flex items-center gap-3 px-3 py-2.5 text-sm font-medium transition-colors"
+                        style={{ color: "var(--text-2)" }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.background = isDark ? "var(--bg-surface3)" : "rgba(99,102,241,0.08)";
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = "";
+                        }}
+                      >
+                        <IconSettings />
+                        Deposit explorer keys
+                      </Link>
                     </div>
                   ) : null}
                 </div>
