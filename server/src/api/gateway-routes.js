@@ -4,10 +4,7 @@ import {
   prismaClientKnowsTxStatusCreated,
   prismaClientKnowsTxStatusUnderpaid,
 } from "../lib/prisma-tx-status.js";
-import {
-  findGatewayBlockingPendingCallbackRaw,
-  findGatewayPollUnderpaidRowRaw,
-} from "../lib/underpaid-prisma-raw.js";
+import { findGatewayPollUnderpaidRowRaw } from "../lib/underpaid-prisma-raw.js";
 import { formatAtomicAmountString } from "../lib/format-atomic-amount.js";
 import {
   expectedReceivedAmountQuadForTransaction,
@@ -57,8 +54,6 @@ import {
   paymentPageCheckoutFallbackMinutes,
 } from "../lib/wallet-scan.js";
 import { resolveWalletInternalId } from "../lib/entity-internal-id.js";
-import { MAX_AUTO_CALLBACK_ATTEMPTS } from "../services/callback-service.js";
-
 /** @type {readonly string[]} */
 const DEPRECATED_GATEWAY_TRANSACTIONS_QUERY_KEYS = [
   "address",
@@ -612,46 +607,6 @@ router.post("/api/v1/gateway/deposit-address", async (req, res) => {
         },
       });
       createdNewUser = true;
-    }
-
-    if (String(merchant.callbackUrl ?? "").trim()) {
-      const blocking = prismaClientKnowsTxStatusUnderpaid()
-        ? await prisma.transaction.findFirst({
-            where: {
-              status: { in: [TxStatus.success, TxStatus.underpaid, TxStatus.failed] },
-              callbackDeliveredAt: null,
-              /** After max auto attempts, allow new deposit addresses; merchant can fix webhook and resend later. */
-              callbackAttemptCount: { lt: MAX_AUTO_CALLBACK_ATTEMPTS },
-              payerUserId: u.id,
-              ...ACTIVE,
-              wallet: { merchantId: merchant.id, environment: gwEnv, ...ACTIVE },
-            },
-            select: { id: true },
-          })
-        : await findGatewayBlockingPendingCallbackRaw(prisma, {
-            payerUserId: u.id,
-            merchantId: merchant.id,
-            gwEnv,
-            maxAttempts: MAX_AUTO_CALLBACK_ATTEMPTS,
-          });
-      if (blocking) {
-        auditGatewayApi(req, {
-          action: "deposit_address",
-          merchantId: merchant.id,
-          actorType: "gateway_api_key",
-          summary: "deposit-address 409 — callback_pending",
-          metadata: {
-            request_in: redactGatewayBody(body),
-            http_status: 409,
-            external_user_id: externalUserId,
-          },
-        });
-        res.status(409).json({
-          error: "callback_pending",
-          message: `A payment webhook (X-Webhook-Event: payment; check JSON status: success, underpaid, or failed) was not delivered with a 2xx response. New deposit addresses are blocked until delivery succeeds or automatic retries finish (up to ${MAX_AUTO_CALLBACK_ATTEMPTS} attempts, at most one per minute). After retries are exhausted, you may request a new address; fix your callback URL/handler and resend from the merchant portal (transaction detail) for the affected payment.`,
-        });
-        return;
-      }
     }
 
     const { wallet, depositSessionKey, referenceTransactionId } =

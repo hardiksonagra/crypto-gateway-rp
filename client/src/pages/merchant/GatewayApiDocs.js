@@ -730,8 +730,6 @@ X-Token: <base64 from buildXToken on canonical JSON of body>
           <span className="font-mono">amount_not_supported_for_rail</span>,
           etc.); <span className="font-mono">401 invalid_x_token</span>;{" "}
           <span className="font-mono">403 rail_not_enabled_for_merchant</span>;{" "}
-          <span className="font-mono">409 callback_pending</span> when a prior{" "}
-          <span className="font-mono">payment</span> webhook is still retrying;{" "}
           <span className="font-mono">
             500 merchant_default_pair_misconfigured
           </span>{" "}
@@ -1128,9 +1126,10 @@ X-Webhook-Event: payment
         <p className="mt-3 text-xs text-white/45">
           When the session later reaches the full expected amount, you get
           another POST with <span className="font-mono">status: success</span>.
-          A webhook stuck without <span className="font-mono">2xx</span> can
-          block new <span className="font-mono">deposit-address</span> calls
-          with <span className="font-mono">409 callback_pending</span>.
+          If your endpoint does not return <span className="font-mono">2xx</span>,
+          the gateway retries delivery automatically; handle webhooks idempotently
+          and use <span className="font-mono">GET …/gateway/transactions</span> to
+          reconcile.
         </p>
       </section>
     </div>

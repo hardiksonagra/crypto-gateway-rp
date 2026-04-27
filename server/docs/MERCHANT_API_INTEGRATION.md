@@ -216,7 +216,6 @@ When `amount` was sent and parsed, the response also includes `expected_amount_a
 | 503  | `gateway_secret_unavailable`                                                          | Server cannot verify `X-Token` (missing cipher; regenerate key).                                                                                                                                                   |
 | 403  | `rail_not_enabled_for_merchant`                                                       | Pair not in your supported rails (when configured).                                                                                                                                                                |
 | 400  | `unsupported_currency_network`                                                        | Unknown `currency`/`network` combination.                                                                                                                                                                          |
-| 409  | `callback_pending`                                                                    | A prior **payment** webhook for this user (`status` success, underpaid, or failed) is still retrying (no `2xx` yet). New deposit addresses are blocked until delivery succeeds or automatic retries are exhausted. |
 
 Idempotent: same merchant + `external_user_id` + same `(currency, network)` returns the same wallet. Each successful `deposit-address` call still logs a new **checkout session** when the pool assigns or refreshes the row; optional `amount` applies to that session only. For another rail for the same end user, call **`deposit-address` again** with the same **`external_user_id`** and the desired **`currency`** / **`network`**.
 
@@ -261,7 +260,7 @@ Common body fields (success, underpaid, and failed): `transaction_id` (numeric g
 
 ### 6.1 New `deposit-address` while webhooks are stuck
 
-If a **payment** webhook (`status` **success**, **underpaid**, or **failed**) has not been acknowledged with **`2xx`**, the gateway may return **`409` `callback_pending`** on new `deposit-address` calls for that payer until retries finish or you fix the callback handler.
+If a **payment** webhook (`status` **success**, **underpaid**, or **failed**) has not been acknowledged with **`2xx`**, the gateway **still retries** delivery (same limits as before). **`deposit-address` is not blocked** for that payer — implement **idempotent** webhook handling and reconcile from **`GET …/gateway/transactions`** when needed.
 
 ---
 
@@ -271,7 +270,7 @@ If a **payment** webhook (`status` **success**, **underpaid**, or **failed**) ha
 2. Store **`api_key`** from admin onboarding in server-side secrets; note your **`id`** from `GET /api/v1/auth/me` for `X-Merchant-Id` when using header auth.
 3. On checkout, call **`deposit-address`** with `external_user_id` and optionally `currency` / `network`, optional **`amount`** (fixed price), optional **`transaction_id`** / **`redirect_url`**, using **`X-Token`** (recommended) or legacy **`api_key`** in the body. Persist the returned **`reference_id`** (or **`transaction_id`**) string for support and correlation (same value on webhooks as **`reference_id` / `merchant_transaction_id`** and on **`GET …/gateway/transactions?transaction_id=…`**).
 4. Show the user the returned **`address`** and the correct **`network`** label (e.g. TRC20 vs ERC20), and the **amount due** when you passed optional **`amount`** on **`deposit-address`**.
-5. Handle **`POST` callback** with `X-Webhook-Event: payment` and **`body.status`** (`success`, `underpaid`, or `failed`); handle **`409` `callback_pending`** if your endpoint was down.
+5. Handle **`POST` callback** with `X-Webhook-Event: payment` and **`body.status`** (`success`, `underpaid`, or `failed`); treat delivery as **at-least-once** (dedupe by `tx_hash` + `chain` + `wallet_id` / `log_index` as documented).
 
 ---
 
