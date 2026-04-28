@@ -193,10 +193,10 @@ function tryTakePerSecondSlot(keyId, maxPerSecond) {
 }
 
 /**
- * Blocks until the **primary** pool key (lowest `sort_order`, then `id` among rows still under the
- * daily cap) has a per-second slot. Does not “spill” to the next key when the primary is only
- * per-second saturated — that key stays primary until its UTC-day cap is reached (then it drops
- * out of the list and the next sort-ordered key becomes primary).
+ * Blocks until some active pool key (Admin `sort_order`, then `id`) has a per-second slot.
+ * Lower-order keys are tried first; when a key’s per-second cap is full, the next key under the
+ * daily cap is used. If every key is at its per-second cap (or the list is empty), waits briefly
+ * and retries. Keys that hit the UTC-day cap drop out of the list until the next UTC day.
  *
  * @param {ExplorerPoolRail} rail
  * @returns {Promise<{ keyId: number, apiKey: string }>}
@@ -212,9 +212,10 @@ export async function acquireDepositScannerExplorerApiLease(rail) {
       await pollSleep(25);
       continue;
     }
-    const primary = list[0];
-    if (tryTakePerSecondSlot(primary.keyId, primary.maxRequestsPerSecond)) {
-      return { keyId: primary.keyId, apiKey: primary.apiKey };
+    for (const cred of list) {
+      if (tryTakePerSecondSlot(cred.keyId, cred.maxRequestsPerSecond)) {
+        return { keyId: cred.keyId, apiKey: cred.apiKey };
+      }
     }
     await pollSleep(25);
   }
