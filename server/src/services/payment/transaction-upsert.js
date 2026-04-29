@@ -32,7 +32,10 @@ import {
   notifyPaymentSuccess,
   notifyPaymentUnderpaid,
 } from "../callback-service.js";
-import { liveWorkerWalletScanFilter } from "../../lib/wallet-scan.js";
+import {
+  depositScanBothTtlsNullGate,
+  liveWorkerWalletScanFilter,
+} from "../../lib/wallet-scan.js";
 import {
   recordNewDepositInsert,
   workerRailMetricsEnabled,
@@ -100,18 +103,6 @@ export async function upsertIncomingTransaction(input) {
       incoming_to: input.toAddress,
     });
     return;
-  }
-
-  if (prior && prior.walletId !== walletInternalId) {
-    logger.warn("transaction_dedupe_ignored_wallet", {
-      event: "transaction_dedupe_ignored_wallet",
-      tx_hash: input.txHash,
-      chain: input.chain,
-      token_symbol: input.tokenSymbol,
-      log_index: input.logIndex,
-      canonical_wallet_id: prior.walletId,
-      ignored_wallet_id: walletInternalId,
-    });
   }
 
   const hadRowBefore = Boolean(prior);
@@ -469,12 +460,19 @@ export async function loadWalletsForChain(chain) {
 }
 
 /**
- * All live wallets on a chain (maintenance cron full pass — no hot-path TTL filter).
+ * All live wallets on a chain for maintenance full pass. Uses the same **both TTLs null** gate as the
+ * worker ({@link depositScanBothTtlsNullGate}) so idle pool rows are not scanned; does not apply the
+ * full hot-path OR (assign / hold / single-tick / checkout) — that remains {@link loadWalletsForChain}.
  * @param {import("@prisma/client").Chain} chain
  */
 export async function loadAllLiveWalletsForChain(chain) {
   return prisma.wallet.findMany({
-    where: { chain, environment: MerchantGatewayEnv.live, ...ACTIVE },
+    where: {
+      chain,
+      environment: MerchantGatewayEnv.live,
+      ...ACTIVE,
+      AND: [depositScanBothTtlsNullGate()],
+    },
     select: {
       id: true,
       address: true,

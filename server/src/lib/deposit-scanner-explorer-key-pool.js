@@ -118,7 +118,7 @@ export async function sumMaxRequestsPerSecondForPool(rail) {
  * ping-pong usage across keys while both were far under the daily cap.
  *
  * @param {ExplorerPoolRail} rail
- * @returns {Promise<{ keyId: number, apiKey: string, maxRequestsPerSecond: number }[]>}
+ * @returns {Promise<{ keyId: number, apiKey: string, keyName: string, maxRequestsPerSecond: number }[]>}
  */
 async function listPoolCredentialsWithDailyBudgetOrdered(rail) {
   const todayUtc = utcTodayMidnight();
@@ -127,6 +127,7 @@ async function listPoolCredentialsWithDailyBudgetOrdered(rail) {
     orderBy: [{ sortOrder: "asc" }, { id: "asc" }],
     select: {
       id: true,
+      name: true,
       apiKeyCipher: true,
       maxRequestsPerDay: true,
       maxRequestsPerSecond: true,
@@ -135,7 +136,7 @@ async function listPoolCredentialsWithDailyBudgetOrdered(rail) {
     },
   });
 
-  /** @type {{ keyId: number, apiKey: string, maxRequestsPerSecond: number }[]} */
+  /** @type {{ keyId: number, apiKey: string, keyName: string, maxRequestsPerSecond: number }[]} */
   const out = [];
   for (const row of rows) {
     const used = effectiveRequestsTodayForUtc(row, todayUtc);
@@ -154,6 +155,7 @@ async function listPoolCredentialsWithDailyBudgetOrdered(rail) {
     out.push({
       keyId: row.id,
       apiKey,
+      keyName: String(row.name ?? "").trim() || `key #${row.id}`,
       maxRequestsPerSecond: row.maxRequestsPerSecond,
     });
   }
@@ -166,12 +168,14 @@ async function listPoolCredentialsWithDailyBudgetOrdered(rail) {
  * After a successful explorer HTTP + valid body, call {@link recordDepositScannerExplorerSuccessfulRequest}.
  *
  * @param {ExplorerPoolRail} rail
- * @returns {Promise<{ keyId: number, apiKey: string } | null>}
+ * @returns {Promise<{ keyId: number, apiKey: string, keyName: string } | null>}
  */
 export async function peekFirstDepositScannerExplorerPoolCredential(rail) {
   const list = await listPoolCredentialsWithDailyBudgetOrdered(rail);
   const first = list[0];
-  return first ? { keyId: first.keyId, apiKey: first.apiKey } : null;
+  return first
+    ? { keyId: first.keyId, apiKey: first.apiKey, keyName: first.keyName }
+    : null;
 }
 
 /**
@@ -179,7 +183,11 @@ export async function peekFirstDepositScannerExplorerPoolCredential(rail) {
  * @param {number} maxPerSecond
  */
 function tryTakePerSecondSlot(keyId, maxPerSecond) {
-  const cap = Math.max(1, maxPerSecond);
+  const raw =
+    typeof maxPerSecond === "number" && Number.isFinite(maxPerSecond)
+      ? maxPerSecond
+      : Number(maxPerSecond);
+  const cap = Math.max(1, Number.isFinite(raw) ? Math.floor(raw) : 1);
   const now = Date.now();
   let stamps = secondStampsByKeyId.get(keyId) ?? [];
   stamps = stamps.filter((t) => now - t < 1000);
@@ -199,7 +207,7 @@ function tryTakePerSecondSlot(keyId, maxPerSecond) {
  * and retries. Keys that hit the UTC-day cap drop out of the list until the next UTC day.
  *
  * @param {ExplorerPoolRail} rail
- * @returns {Promise<{ keyId: number, apiKey: string }>}
+ * @returns {Promise<{ keyId: number, apiKey: string, keyName: string }>}
  */
 export async function acquireDepositScannerExplorerApiLease(rail) {
   const started = Date.now();
@@ -214,7 +222,11 @@ export async function acquireDepositScannerExplorerApiLease(rail) {
     }
     for (const cred of list) {
       if (tryTakePerSecondSlot(cred.keyId, cred.maxRequestsPerSecond)) {
-        return { keyId: cred.keyId, apiKey: cred.apiKey };
+        return {
+          keyId: cred.keyId,
+          apiKey: cred.apiKey,
+          keyName: cred.keyName,
+        };
       }
     }
     await pollSleep(25);

@@ -46,11 +46,13 @@ function isWalletAssignmentTableMissingError(e) {
 
 /**
  * Assign a reusable deposit wallet for an end-user (merchant pool). Runs on gateway API request, not on a timer.
- * If this user already holds a row for the rail, refreshes hold/scan and returns it (including expired holds).
- * Otherwise picks a **free** pool row, preferring any wallet this user has prior `transactions` on (any status);
- * then oldest by `created_at`. If none available, creates a new address.
+ * If this user already has an **active** assignment on the rail (`hold_expires_at` or `scan_expires_at` still
+ * in the future), refreshes hold/scan and returns that wallet. If both TTLs are null or both in the past,
+ * treats as no session and picks the **oldest free** pool row by `created_at`. If none available, creates a new address.
  * Same on-chain `(environment, chain, address)` is never assigned while **any** merchant’s row for that address
  * still has `assigned_user_id` set (HD can produce identical addresses across merchants at the same index).
+ * Pool rows with `assigned_user_id` null are eligible even if legacy `hold_expires_at` / `scan_expires_at`
+ * are still in the future — avoids creating new derivations while unassigned pool rows exist.
  *
  * @param {Tx} tx
  * @param {{
@@ -87,6 +89,7 @@ export async function assignPooledWalletForDeposit(tx, p) {
       : 30;
   const holdUntil = new Date(Date.now() + holdMin * 60 * 1000);
   const scanAt = nextScanExpiresAt();
+  const now = new Date();
 
   /** @type {import("@prisma/client").Wallet} */
   let wallet;
@@ -102,6 +105,7 @@ export async function assignPooledWalletForDeposit(tx, p) {
       network,
       assignedUserId: userId,
       ...ACTIVE,
+      OR: [{ holdExpiresAt: { gt: now } }, { scanExpiresAt: { gt: now } }],
     },
   });
   if (stillAssigned) {
@@ -255,7 +259,10 @@ async function tryPickFreePoolWallet(tx, args) {
         AND w2."deleted_at" IS NULL
         AND (
           w2."assigned_user_id" IS NULL
-          OR (w2."hold_expires_at" IS NOT NULL AND w2."hold_expires_at" < NOW())
+          OR NOT (
+            (w2."hold_expires_at" IS NOT NULL AND w2."hold_expires_at" > NOW())
+            OR (w2."scan_expires_at" IS NOT NULL AND w2."scan_expires_at" > NOW())
+          )
         )
         AND NOT EXISTS (
           SELECT 1 FROM "wallets" wo
@@ -266,13 +273,7 @@ async function tryPickFreePoolWallet(tx, args) {
             AND wo."id" <> w2."id"
             AND wo."assigned_user_id" IS NOT NULL
         )
-      ORDER BY
-        EXISTS (
-          SELECT 1 FROM "transactions" t
-          WHERE t."wallet_id" = w2."id" AND t."payer_user_id" = ${userId}
-            AND t."deleted_at" IS NULL
-        ) DESC,
-        w2."created_at" ASC
+      ORDER BY w2."created_at" ASC
       FOR UPDATE SKIP LOCKED
       LIMIT 1
     ) pick

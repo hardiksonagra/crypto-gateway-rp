@@ -18,7 +18,10 @@ import {
 } from "crypto-payment-gateway/src/services/payment/transaction-upsert.js";
 import { logger } from "crypto-payment-gateway/src/lib/logger.js";
 import { runWithConcurrency } from "crypto-payment-gateway/src/lib/run-with-concurrency.js";
-import { effectiveDepositScannerMaxPerSecond } from "crypto-payment-gateway/src/lib/network-rpc-rate-limit.js";
+import {
+  acquireDepositScannerApiSlot,
+  effectiveDepositScannerMaxPerSecond,
+} from "crypto-payment-gateway/src/lib/network-rpc-rate-limit.js";
 import { recordDepositScanPolledAddresses } from "crypto-payment-gateway/src/services/tracker/deposit-rail-metrics.js";
 import { pickUsdtTrc20Contract } from "crypto-payment-gateway/src/services/sweep/tron-usdt-sweep.js";
 
@@ -139,9 +142,11 @@ export async function scanTronChain(options = {}) {
 
   const sumPoolSec = await sumMaxRequestsPerSecondForPool("trc20");
   const legacyCap = effectiveDepositScannerMaxPerSecond("trc20");
-  const parallelBudget =
+  const poolParallelBudget =
     sumPoolSec > 0 ? sumPoolSec : legacyCap > 0 ? legacyCap : 1;
-  const parallel = Math.min(parallelBudget, work.length);
+  const parallelBudget =
+    legacyCap > 0 ? Math.min(poolParallelBudget, legacyCap) : poolParallelBudget;
+  const parallel = Math.min(Math.max(1, parallelBudget), work.length);
   const adminRescan =
     options.adminDepositRescan &&
     Number.isInteger(options.adminDepositRescan.walletId) &&
@@ -191,16 +196,24 @@ async function ingestTrc20ViaTronscan(
   const pathLabel = "/api/token_trc20/transfers";
   const url = `${base}${pathLabel}?limit=50&start=0&contract_address=${encodeURIComponent(usdtContract)}&relatedAddress=${encodeURIComponent(address)}`;
   let data = {};
+
+  // Match ERC20 deposit path: pick explorer pool key first (sort order + per-key / sec, spill to next key),
+  // then apply rail-wide rolling start cap. Previously rail ran before lease — logs showed START before any
+  // key was chosen and could interact oddly with parallel workers.
+  const poolLease = await acquireDepositScannerExplorerApiLease("trc20");
+  await acquireDepositScannerApiSlot("trc20");
+
   const t0 = Date.now();
   logger.info({
     event: "explorer_api_tronscan",
     phase: "start",
     address,
     path: pathLabel,
-    message: `TRC20: START API CALL (${address})`,
+    explorer_key_id: poolLease.keyId,
+    explorer_key_name: poolLease.keyName,
+    message: `TRC20: START API CALL (${poolLease.keyName} · ${address})`,
   });
   try {
-    const poolLease = await acquireDepositScannerExplorerApiLease("trc20");
     await acquireOutboundRpcSlot("TRON");
     const res = await fetch(url, {
       headers: getTronscanFetchHeaders(poolLease.apiKey),
@@ -221,11 +234,13 @@ async function ingestTrc20ViaTronscan(
       phase: "end",
       address,
       path: pathLabel,
+      explorer_key_id: poolLease.keyId,
+      explorer_key_name: poolLease.keyName,
       duration_ms,
       http_status: res.status,
       ok,
       response_bytes: text.length,
-      message: `TRC20: END API CALL (${address}) (${duration_ms}ms)${endNote}`,
+      message: `TRC20: END API CALL (${poolLease.keyName} · ${address}) (${duration_ms}ms)${endNote}`,
     });
     if (!res.ok) {
       return;
@@ -242,10 +257,12 @@ async function ingestTrc20ViaTronscan(
       phase: "end",
       address,
       path: pathLabel,
+      explorer_key_id: poolLease.keyId,
+      explorer_key_name: poolLease.keyName,
       duration_ms,
       ok: false,
       error: err,
-      message: `TRC20: END API CALL (${address}) (${duration_ms}ms) err=${err}`,
+      message: `TRC20: END API CALL (${poolLease.keyName} · ${address}) (${duration_ms}ms) err=${err}`,
     });
     return;
   }

@@ -203,7 +203,7 @@ export const APP_SETTING_DEFINITIONS = [
   {
     key: "DEPOSIT_SCANNER_API_MAX_PER_SECOND_TRC20",
     label:
-      "TronScan deposit poll: max **parallel** TronScan HTTP calls per tick, and max **starts** per rolling 1s (same number). Example `5` = up to five addresses queried at once; `acquireDepositScannerApiSlot` still spaces starts to respect the cap. `0` = sequential one-address-at-a-time (rail-specific cap off; `OUTBOUND_RPC_MAX_PER_SECOND` for `TRON` still applies).",
+      "TronScan deposit poll: caps **parallel** worker tasks per tick (`min` vs explorer key pool sum) and max **HTTP starts** per rolling 1s via `acquireDepositScannerApiSlot` (no full serialization — up to N fetches can be in flight). Example `4` ≈ four concurrent address polls, with further starts delayed to the next rolling second. `0` = no rail-specific start cap (explorer pool + `OUTBOUND_RPC_MAX_PER_SECOND` for `TRON` still apply).",
     category: DEPOSIT_SCANNER_CATEGORIES.usdtTrc20,
     type: "int",
   },

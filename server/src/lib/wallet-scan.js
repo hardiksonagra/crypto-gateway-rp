@@ -53,7 +53,31 @@ export function nextScanExpiresAt() {
 }
 
 /**
+ * Do not poll explorers for rows with **both** `hold_expires_at` and `scan_expires_at` SQL null (idle pool).
+ * Only exception: `deposit_scan_single_tick_requested` (explicit rescan).
+ *
+ * **No** `gateway-created` exception here: a stray placeholder on a pooled wallet would otherwise keep
+ * TronScan polling forever. Open checkouts must keep at least one TTL column non-null from assign
+ * (expired timestamps still count — only **both** null is blocked).
+ *
+ * @returns {import("@prisma/client").Prisma.WalletWhereInput}
+ */
+export function depositScanBothTtlsNullGate() {
+  return {
+    OR: [
+      {
+        NOT: {
+          AND: [{ holdExpiresAt: null }, { scanExpiresAt: null }],
+        },
+      },
+      { depositScanSingleTickRequested: true },
+    ],
+  };
+}
+
+/**
  * Prisma `where` fragment: live worker hot path (each poll).
+ * - **Gate:** both TTLs null → no tracking (see {@link depositScanBothTtlsNullGate}).
  * - `assigned_user_id` set and `scan_expires_at` still in the future — checkout scan window (`WALLET_SCAN_TTL_MINUTES`).
  * - Assigned wallet whose **pooled hold** has not expired — keep scanning until `WALLET_ASSIGNMENT_HOLD_MINUTES`
  *   ends even after scan TTL (e.g. UI 10m, hold 30m).
@@ -91,7 +115,9 @@ export function liveWorkerWalletScanFilter() {
       },
     });
   }
-  return { OR: or };
+  return {
+    AND: [depositScanBothTtlsNullGate(), { OR: or }],
+  };
 }
 
 /**
