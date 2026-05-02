@@ -62,12 +62,38 @@ model Admin {
   @@map("admins")
 }
 
+/// Reseller partner (RP): creates merchants under their scope; signs in at `/rp`.
+model ResellerPartner {
+  id           Int       @id @default(autoincrement())
+  email        String    @unique
+  passwordHash String    @map("password_hash")
+  displayName  String?   @map("display_name")
+  /// Default MDR (percent 0–100) applied to new merchants this RP creates unless overridden.
+  mdrPercent            Decimal   @default(0) @map("mdr_percent") @db.Decimal(7, 4)
+  isActive     Boolean   @default(true) @map("is_active")
+  deletedAt    DateTime? @map("deleted_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+  /// Same as admin: global Users / Transactions / Wallets lists under `/rp` use this environment.
+  portalEnvironment MerchantGatewayEnv @default(live) @map("portal_environment")
+
+  merchants Merchant[]
+
+  @@index([deletedAt])
+  @@map("reseller_partners")
+}
+
 /// Merchant portal + gateway API identity. Email partial-unique where `deleted_at` IS NULL (migration).
 model Merchant {
   id           Int       @id @default(autoincrement())
   email        String
   passwordHash String    @map("password_hash")
   displayName  String?   @map("display_name")
+  /// Optional: merchant created under an RP account (`/rp`); null = created by platform admin only.
+  resellerPartnerId Int?             @map("reseller_partner_id")
+  resellerPartner   ResellerPartner? @relation(fields: [resellerPartnerId], references: [id], onDelete: SetNull)
+  /// AES-GCM encrypted BIP39 phrase (same envelope as API key cipher). Per-merchant HD root for deposit addresses.
+  mnemonicCipher String? @map("mnemonic_cipher")
   apiKeyHash   String?   @unique @map("api_key_hash")
   apiKeyHint   String?   @map("api_key_hint")
   apiKeyCipher String?   @map("api_key_cipher")
@@ -94,6 +120,10 @@ model Merchant {
   minSettlementAmount   String    @default("0") @map("min_settlement_amount") @db.VarChar(128)
   /// Successful deposits newer than this many whole days cannot be settled; 0 = no hold.
   settlementPeriodDays  Int       @default(0) @map("settlement_period_days")
+  /// When true, workers / treasury flows may route post-deposit swaps using {@link autoSwapSettingsJson}.
+  autoSwapEnabled      Boolean @default(false) @map("auto_swap_enabled")
+  /// JSON: `{ "version": 2, "destinations": [{ "rail_key", "treasury_address" }], "min_amounts_by_rail": { ... } }` — per-rail treasury; optional minimums when auto-swap is on (v1 destinations with embedded min still read).
+  autoSwapSettingsJson Json    @default("{}") @map("auto_swap_settings_json")
   createdAt    DateTime  @default(now()) @map("created_at")
   updatedAt    DateTime  @updatedAt @map("updated_at")
 
@@ -105,6 +135,7 @@ model Merchant {
   auditLogs     AuditLog[]
 
   @@index([deletedAt])
+  @@index([resellerPartnerId])
   @@map("merchants")
 }
 

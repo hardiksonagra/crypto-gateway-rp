@@ -1,8 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { api } from "../../api";
+import { usePanelApiPrefix } from "../../hooks/usePanelApiPrefix.js";
 import ListPaginationBar, { DEFAULT_LIST_PAGE_SIZE } from "../../components/ListPaginationBar";
 import { BrandLoader } from "../../components/BrandLoader.js";
+import { resellerPartnerLabel, resellerPartnerTitle } from "../../lib/resellerPartnerLabel.js";
 
 /**
  * @param {{ cached_balance_atomic?: string | null }} w
@@ -64,6 +66,7 @@ async function startOrWaitForBalanceRefresh(onScanProgress) {
 
 /** All wallets: one row per gateway wallet (pool address); balances cached after full refresh. */
 export default function AdminWallets() {
+  const { apiPrefix, isRp } = usePanelApiPrefix();
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_LIST_PAGE_SIZE);
@@ -73,7 +76,7 @@ export default function AdminWallets() {
   );
 
   const listQ = useQuery({
-    queryKey: ["admin-wallets", "simple", "unique-address", "live", page, pageSize],
+    queryKey: [isRp ? "rp-wallets" : "admin-wallets", "simple", "unique-address", "live", page, pageSize],
     queryFn: () => {
       const p = new URLSearchParams({
         page: String(page),
@@ -81,7 +84,7 @@ export default function AdminWallets() {
         unique_address: "1",
         environment: "live",
       });
-      return api(`/api/v1/admin/wallets?${p}`);
+      return api(`${apiPrefix}/wallets?${p}`);
     },
   });
 
@@ -89,7 +92,7 @@ export default function AdminWallets() {
     mutationFn: () => startOrWaitForBalanceRefresh(setBalanceRefreshScan),
     onSettled: () => {
       setBalanceRefreshScan(null);
-      void queryClient.invalidateQueries({ queryKey: ["admin-wallets"] });
+      void queryClient.invalidateQueries({ queryKey: [isRp ? "rp-wallets" : "admin-wallets"] });
     },
   });
 
@@ -107,11 +110,19 @@ export default function AdminWallets() {
           <h1 className="font-display text-2xl font-semibold text-white">All wallets</h1>
           <p className="mt-1 max-w-2xl text-sm text-white/50 text-pretty">
             <span className="text-white/65">Live</span> deposit wallets only (sandbox hidden). One row per on-chain
-            address and rail; duplicate gateway rows for the same address are merged. Click{" "}
-            <span className="text-white/75">Refresh balances</span> to re-read on-chain balances for{" "}
-            <span className="text-white/75">all</span> wallet rows (including sandbox) and update cached values here.
+            address and rail; duplicate gateway rows for the same address are merged.
+            {!isRp ? (
+              <>
+                {" "}
+                Click <span className="text-white/75">Refresh balances</span> to re-read on-chain balances for{" "}
+                <span className="text-white/75">all</span> wallet rows (including sandbox) and update cached values here.
+              </>
+            ) : (
+              <> Only wallets for merchants linked to your partner account are listed.</>
+            )}
           </p>
         </div>
+        {!isRp ? (
         <button
           type="button"
           disabled={refreshMut.isPending}
@@ -120,12 +131,13 @@ export default function AdminWallets() {
         >
           {refreshMut.isPending ? "Refreshing…" : "Refresh balances"}
         </button>
+        ) : null}
       </div>
 
-      {refreshMut.isError ? (
+      {!isRp && refreshMut.isError ? (
         <p className="mt-3 text-sm text-rose-400">{String(refreshMut.error)}</p>
       ) : null}
-      {refreshMut.isPending ? (
+      {!isRp && refreshMut.isPending ? (
         <p className="mt-3 text-sm text-sky-200/90">
           {balanceRefreshScan && balanceRefreshScan.total > 0 ? (
             <>
@@ -140,7 +152,7 @@ export default function AdminWallets() {
           )}
         </p>
       ) : null}
-      {refreshMut.isSuccess ? (
+      {!isRp && refreshMut.isSuccess ? (
         <p className="mt-3 text-sm text-emerald-200/90">
           Updated {refreshMut.data?.ok ?? 0} of {refreshMut.data?.total ?? 0} wallets
           {refreshMut.data?.failed ? ` (${refreshMut.data.failed} with errors or unsupported)` : ""}.
@@ -148,10 +160,12 @@ export default function AdminWallets() {
       ) : null}
 
       <div className="glass mt-6 w-full overflow-x-auto rounded-2xl">
-        <table className="w-full min-w-[640px] border-collapse text-left">
+        <table className="w-full min-w-[900px] border-collapse text-left">
           <thead>
             <tr>
               <th className={th}>Wallet ID (rep.)</th>
+              <th className={th}>Merchant</th>
+              <th className={th}>RP</th>
               <th className={th}>Address</th>
               <th className={th}>Rail</th>
               <th className={th}>Cached balance</th>
@@ -161,13 +175,13 @@ export default function AdminWallets() {
           <tbody>
             {listQ.isLoading ? (
               <tr>
-                <td colSpan={5} className={`${td} !py-6`}>
+                <td colSpan={7} className={`${td} !py-6`}>
                   <BrandLoader variant="inline" title="" subtitle="Loading…" />
                 </td>
               </tr>
             ) : wallets.length === 0 ? (
               <tr>
-                <td colSpan={5} className={`${td} text-white/45`}>
+                <td colSpan={7} className={`${td} text-white/45`}>
                   No wallets yet.
                 </td>
               </tr>
@@ -184,6 +198,18 @@ export default function AdminWallets() {
                         {w.gateway_wallet_row_count} DB rows merged
                       </span>
                     ) : null}
+                  </td>
+                  <td className={`${td} max-w-[140px]`}>
+                    <span className="block truncate font-mono text-[11px] text-white/80" title={w.merchant?.email ?? ""}>
+                      {w.merchant?.email ?? "—"}
+                    </span>
+                    <span className="mt-0.5 block font-mono text-[10px] text-white/35">#{w.merchant?.id ?? "—"}</span>
+                  </td>
+                  <td
+                    className={`${td} max-w-[120px] truncate text-[10px] text-white/75`}
+                    title={resellerPartnerTitle(w)}
+                  >
+                    {resellerPartnerLabel(w)}
                   </td>
                   <td className={`${td} font-mono text-xs break-all`}>{w.address}</td>
                   <td className={td}>

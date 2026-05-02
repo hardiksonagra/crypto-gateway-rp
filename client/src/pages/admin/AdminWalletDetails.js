@@ -2,6 +2,7 @@ import { Formik, Form, Field, ErrorMessage } from "formik";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { api } from "../../api";
+import { usePanelApiPrefix } from "../../hooks/usePanelApiPrefix.js";
 import ListPaginationBar, { DEFAULT_LIST_PAGE_SIZE } from "../../components/ListPaginationBar";
 import {
   ListActiveFiltersChips,
@@ -19,6 +20,7 @@ import { BrandLoader } from "../../components/BrandLoader.js";
 
 /** Admin wallet explorer: filters, amounts from recorded deposits (transactions), activity modal. */
 export default function AdminWalletDetails() {
+  const { apiPrefix, isRp } = usePanelApiPrefix();
   const [page, setPage] = useState(1);
   const [activityWalletId, setActivityWalletId] = useState(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -33,7 +35,7 @@ export default function AdminWalletDetails() {
 
   const listQ = useQuery({
     queryKey: [
-      "admin-wallets",
+      isRp ? "rp-wallets" : "admin-wallets",
       "details",
       page,
       applied.pageSize,
@@ -53,7 +55,7 @@ export default function AdminWalletDetails() {
       if (applied.chain.trim()) p.set("chain", applied.chain.trim().toUpperCase());
       if (applied.currency.trim()) p.set("currency", applied.currency.trim());
       if (applied.network.trim()) p.set("network", applied.network.trim());
-      return api(`/api/v1/admin/wallets?${p}`);
+      return api(`${apiPrefix}/wallets?${p}`);
     },
   });
 
@@ -234,7 +236,11 @@ export default function AdminWalletDetails() {
                 <tr key={w.id}>
                   <td className={td}>
                     <div className="max-w-[220px] truncate text-xs" title={w.merchant?.email}>
-                      {w.merchant?.displayName || w.merchant?.email || w.merchant?.id || "—"}
+                      {w.merchant?.display_name ||
+                        w.merchant?.displayName ||
+                        w.merchant?.email ||
+                        w.merchant?.id ||
+                        "—"}
                     </div>
                   </td>
                   <td className={`${td} font-mono text-xs break-all`}>{w.address}</td>
@@ -286,7 +292,7 @@ export default function AdminWalletDetails() {
       <WalletDepositActivityModal
         open={activityWalletId != null}
         walletId={activityWalletId}
-        panel="admin"
+        panel={isRp ? "rp" : "admin"}
         onClose={() => setActivityWalletId(null)}
       />
 

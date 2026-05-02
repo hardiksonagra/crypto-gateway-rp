@@ -1,12 +1,13 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { Formik, Form, Field, ErrorMessage } from "formik";
+import { Formik, Form, Field, ErrorMessage, useFormikContext } from "formik";
 import { api } from "../../api";
-import { buildMerchantSettingsSchema } from "../../admin/merchantSchemas";
+import { buildMerchantGatewayAndAutoSwapSchema } from "../../admin/merchantSchemas";
 import ChainMultiSelectField from "../../components/ChainMultiSelectField";
 import DepositRailsMultiSelectField from "../../components/DepositRailsMultiSelectField";
 import { BrandLoader } from "../../components/BrandLoader.js";
 import {
+  ALL_DEPOSIT_RAIL_OPTIONS,
   depositRailsForChains,
   MERCHANT_PRODUCT_CHAIN_CODES,
   railKeyFromParts,
@@ -51,13 +52,138 @@ function buildGatewaySettingsBoot(u) {
   };
 }
 
+/**
+ * @param {string[]} supportedRails
+ * @param {unknown} autoSettings `auto_swap_settings` from auth/me
+ */
+function buildAutoSwapDestRowsFromAuth(supportedRails, autoSettings) {
+  const stored =
+    autoSettings && typeof autoSettings === "object" && !Array.isArray(autoSettings)
+      ? autoSettings
+      : {};
+  const dest = Array.isArray(stored.destinations) ? stored.destinations : [];
+  /** @type {Map<string, string>} */
+  const map = new Map();
+  for (const d of dest) {
+    if (!d || typeof d !== "object") continue;
+    const rk = typeof d.rail_key === "string" ? d.rail_key.trim() : "";
+    if (!rk) continue;
+    const addr =
+      d.treasury_address != null
+        ? String(d.treasury_address)
+        : d.address != null
+          ? String(d.address)
+          : "";
+    map.set(rk, addr);
+  }
+  return supportedRails.map((rk) => ({
+    rail_key: rk,
+    treasury_address: map.get(rk) ?? "",
+  }));
+}
+
+/**
+ * Min thresholds (auto-swap only): from `min_amounts_by_rail` or legacy per-destination min.
+ *
+ * @param {string[]} supportedRails
+ * @param {unknown} autoSettings
+ */
+function buildAutoSwapMinRowsFromAuth(supportedRails, autoSettings) {
+  const stored =
+    autoSettings && typeof autoSettings === "object" && !Array.isArray(autoSettings)
+      ? autoSettings
+      : {};
+  const fromMap =
+    stored.min_amounts_by_rail &&
+    typeof stored.min_amounts_by_rail === "object" &&
+    stored.min_amounts_by_rail !== null
+      ? /** @type {Record<string, unknown>} */ (stored.min_amounts_by_rail)
+      : {};
+  const dest = Array.isArray(stored.destinations) ? stored.destinations : [];
+  /** @type {Map<string, string>} */
+  const legacyMin = new Map();
+  for (const d of dest) {
+    if (!d || typeof d !== "object") continue;
+    const rk = typeof d.rail_key === "string" ? d.rail_key.trim() : "";
+    if (!rk) continue;
+    const m = d.min_amount_decimal ?? d.min_amount;
+    if (m != null && String(m).trim() !== "") legacyMin.set(rk, String(m).trim());
+  }
+  return supportedRails.map((rk) => {
+    const k = fromMap[rk];
+    const fromTop =
+      k != null && String(k).trim() !== "" ? String(k).trim() : legacyMin.get(rk) ?? "";
+    return {
+      rail_key: rk,
+      min_amount_decimal: fromTop,
+    };
+  });
+}
+
+/**
+ * @param {object} u `/api/v1/auth/me` merchant JSON
+ */
+function buildMerchantSettingsInitial(u) {
+  const g = buildGatewaySettingsBoot(u);
+  return {
+    ...g,
+    auto_swap_enabled: Boolean(u.auto_swap_enabled),
+    auto_swap_dest_rows: buildAutoSwapDestRowsFromAuth(g.supported_deposit_rails, u.auto_swap_settings),
+    auto_swap_min_rows: buildAutoSwapMinRowsFromAuth(g.supported_deposit_rails, u.auto_swap_settings),
+    trx_fee_topup_source_address:
+      typeof u.auto_swap_trx_fee_source_address === "string"
+        ? u.auto_swap_trx_fee_source_address
+        : "",
+  };
+}
+
+function railLabel(railKey) {
+  const hit = ALL_DEPOSIT_RAIL_OPTIONS.find((o) => o.key === railKey);
+  return hit ? hit.label : railKey.split("|").join(" · ");
+}
+
+/** Keeps destination + min rows aligned with selected deposit rails. */
+function AutoSwapRailsSync() {
+  const { values, setFieldValue } = useFormikContext();
+  const destRef = useRef(values.auto_swap_dest_rows);
+  const minRef = useRef(values.auto_swap_min_rows);
+  destRef.current = values.auto_swap_dest_rows;
+  minRef.current = values.auto_swap_min_rows;
+  const rails = values.supported_deposit_rails || [];
+  const railsKey = rails.join("\u0001");
+  useEffect(() => {
+    const r = railsKey.length ? railsKey.split("\u0001") : [];
+    const prevD = destRef.current || [];
+    const prevM = minRef.current || [];
+    const mapD = new Map(prevD.map((x) => [x.rail_key, x]));
+    const mapM = new Map(prevM.map((x) => [x.rail_key, x]));
+    const nextD = r.map((rk) => {
+      const cur = mapD.get(rk);
+      return cur ?? { rail_key: rk, treasury_address: "" };
+    });
+    const nextM = r.map((rk) => {
+      const cur = mapM.get(rk);
+      return cur ?? { rail_key: rk, min_amount_decimal: "" };
+    });
+    const sameD =
+      nextD.length === prevD.length &&
+      nextD.every((row, i) => JSON.stringify(row) === JSON.stringify(prevD[i]));
+    const sameM =
+      nextM.length === prevM.length &&
+      nextM.every((row, i) => JSON.stringify(row) === JSON.stringify(prevM[i]));
+    if (!sameD) setFieldValue("auto_swap_dest_rows", nextD, false);
+    if (!sameM) setFieldValue("auto_swap_min_rows", nextM, false);
+  }, [railsKey, setFieldValue]);
+  return null;
+}
+
 export default function MerchantSettings() {
   const [boot, setBoot] = useState(null);
   const [gatewayModes, setGatewayModes] = useState(null);
 
   useEffect(() => {
     api("/api/v1/auth/me").then((u) => {
-      setBoot(buildGatewaySettingsBoot(u));
+      setBoot(buildMerchantSettingsInitial(u));
       setGatewayModes({
         live: u.liveGatewayEnabled !== false,
         sandbox: u.sandboxGatewayEnabled !== false,
@@ -66,7 +192,7 @@ export default function MerchantSettings() {
   }, []);
 
   const validationSchema = useMemo(
-    () => buildMerchantSettingsSchema(boot?.platform_enabled_chains, true),
+    () => buildMerchantGatewayAndAutoSwapSchema(boot?.platform_enabled_chains, true),
     [boot],
   );
 
@@ -132,14 +258,32 @@ export default function MerchantSettings() {
         onSubmit={async (values, { setStatus, setSubmitting }) => {
           setStatus(undefined);
           try {
+            const destinations = (values.auto_swap_dest_rows || []).map((row) => ({
+              rail_key: row.rail_key,
+              treasury_address: String(row.treasury_address ?? "").trim(),
+            }));
+            /** @type {Record<string, string>} */
+            const min_amounts_by_rail = {};
+            for (const row of values.auto_swap_min_rows || []) {
+              const m = String(row.min_amount_decimal ?? "").trim();
+              if (m !== "") min_amounts_by_rail[row.rail_key] = m;
+            }
             await api("/api/v1/merchant/settings", {
               method: "PATCH",
               json: {
                 callback_url: values.callback_url?.trim() || null,
                 default_chains: values.default_chains,
                 supported_deposit_rails: values.supported_deposit_rails,
+                auto_swap_enabled: Boolean(values.auto_swap_enabled),
+                auto_swap_settings: {
+                  version: 2,
+                  destinations,
+                  min_amounts_by_rail,
+                },
               },
             });
+            const fresh = await api("/api/v1/auth/me");
+            setBoot(buildMerchantSettingsInitial(fresh));
             setStatus("ok");
           } catch (err) {
             setStatus(String(err));
@@ -148,8 +292,9 @@ export default function MerchantSettings() {
           }
         }}
       >
-        {({ isSubmitting, status }) => (
+        {({ isSubmitting, status, values }) => (
           <Form className="glass mt-8 w-full grid grid-cols-1 gap-6 rounded-2xl p-6 lg:grid-cols-2 lg:p-8">
+            <AutoSwapRailsSync />
             <div className="lg:col-span-2">
               <label className="text-xs text-white/50" htmlFor="callback_url">
                 Webhook URL (X-Webhook-Event: payment, status in JSON)
@@ -220,6 +365,154 @@ export default function MerchantSettings() {
                 className="mt-1 text-xs text-rose-400"
               />
             </div>
+
+            <div className="lg:col-span-2 rounded-xl border border-indigo-400/20 bg-indigo-500/[0.07] px-4 py-5">
+              <h2 className="text-sm font-semibold text-white/90">Treasury &amp; automatic swap</h2>
+              <p className="mt-2 text-sm leading-relaxed text-white/60">
+                Your deposit wallets are derived from the <strong className="text-white/80">12-word phrase</strong> you
+                gave at onboarding. Turn on <strong className="text-white/80">automatic swap</strong> to sweep deposit
+                wallets on a schedule; set optional <strong className="text-white/80">minimum balances</strong> next to
+                that switch (only when swap is on). Below, enter <strong className="text-white/80">per currency/network</strong>{" "}
+                treasury addresses — those lines are only <strong className="text-white/80">where</strong> each rail&apos;s
+                funds should land; they do not include a minimum.
+              </p>
+
+              <div className="mt-5 flex flex-wrap items-center justify-between gap-4 border-t border-white/10 pt-5">
+                <div>
+                  <p className="text-xs font-medium text-white/50">Automatic swap</p>
+                  <p className="mt-1 max-w-xl text-xs text-white/40">
+                    Off: treasury addresses below are optional reference only. On: every active deposit rail needs a
+                    valid swap destination. The TRON USDT cron moves funds when each deposit wallet&apos;s balance is{" "}
+                    <strong className="text-white/55">greater than</strong> your minimum for that rail (if set).
+                  </p>
+                </div>
+                <Field name="auto_swap_enabled">
+                  {({ field, form }) => (
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={field.value}
+                      aria-label={field.value ? "Auto-swap enabled" : "Auto-swap disabled"}
+                      onClick={() => form.setFieldValue("auto_swap_enabled", !field.value)}
+                      className={`relative inline-flex h-8 w-14 shrink-0 items-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-300/40 ${
+                        field.value ? "bg-emerald-600/90" : "bg-white/20"
+                      }`}
+                    >
+                      <span
+                        className={`pointer-events-none absolute top-0.5 left-0.5 block h-7 w-7 rounded-full bg-white shadow transition-transform ${
+                          field.value ? "translate-x-6" : "translate-x-0"
+                        }`}
+                      />
+                    </button>
+                  )}
+                </Field>
+              </div>
+
+              {values.auto_swap_enabled ? (
+                <div className="mt-5 space-y-4 rounded-lg border border-white/10 bg-black/25 p-4">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-white/45">
+                    Minimum balance before auto-sweep (optional)
+                  </p>
+                  <p className="text-xs text-white/40">
+                    Shown only while automatic swap is on. The job runs when the deposit wallet holds{" "}
+                    <strong className="text-white/60">more than</strong> this amount (per rail). Leave blank to sweep any
+                    positive USDT once fees allow (TRON USDT cron today).
+                  </p>
+                  {(values.auto_swap_min_rows || []).map((row, idx) => (
+                    <div key={row.rail_key} className="grid grid-cols-1 gap-2 lg:grid-cols-2">
+                      <div>
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-indigo-200/90">
+                          {railLabel(row.rail_key)}
+                        </p>
+                        <p className="font-mono text-[10px] text-white/35">{row.rail_key}</p>
+                      </div>
+                      <div>
+                        <label className="text-xs text-white/50" htmlFor={`swap-min-${row.rail_key}`}>
+                          Min. (USDT decimal for this rail)
+                        </label>
+                        <Field
+                          id={`swap-min-${row.rail_key}`}
+                          name={`auto_swap_min_rows.${idx}.min_amount_decimal`}
+                          type="text"
+                          inputMode="decimal"
+                          className="mt-1 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm"
+                          placeholder="e.g. 10 — blank = any positive balance"
+                        />
+                        <ErrorMessage
+                          name={`auto_swap_min_rows.${idx}.min_amount_decimal`}
+                          component="p"
+                          className="mt-1 text-xs text-rose-400"
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+
+              {(values.supported_deposit_rails || []).some((rk) =>
+                String(rk).toUpperCase().includes("TRC20"),
+              ) ? (
+                <div className="mt-5 rounded-lg border border-amber-400/25 bg-amber-500/[0.06] px-4 py-3">
+                  <p className="text-xs font-medium text-amber-100/90">TRX for TRON fees (auto top-up)</p>
+                  <p className="mt-1 text-xs leading-relaxed text-white/55">
+                    USDT·TRC20 transfers still burn <strong className="text-white/75">TRX</strong> from the{" "}
+                    <strong className="text-white/75">deposit wallet</strong>. If it is short on TRX, the platform can
+                    send native TRX from the address below (when configured). This is independent of your treasury
+                    lines.
+                  </p>
+                  <p className="mt-2 text-[10px] font-medium uppercase tracking-wide text-white/40">
+                    TRX source (platform)
+                  </p>
+                  <p className="mt-1 break-all font-mono text-xs text-white/85">
+                    {boot.trx_fee_topup_source_address?.trim()
+                      ? boot.trx_fee_topup_source_address.trim()
+                      : "— Not configured — deposit wallets need enough TRX for fees, or ask the operator to set SWEEP_TRX_FUNDER_*."}
+                  </p>
+                </div>
+              ) : null}
+
+              <div className="mt-5 space-y-5 border-t border-white/10 pt-5">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-white/40">
+                  Swap destination by currency / network (treasury address only)
+                </p>
+                <p className="text-xs text-white/35">
+                  Use one row per rail you accept. These addresses define <strong className="text-white/55">where</strong>{" "}
+                  consolidated funds should be sent for each currency/network — no minimum is configured here.
+                </p>
+                {(values.auto_swap_dest_rows || []).map((row, idx) => (
+                  <div
+                    key={row.rail_key}
+                    className="grid grid-cols-1 gap-3 rounded-lg border border-white/10 bg-black/20 p-4"
+                  >
+                    <div>
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-indigo-200/90">
+                        {railLabel(row.rail_key)}
+                      </p>
+                      <p className="mt-1 font-mono text-[10px] text-white/35">{row.rail_key}</p>
+                    </div>
+                    <div>
+                      <label className="text-xs text-white/50" htmlFor={`treasury-${row.rail_key}`}>
+                        Treasury / swap destination address
+                      </label>
+                      <Field
+                        id={`treasury-${row.rail_key}`}
+                        name={`auto_swap_dest_rows.${idx}.treasury_address`}
+                        type="text"
+                        autoComplete="off"
+                        className="mt-1 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 font-mono text-xs text-white/90"
+                        placeholder={row.rail_key.includes("TRC20") ? "T…" : "0x…"}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <ErrorMessage
+                name="auto_swap_dest_rows"
+                component="p"
+                className="mt-3 text-xs text-rose-400"
+              />
+            </div>
+
             <button
               type="submit"
               disabled={isSubmitting}

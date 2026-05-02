@@ -1,7 +1,8 @@
 import { Chain } from "@prisma/client";
 import { TronWeb } from "tronweb";
 import { utils as tronUtils } from "tronweb";
-import { env, getTrc20Contracts } from "../../config/env.js";
+import { getTrc20Contracts } from "../../config/env.js";
+import { getMerchantWalletMnemonic } from "../../lib/merchant-mnemonic.js";
 import { re } from "../../config/runtime-env.js";
 import { parseWalletDbId } from "../../lib/parse-wallet-db-id.js";
 import { ACTIVE } from "../../lib/active-row.js";
@@ -315,7 +316,8 @@ export async function sweepTronUsdtOne(walletId, opts = {}) {
     return { ok: false, error: "SOURCE_IS_DESTINATION" };
   }
 
-  const pkHex = deriveTronPrivateKeyHex(wallet.derivationIndex, env.mnemonic);
+  const mnemonicPhrase = await getMerchantWalletMnemonic(wallet.merchantId);
+  const pkHex = deriveTronPrivateKeyHex(wallet.derivationIndex, mnemonicPhrase);
   const tw = createTronWebFromPrivateKeyHex(pkHex);
 
   const fromHex = tronUtils.address.toHex(wallet.address);
@@ -413,12 +415,13 @@ export async function sweepTronUsdtAll() {
 }
 
 /**
- * @param {{ address: string, derivationIndex: number }} wallet
+ * @param {{ address: string, derivationIndex: number, merchantId: number }} wallet
  * @param {string} contractAddr
  * @returns {Promise<bigint>}
  */
 export async function readTronUsdtBalanceAtomicForWallet(wallet, contractAddr) {
-  const pkHex = deriveTronPrivateKeyHex(wallet.derivationIndex, env.mnemonic);
+  const mnemonicPhrase = await getMerchantWalletMnemonic(wallet.merchantId);
+  const pkHex = deriveTronPrivateKeyHex(wallet.derivationIndex, mnemonicPhrase);
   const tw = createTronWebFromPrivateKeyHex(pkHex);
   const contract = tw.contract(TRC20_ABI, contractAddr);
   await acquireOutboundRpcSlot("TRON");
@@ -430,7 +433,7 @@ export async function readTronUsdtBalanceAtomicForWallet(wallet, contractAddr) {
  * Full USDT·TRC20 balance from deposit wallet → recipient (sweep master or admin override).
  * TRX requirement is computed dynamically ({@link estimateTrxSunRequiredForTrc20Transfer}).
  *
- * @param {{ id: string, address: string, derivationIndex: number }} wallet
+ * @param {{ id: string, address: string, derivationIndex: number, merchantId: number }} wallet
  * @param {string} recipient Base58 TRON receive address (historically sweep master; may be any valid recipient).
  * @param {string} contractAddr
  */
@@ -439,7 +442,8 @@ export async function sweepTronUsdtTransferFullBalanceFromDepositWallet(
   recipient,
   contractAddr,
 ) {
-  const pkHex = deriveTronPrivateKeyHex(wallet.derivationIndex, env.mnemonic);
+  const mnemonicPhrase = await getMerchantWalletMnemonic(wallet.merchantId);
+  const pkHex = deriveTronPrivateKeyHex(wallet.derivationIndex, mnemonicPhrase);
   const tw = createTronWebFromPrivateKeyHex(pkHex);
 
   const fromHex = tronUtils.address.toHex(wallet.address);

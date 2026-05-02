@@ -118,6 +118,7 @@ import { authRouter } from "./api/auth-routes.js";
 import { gatewayRouter } from "./api/gateway-routes.js";
 import { adminRouter } from "./api/admin-routes.js";
 import { merchantRouter } from "./api/merchant-routes.js";
+import { rpRouter } from "./api/rp-routes.js";
 
 export function createApp() {
   const app = express();
@@ -208,6 +209,7 @@ export function createApp() {
   app.use(authRouter);
   app.use(gatewayRouter);
   app.use(adminRouter);
+  app.use(rpRouter);
   app.use(merchantRouter);
 
   if (serveSpa) {

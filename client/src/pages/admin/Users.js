@@ -2,6 +2,7 @@ import { Formik, Form, Field, ErrorMessage } from "formik";
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { api } from "../../api";
+import { usePanelApiPrefix } from "../../hooks/usePanelApiPrefix.js";
 import ListPaginationBar, { DEFAULT_LIST_PAGE_SIZE } from "../../components/ListPaginationBar";
 import { BrandLoader } from "../../components/BrandLoader.js";
 import {
@@ -21,10 +22,12 @@ import {
   UserPayerDepositHistoryModal,
 } from "../../components/UserHistoryModals.js";
 import { formatLocalDate } from "../../lib/formatLocalDateTime.js";
+import { resellerPartnerLabel, resellerPartnerTitle } from "../../lib/resellerPartnerLabel.js";
 
 const DEFAULT_PAGE_SIZE = DEFAULT_LIST_PAGE_SIZE;
 
 export default function AdminUsers() {
+  const { apiPrefix, isRp } = usePanelApiPrefix();
   const [page, setPage] = useState(1);
   const [assignmentUserId, setAssignmentUserId] = useState(null);
   const [depositUserId, setDepositUserId] = useState(null);
@@ -38,14 +41,22 @@ export default function AdminUsers() {
   });
 
   const res = useQuery({
-    queryKey: ["admin-users", page, applied.pageSize, applied.q, applied.merchant_id, applied.created_from, applied.created_to],
+    queryKey: [
+      isRp ? "rp-users" : "admin-users",
+      page,
+      applied.pageSize,
+      applied.q,
+      applied.merchant_id,
+      applied.created_from,
+      applied.created_to,
+    ],
     queryFn: () => {
       const p = new URLSearchParams({ page: String(page), pageSize: String(applied.pageSize) });
       if (applied.q.trim()) p.set("q", applied.q.trim());
       if (applied.merchant_id.trim()) p.set("merchant_id", applied.merchant_id.trim());
       if (applied.created_from) p.set("created_from", applied.created_from);
       if (applied.created_to) p.set("created_to", applied.created_to);
-      return api(`/api/v1/admin/users?${p}`);
+      return api(`${apiPrefix}/users?${p}`);
     },
   });
 
@@ -268,11 +279,12 @@ export default function AdminUsers() {
 
       <div className="mt-10 space-y-4">
         <div className="data-table-surface">
-            <table className="data-table min-w-[720px]">
+            <table className="data-table min-w-[820px]">
             <thead>
               <tr>
                 <th>External id</th>
                 <th>Merchant</th>
+                <th className="text-xs">RP</th>
                 <th>Active</th>
                 <th>Assign #</th>
                 <th>Tx #</th>
@@ -282,14 +294,14 @@ export default function AdminUsers() {
             <tbody>
               {res.isLoading ? (
                 <tr>
-                  <td colSpan={6} className="!py-8">
+                  <td colSpan={7} className="!py-8">
                     <BrandLoader variant="inline" title="" subtitle="Loading…" />
                   </td>
                 </tr>
               ) : null}
               {showEmpty ? (
                 <tr>
-                  <td colSpan={6} className="!py-12 text-center text-sm text-white/45">
+                  <td colSpan={7} className="!py-12 text-center text-sm text-white/45">
                     No record found.
                   </td>
                 </tr>
@@ -299,6 +311,12 @@ export default function AdminUsers() {
                   <tr key={u.id}>
                     <td className="font-mono text-xs text-white/75">{u.external_user_id}</td>
                     <td className="text-xs text-white/65">{u.merchant.email}</td>
+                    <td
+                      className="max-w-[160px] truncate text-[11px] text-white/80"
+                      title={resellerPartnerTitle(u)}
+                    >
+                      {resellerPartnerLabel(u)}
+                    </td>
                     <td className="font-mono text-xs text-white/70">{u.wallets_now_assigned ?? 0}</td>
                     <td>
                       <UserHistoryCountButton

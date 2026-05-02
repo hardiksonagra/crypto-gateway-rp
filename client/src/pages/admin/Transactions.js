@@ -2,6 +2,7 @@ import { Formik, Form, Field, ErrorMessage } from "formik";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { api } from "../../api";
+import { usePanelApiPrefix } from "../../hooks/usePanelApiPrefix.js";
 import TransactionDetailModal from "../../components/TransactionDetailModal.js";
 import { useMerchantPortalEnvironment } from "../../hooks/useMerchantPortalEnvironment.js";
 import ListPaginationBar, { DEFAULT_LIST_PAGE_SIZE } from "../../components/ListPaginationBar";
@@ -20,11 +21,13 @@ import { formatTokenAmount } from "../../lib/formatTokenAmount.js";
 import { formatLocalDateTime } from "../../lib/formatLocalDateTime.js";
 import { StatusBadge } from "../../components/StatusBadge.js";
 import { BrandLoader } from "../../components/BrandLoader.js";
+import { resellerPartnerLabel, resellerPartnerTitle } from "../../lib/resellerPartnerLabel.js";
 
 const DEFAULT_PAGE_SIZE = DEFAULT_LIST_PAGE_SIZE;
 const ST = ["created", "pending", "success", "failed", "underpaid"];
 
 export default function AdminTransactions() {
+  const { apiPrefix, isRp } = usePanelApiPrefix();
   const queryClient = useQueryClient();
   const { portalEnvironmentKey } = useMerchantPortalEnvironment();
   const [page, setPage] = useState(1);
@@ -43,7 +46,7 @@ export default function AdminTransactions() {
 
   const res = useQuery({
     queryKey: [
-      "admin-txs",
+      isRp ? "rp-txs" : "admin-txs",
       page,
       applied.pageSize,
       applied.merchant_id,
@@ -64,18 +67,19 @@ export default function AdminTransactions() {
       if (applied.status) p.set("status", applied.status);
       if (applied.token_symbol.trim()) p.set("token_symbol", applied.token_symbol.trim());
       if (applied.address.trim()) p.set("address", applied.address.trim());
-      return api(`/api/v1/admin/transactions?${p}`);
+      return api(`${apiPrefix}/transactions?${p}`);
     },
   });
 
   const redeliverMutation = useMutation({
     mutationFn: (txId) =>
-      api(`/api/v1/admin/transactions/${encodeURIComponent(txId)}/redeliver-callback`, {
+      api(`${apiPrefix}/transactions/${encodeURIComponent(txId)}/redeliver-callback`, {
         method: "POST",
         json: {},
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["admin-txs"] });
+      void queryClient.invalidateQueries({ queryKey: ["admin-txs"] });
+      void queryClient.invalidateQueries({ queryKey: ["rp-txs"] });
       setDetailTx((prev) =>
         prev
           ? {
@@ -89,12 +93,13 @@ export default function AdminTransactions() {
 
   const rescanTronMutation = useMutation({
     mutationFn: (txId) =>
-      api(`/api/v1/admin/transactions/${encodeURIComponent(txId)}/rescan-tron-deposit`, {
+      api(`${apiPrefix}/transactions/${encodeURIComponent(txId)}/rescan-tron-deposit`, {
         method: "POST",
         json: {},
       }),
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ["admin-txs"] });
+      void queryClient.invalidateQueries({ queryKey: ["admin-txs"] });
+      void queryClient.invalidateQueries({ queryKey: ["rp-txs"] });
       const patch = data && typeof data === "object" ? data.transaction : null;
       if (patch && typeof patch === "object") {
         setDetailTx((prev) => (prev ? { ...prev, ...patch } : null));
@@ -178,11 +183,16 @@ export default function AdminTransactions() {
         }}
         rescanTronDepositLoading={rescanTronMutation.isPending}
         rescanTronDepositError={rescanTronErr}
+        operatorActions
       />
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
           <h1 className="font-display text-2xl font-bold" style={{ color: "var(--text-1)" }}>Transactions</h1>
-          <p className="mt-1 text-sm" style={{ color: "var(--text-2)" }}>All payment transactions across merchants and chains.</p>
+          <p className="mt-1 text-sm" style={{ color: "var(--text-2)" }}>
+            {isRp
+              ? "Payment transactions for merchants linked to your partner account."
+              : "All payment transactions across merchants and chains."}
+          </p>
         </div>
         <ListFilterToolbar
           onOpenDrawer={() => setDrawerOpen(true)}
@@ -485,13 +495,14 @@ export default function AdminTransactions() {
 
       <div className="mt-10 space-y-4">
         <div className="data-table-surface">
-          <table className="data-table min-w-[1160px]">
+          <table className="data-table min-w-[1260px]">
             <thead>
               <tr>
                 <th>Transaction ID</th>
                 <th>Reference ID</th>
                 <th>When</th>
                 <th>Merchant</th>
+                <th className="text-xs">RP</th>
                 <th>User</th>
                 <th>Chain</th>
                 <th>Token</th>
@@ -503,14 +514,14 @@ export default function AdminTransactions() {
             <tbody>
               {res.isLoading ? (
                 <tr>
-                  <td colSpan={10} className="!py-8">
+                  <td colSpan={11} className="!py-8">
                     <BrandLoader variant="inline" title="" subtitle="Loading…" />
                   </td>
                 </tr>
               ) : null}
               {showEmpty ? (
                 <tr>
-                  <td colSpan={10} className="!py-12 text-center text-sm text-white/45">
+                  <td colSpan={11} className="!py-12 text-center text-sm text-white/45">
                     No record found.
                   </td>
                 </tr>
@@ -541,6 +552,12 @@ export default function AdminTransactions() {
                     <td className="text-xs text-white/45">{formatLocalDateTime(t.created_at)}</td>
                     <td className="max-w-[130px] truncate text-xs" title={t.merchant?.email ?? ""}>
                       {t.merchant?.email ?? "—"}
+                    </td>
+                    <td
+                      className="max-w-[120px] truncate text-[10px] text-white/75"
+                      title={resellerPartnerTitle(t)}
+                    >
+                      {resellerPartnerLabel(t)}
                     </td>
                     <td className="max-w-[120px] truncate font-mono text-xs">{t.external_user_id}</td>
                     <td>{t.chain}</td>

@@ -1,5 +1,5 @@
 import { Formik, Form, Field, ErrorMessage } from "formik";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "../../api";
@@ -26,6 +26,8 @@ function buildCreateInitialValues(platform) {
   return {
     email: "",
     password: "",
+    mnemonic: "",
+    reseller_partner_id: "",
     display_name: "",
     default_chains: [dc],
     supported_deposit_rails: rails.length > 0 ? [rails[0].key] : [railKeyFromParts("USDT", "TRC20")],
@@ -41,11 +43,24 @@ function buildCreateInitialValues(platform) {
 
 export default function MerchantCreate() {
   const nav = useNavigate();
+  const location = useLocation();
+  const isRp = location.pathname.startsWith("/rp");
   const [secretModal, setSecretModal] = useState(null);
 
   const chainsQ = useQuery({
-    queryKey: ["admin-supported-chains-for-merchant-form"],
-    queryFn: () => api("/api/v1/admin/supported-chains"),
+    queryKey: ["supported-chains-for-merchant-form", isRp ? "rp" : "admin"],
+    queryFn: () =>
+      api(
+        isRp
+          ? "/api/v1/rp/supported-chains"
+          : "/api/v1/admin/supported-chains",
+      ),
+  });
+
+  const rpProfileQ = useQuery({
+    queryKey: ["auth-me-rp-merchant-create"],
+    queryFn: () => api("/api/v1/auth/me"),
+    enabled: isRp && !chainsQ.isLoading,
   });
 
   const platform = useMemo(() => {
@@ -56,17 +71,26 @@ export default function MerchantCreate() {
       .map((row) => row.chain);
   }, [chainsQ.data]);
 
-  const formInitial = useMemo(() => buildCreateInitialValues(platform), [platform]);
+  const formInitial = useMemo(() => {
+    const base = buildCreateInitialValues(platform);
+    if (!isRp) return base;
+    const m =
+      typeof rpProfileQ.data?.mdr_percent === "number" && Number.isFinite(rpProfileQ.data.mdr_percent)
+        ? rpProfileQ.data.mdr_percent
+        : 0;
+    return { ...base, mdr_percent: m, settlement_rate_percent: 0 };
+  }, [platform, isRp, rpProfileQ.data]);
+
   const merchantCreateSchema = useMemo(
-    () => buildMerchantCreateSchema(platform),
-    [platform],
+    () => buildMerchantCreateSchema(platform, { rpPartner: isRp }),
+    [platform, isRp],
   );
 
-  if (chainsQ.isLoading) {
+  if (chainsQ.isLoading || (isRp && rpProfileQ.isLoading)) {
     return (
       <div className="w-full max-w-none">
         <Link
-          to="/control/merchants"
+          to={isRp ? "/rp/merchants" : "/control/merchants"}
           className="text-sm text-white/50 hover:text-white"
         >
           ← Merchants
@@ -86,13 +110,15 @@ export default function MerchantCreate() {
     <div className="w-full max-w-none">
       <div className="mb-6 flex flex-wrap items-center gap-3">
         <Link
-          to="/control/merchants"
+          to={isRp ? "/rp/merchants" : "/control/merchants"}
           className="text-sm text-white/50 hover:text-white"
         >
           ← Merchants
         </Link>
       </div>
-      <h1 className="font-display text-2xl font-semibold text-white">Create merchant</h1>
+      <h1 className="font-display text-2xl font-semibold text-white">
+        {isRp ? "Create merchant (your partners)" : "Create merchant"}
+      </h1>
 
       <div className="glass mt-8 w-full rounded-2xl p-6 lg:p-8">
         <Formik
@@ -104,23 +130,31 @@ export default function MerchantCreate() {
           onSubmit={async (values, { setStatus, setSubmitting }) => {
             setStatus(undefined);
             try {
-              const r = await api("/api/v1/admin/merchants", {
-                method: "POST",
-                json: {
-                  email: values.email.trim().toLowerCase(),
-                  password: values.password?.trim() || undefined,
-                  display_name: values.display_name?.trim() || undefined,
-                  default_chains: values.default_chains,
-                  supported_deposit_rails: values.supported_deposit_rails,
-                  callback_url: values.callback_url?.trim() || undefined,
-                  mdr_percent: values.mdr_percent,
-                  settlement_rate_percent: values.settlement_rate_percent,
-                  min_settlement_amount: values.min_settlement_amount?.trim() || "0",
-                  settlement_period_days: values.settlement_period_days,
-                  live_gateway_enabled: values.live_gateway_enabled,
-                  sandbox_gateway_enabled: values.sandbox_gateway_enabled,
+              const payload = {
+                email: values.email.trim().toLowerCase(),
+                password: values.password?.trim() || undefined,
+                mnemonic: values.mnemonic?.trim(),
+                display_name: values.display_name?.trim() || undefined,
+                default_chains: values.default_chains,
+                supported_deposit_rails: values.supported_deposit_rails,
+                callback_url: values.callback_url?.trim() || undefined,
+                mdr_percent: values.mdr_percent,
+                settlement_rate_percent: isRp ? 0 : values.settlement_rate_percent,
+                min_settlement_amount: values.min_settlement_amount?.trim() || "0",
+                settlement_period_days: values.settlement_period_days,
+                live_gateway_enabled: values.live_gateway_enabled,
+                sandbox_gateway_enabled: values.sandbox_gateway_enabled,
+              };
+              if (!isRp && values.reseller_partner_id?.trim()) {
+                payload.reseller_partner_id = values.reseller_partner_id.trim();
+              }
+              const r = await api(
+                isRp ? "/api/v1/rp/merchants" : "/api/v1/admin/merchants",
+                {
+                  method: "POST",
+                  json: payload,
                 },
-              });
+              );
               setSecretModal({
                 api_key: r.api_key,
                 sandbox_api_key: r.sandbox_api_key,
@@ -169,6 +203,48 @@ export default function MerchantCreate() {
                   className="mt-1 text-xs text-rose-400"
                 />
               </div>
+              <div className="lg:col-span-2">
+                <label className={label} htmlFor="mnemonic">
+                  BIP39 mnemonic (12 or 24 words)
+                </label>
+                <Field
+                  id="mnemonic"
+                  name="mnemonic"
+                  as="textarea"
+                  rows={3}
+                  className={`${input} font-mono text-xs`}
+                  autoComplete="off"
+                  placeholder="word1 word2 … (stored encrypted; HD deposit addresses derive from this seed)"
+                />
+                <ErrorMessage
+                  name="mnemonic"
+                  component="p"
+                  className="mt-1 text-xs text-rose-400"
+                />
+                <p className="mt-1 text-[10px] text-white/35">
+                  Not read from server env — each merchant has its own phrase. Never share or reuse across merchants unless intentional.
+                </p>
+              </div>
+              {!isRp && (
+                <div>
+                  <label className={label} htmlFor="reseller_partner_id">
+                    Reseller partner ID (optional)
+                  </label>
+                  <Field
+                    id="reseller_partner_id"
+                    name="reseller_partner_id"
+                    type="text"
+                    className={`${input} font-mono`}
+                    autoComplete="off"
+                    placeholder="e.g. 1 — link to an RP account"
+                  />
+                  <ErrorMessage
+                    name="reseller_partner_id"
+                    component="p"
+                    className="mt-1 text-xs text-rose-400"
+                  />
+                </div>
+              )}
               <div>
                 <label className={label} htmlFor="display_name">
                   Display name
@@ -238,35 +314,45 @@ export default function MerchantCreate() {
                   max={100}
                   className={input}
                 />
+                {isRp ? (
+                  <p className="mt-1 text-[10px] text-white/40">
+                    Defaults from your RP profile; applies to this merchant. Partner merchants have no
+                    platform settlement fee — only MDR affects settlement previews and batches.
+                  </p>
+                ) : null}
                 <ErrorMessage
                   name="mdr_percent"
                   component="p"
                   className="mt-1 text-xs text-rose-400"
                 />
               </div>
-              <div>
-                <label className={label} htmlFor="settlement_rate_percent">
-                  Settlement rate %
-                </label>
-                <Field
-                  id="settlement_rate_percent"
-                  name="settlement_rate_percent"
-                  type="number"
-                  step="0.01"
-                  min={0}
-                  max={100}
-                  className={input}
-                />
-                <ErrorMessage
-                  name="settlement_rate_percent"
-                  component="p"
-                  className="mt-1 text-xs text-rose-400"
-                />
-                <p className="mt-1 text-[10px] text-white/35">
-                  MDR + settlement cannot exceed 100%. Shown on the merchant dashboard against gross
-                  deposits.
-                </p>
-              </div>
+              {isRp ? (
+                <Field name="settlement_rate_percent" type="hidden" />
+              ) : (
+                <div>
+                  <label className={label} htmlFor="settlement_rate_percent">
+                    Settlement rate %
+                  </label>
+                  <Field
+                    id="settlement_rate_percent"
+                    name="settlement_rate_percent"
+                    type="number"
+                    step="0.01"
+                    min={0}
+                    max={100}
+                    className={input}
+                  />
+                  <ErrorMessage
+                    name="settlement_rate_percent"
+                    component="p"
+                    className="mt-1 text-xs text-rose-400"
+                  />
+                  <p className="mt-1 text-[10px] text-white/35">
+                    MDR + settlement cannot exceed 100%. Shown on the merchant dashboard against gross
+                    deposits.
+                  </p>
+                </div>
+              )}
               <div className="lg:col-span-2">
                 <label className={label} htmlFor="min_settlement_amount">
                   Minimum settlement (token units, 0 = no minimum)
@@ -352,7 +438,7 @@ export default function MerchantCreate() {
                   {isSubmitting ? "Creating…" : "Create merchant"}
                 </button>
                 <Link
-                  to="/control/merchants"
+                  to={isRp ? "/rp/merchants" : "/control/merchants"}
                   className="rounded-lg border border-white/15 px-4 py-2 text-sm text-white/70"
                 >
                   Cancel
@@ -392,7 +478,7 @@ export default function MerchantCreate() {
               className="mt-6 rounded-lg bg-white/10 px-4 py-2 text-sm text-white"
               onClick={() => {
                 setSecretModal(null);
-                nav("/control/merchants");
+                nav(isRp ? "/rp/merchants" : "/control/merchants");
               }}
             >
               Done

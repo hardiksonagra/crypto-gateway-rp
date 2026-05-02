@@ -11,6 +11,7 @@ import {
 import {
   PORTAL_ROLE_ADMIN,
   PORTAL_ROLE_MERCHANT,
+  PORTAL_ROLE_RP,
 } from "../constants/portal-role.js";
 import { formatAtomicAmountString } from "../lib/format-atomic-amount.js";
 import {
@@ -131,6 +132,10 @@ import {
   buildAllPendingPreviews,
   executeBatchSettlement,
 } from "../services/settlement-batch.js";
+import {
+  createMerchantFromPanelBody,
+  resolveOptionalResellerPartnerIdForAdmin,
+} from "../services/merchant-account-create.js";
 
 const router = Router();
 const adminOnly = requireAuth(PORTAL_ROLE_ADMIN);
@@ -742,6 +747,8 @@ router.get("/api/v1/admin/merchants", async (req, res) => {
         settlementRatePercent: true,
         minSettlementAmount: true,
         settlementPeriodDays: true,
+        resellerPartnerId: true,
+        resellerPartner: { select: { id: true, email: true, displayName: true } },
       },
     }),
   ]);
@@ -804,124 +811,226 @@ router.get("/api/v1/admin/merchants", async (req, res) => {
       settlement_period_days: m.settlementPeriodDays,
       end_users_live: liveUserCounts.get(m.id) ?? 0,
       end_users_sandbox: sandboxUserCounts.get(m.id) ?? 0,
+      reseller_partner_id: m.resellerPartnerId ?? null,
+      reseller_partner_email: m.resellerPartner?.email ?? null,
+      reseller_partner_display_name: m.resellerPartner?.displayName ?? null,
     })),
+  });
+});
+
+router.post("/api/v1/admin/reseller-partners", async (req, res) => {
+  const body = req.body ?? {};
+  const email = body.email?.trim().toLowerCase();
+  const password = body.password?.trim();
+  if (!email || !password) {
+    res.status(400).json({ error: "email_and_password_required" });
+    return;
+  }
+  const mdrRaw = parseFeePercent(body.mdr_percent);
+  if (mdrRaw === null || !isValidFeePercent(mdrRaw)) {
+    res.status(400).json({ error: "invalid_mdr_percent" });
+    return;
+  }
+
+  try {
+    const row = await prisma.resellerPartner.create({
+      data: {
+        email,
+        passwordHash: await bcrypt.hash(password, 10),
+        displayName: body.display_name?.trim() || null,
+        mdrPercent: mdrRaw,
+      },
+    });
+    res.status(201).json({
+      id: row.id,
+      email: row.email,
+      display_name: row.displayName,
+      mdr_percent: Number(row.mdrPercent),
+    });
+  } catch (e) {
+    if (
+      e instanceof Prisma.PrismaClientKnownRequestError &&
+      e.code === "P2002"
+    ) {
+      res.status(409).json({ error: "email_already_exists" });
+      return;
+    }
+    logger.error("admin create reseller partner", { err: String(e) });
+    res.status(500).json({ error: "internal error" });
+  }
+});
+
+router.get("/api/v1/admin/reseller-partners", async (_req, res) => {
+  const rows = await prisma.resellerPartner.findMany({
+    where: { ...ACTIVE },
+    orderBy: { id: "asc" },
+    select: {
+      id: true,
+      email: true,
+      displayName: true,
+      mdrPercent: true,
+      createdAt: true,
+      isActive: true,
+    },
+  });
+  const ids = rows.map((r) => r.id);
+  const counts =
+    ids.length === 0
+      ? []
+      : await prisma.merchant.groupBy({
+          by: ["resellerPartnerId"],
+          where: {
+            resellerPartnerId: { in: ids },
+            deletedAt: null,
+          },
+          _count: { _all: true },
+        });
+  const countByRp = new Map(
+    counts.map((c) => [c.resellerPartnerId, c._count._all]),
+  );
+  res.json({
+    reseller_partners: rows.map((r) => ({
+      id: r.id,
+      email: r.email,
+      display_name: r.displayName,
+      mdr_percent: Number(r.mdrPercent),
+      created_at: r.createdAt,
+      is_active: r.isActive,
+      merchant_count: countByRp.get(r.id) ?? 0,
+    })),
+  });
+});
+
+router.get("/api/v1/admin/reseller-partners/:id", async (req, res) => {
+  const id = parseInt(String(req.params.id ?? "").trim(), 10);
+  if (!Number.isInteger(id) || id < 1) {
+    res.status(400).json({ error: "invalid_id" });
+    return;
+  }
+  const row = await prisma.resellerPartner.findFirst({
+    where: { id, ...ACTIVE },
+  });
+  if (!row) {
+    res.status(404).json({ error: "not_found" });
+    return;
+  }
+  const merchantCount = await prisma.merchant.count({
+    where: { resellerPartnerId: id, deletedAt: null },
+  });
+  res.json({
+    id: row.id,
+    email: row.email,
+    display_name: row.displayName,
+    mdr_percent: Number(row.mdrPercent),
+    is_active: row.isActive,
+    created_at: row.createdAt,
+    updated_at: row.updatedAt,
+    merchant_count: merchantCount,
+  });
+});
+
+router.patch("/api/v1/admin/reseller-partners/:id", async (req, res) => {
+  const id = parseInt(String(req.params.id ?? "").trim(), 10);
+  if (!Number.isInteger(id) || id < 1) {
+    res.status(400).json({ error: "invalid_id" });
+    return;
+  }
+  const existing = await prisma.resellerPartner.findFirst({
+    where: { id, deletedAt: null },
+  });
+  if (!existing) {
+    res.status(404).json({ error: "not_found" });
+    return;
+  }
+  const body = req.body ?? {};
+  /** @type {import("@prisma/client").Prisma.ResellerPartnerUpdateInput} */
+  const data = {};
+  if (body.display_name !== undefined) {
+    data.displayName = body.display_name?.trim() || null;
+  }
+  if (typeof body.is_active === "boolean") {
+    data.isActive = body.is_active;
+  }
+  if (body.mdr_percent !== undefined) {
+    const m = parseFeePercent(body.mdr_percent);
+    if (m === null || !isValidFeePercent(m)) {
+      res.status(400).json({ error: "invalid_mdr_percent" });
+      return;
+    }
+    data.mdrPercent = m;
+  }
+  const newPass = body.password?.trim();
+  if (newPass) {
+    data.passwordHash = await bcrypt.hash(newPass, 10);
+  }
+  if (body.soft_delete === true) {
+    data.deletedAt = new Date();
+    data.isActive = false;
+  }
+  if (Object.keys(data).length === 0) {
+    res.status(400).json({ error: "no_updates" });
+    return;
+  }
+  try {
+    await prisma.resellerPartner.update({ where: { id }, data });
+    res.json({ ok: true });
+  } catch (e) {
+    logger.error("admin patch reseller partner", { err: String(e) });
+    res.status(500).json({ error: "internal error" });
+  }
+});
+
+/** Admin-only: issue an RP portal JWT (same shape as POST /auth/login/rp). */
+router.post("/api/v1/admin/reseller-partners/:id/impersonate", async (req, res) => {
+  const id = parseInt(String(req.params.id ?? "").trim(), 10);
+  if (!Number.isInteger(id) || id < 1) {
+    res.status(400).json({ error: "invalid_id" });
+    return;
+  }
+  const row = await prisma.resellerPartner.findFirst({
+    where: { id, deletedAt: null },
+    select: {
+      id: true,
+      email: true,
+      displayName: true,
+      isActive: true,
+    },
+  });
+  if (!row) {
+    res.status(404).json({ error: "not_found" });
+    return;
+  }
+  if (!row.isActive) {
+    res.status(403).json({ error: "rp_inactive" });
+    return;
+  }
+  const token = signAuthToken({ sub: String(row.id), role: PORTAL_ROLE_RP });
+  res.json({
+    token,
+    role: PORTAL_ROLE_RP,
+    email: row.email,
+    display_name: row.displayName,
   });
 });
 
 router.post("/api/v1/admin/merchants", async (req, res) => {
   const body = req.body ?? {};
-  const email = body.email?.trim().toLowerCase();
-  if (!email) {
-    res.status(400).json({ error: "email required" });
+  const rpResolve = await resolveOptionalResellerPartnerIdForAdmin(
+    body.reseller_partner_id,
+  );
+  if ("error" in rpResolve) {
+    res.status(400).json({ error: rpResolve.error });
     return;
   }
-  const parsedChains = parseDefaultChainsArray(body.default_chains, {
-    minOne: true,
-    ignoreGatewayTronUsdtOnly: true,
-  });
-  if ("error" in parsedChains && parsedChains.error) {
-    res.status(400).json({ error: parsedChains.error });
-    return;
-  }
-  let constraintKeys = null;
-  let supportedKeysToStore;
-  if (body.supported_deposit_rails !== undefined) {
-    const pr = parseSupportedDepositRailsInput(
-      body.supported_deposit_rails,
-      parsedChains.chains,
-      { ignoreGatewayTronUsdtOnly: true },
-    );
-    if ("error" in pr) {
-      res.status(400).json({ error: pr.error });
+  try {
+    const result = await createMerchantFromPanelBody(body, {
+      resellerPartnerId: rpResolve.id,
+    });
+    if (!result.ok) {
+      res.status(result.status).json(result.json);
       return;
     }
-    constraintKeys = pr.keys;
-    supportedKeysToStore = pr.keys;
-  }
-  const picked = pickMerchantDefaultPair(
-    body,
-    parsedChains.chains,
-    constraintKeys,
-  );
-  if ("error" in picked && picked.error) {
-    res.status(400).json({ error: picked.error });
-    return;
-  }
-  if (supportedKeysToStore === undefined) {
-    supportedKeysToStore = [depositRailKey(picked.currency, picked.network)];
-  }
-  const password =
-    body.password?.trim() || crypto.randomBytes(12).toString("base64url");
-  const apiSecret = generateApiKey();
-
-  const mdrP = parseFeePercent(body.mdr_percent);
-  const settlementP = parseFeePercent(body.settlement_rate_percent);
-  if (mdrP === null || settlementP === null) {
-    res.status(400).json({ error: "invalid_fee_percent" });
-    return;
-  }
-  if (!isValidFeePercent(mdrP) || !isValidFeePercent(settlementP)) {
-    res.status(400).json({
-      error: "fee_percent_range",
-      message: "MDR and settlement rate must be between 0 and 100.",
-    });
-    return;
-  }
-  if (mdrP + settlementP > 100) {
-    res.status(400).json({
-      error: "fee_percent_sum",
-      message: "MDR + settlement rate cannot exceed 100%.",
-    });
-    return;
-  }
-
-  const minSettle = validateAndNormalizeHumanMinSettlement(body.min_settlement_amount);
-  if (!minSettle.ok) {
-    res.status(400).json({
-      error: "invalid_min_settlement_amount",
-      message: minSettle.error,
-    });
-    return;
-  }
-
-  const periodDays = parseSettlementPeriodDays(body.settlement_period_days);
-  if (periodDays === null) {
-    res.status(400).json({
-      error: "invalid_settlement_period_days",
-      message: "Use a whole number of days from 0 to 3650.",
-    });
-    return;
-  }
-
-  try {
-    const row = await prisma.merchant.create({
-      data: {
-        email,
-        passwordHash: await bcrypt.hash(password, 10),
-        displayName: body.display_name?.trim() || null,
-        defaultChains: parsedChains.chains,
-        defaultCurrency: picked.currency,
-        defaultNetwork: picked.network,
-        supportedDepositRails: supportedKeysToStore,
-        callbackUrl: body.callback_url?.trim() || null,
-        apiKeyHash: hashApiKey(apiSecret),
-        apiKeyHint: apiSecret.slice(-6),
-        apiKeyCipher: encryptMerchantApiKey(apiSecret),
-        sandboxApiKeyHash: hashApiKey(apiSecret),
-        sandboxApiKeyHint: apiSecret.slice(-6),
-        sandboxApiKeyCipher: encryptMerchantApiKey(apiSecret),
-        mdrPercent: mdrP,
-        settlementRatePercent: settlementP,
-        minSettlementAmount: minSettle.raw,
-        settlementPeriodDays: periodDays,
-        ...(typeof body.live_gateway_enabled === "boolean"
-          ? { liveGatewayEnabled: body.live_gateway_enabled }
-          : {}),
-        ...(typeof body.sandbox_gateway_enabled === "boolean"
-          ? { sandboxGatewayEnabled: body.sandbox_gateway_enabled }
-          : {}),
-      },
-    });
+    const { row, apiSecret, password } = result;
     res.status(201).json({
       id: row.id,
       email: row.email,
@@ -939,17 +1048,11 @@ router.post("/api/v1/admin/merchants", async (req, res) => {
       temporary_password: body.password?.trim() ? undefined : password,
       api_key: apiSecret,
       sandbox_api_key: apiSecret,
+      reseller_partner_id: row.resellerPartnerId ?? null,
       message:
-        "One gateway secret (cpg_…) for live and sandbox: gateway calls use the merchant portal environment (Settings) by default; optional JSON gateway_environment overrides when needed. The merchant can view the key in the portal while logged in.",
+        "One gateway secret (cpg_…) for live and sandbox. Deposit addresses derive from the BIP39 phrase you stored (encrypted). Optional: link to an RP via reseller_partner_id.",
     });
   } catch (e) {
-    if (
-      e instanceof Prisma.PrismaClientKnownRequestError &&
-      e.code === "P2002"
-    ) {
-      res.status(409).json({ error: "email_already_exists" });
-      return;
-    }
     logger.error("admin create merchant", { err: String(e) });
     res.status(500).json({ error: "internal error" });
   }
@@ -1209,6 +1312,8 @@ router.get("/api/v1/admin/merchants/:id", async (req, res) => {
       settlementRatePercent: true,
       minSettlementAmount: true,
       settlementPeriodDays: true,
+      resellerPartnerId: true,
+      resellerPartner: { select: { id: true, email: true, displayName: true } },
     },
   });
   if (!row) {
@@ -1254,6 +1359,9 @@ router.get("/api/v1/admin/merchants/:id", async (req, res) => {
     settlement_period_days: row.settlementPeriodDays,
     end_users_live: endUsersLive,
     end_users_sandbox: endUsersSandbox,
+    reseller_partner_id: row.resellerPartnerId ?? null,
+    reseller_partner_email: row.resellerPartner?.email ?? null,
+    reseller_partner_display_name: row.resellerPartner?.displayName ?? null,
     platform_enabled_chains: listMerchantSelectableChainsForAdmin(re.chainEnabledRecord),
   });
 });
@@ -1364,7 +1472,15 @@ router.get("/api/v1/admin/users", async (req, res) => {
       skip,
       take,
       include: {
-        merchant: { select: { id: true, email: true, displayName: true } },
+        merchant: {
+          select: {
+            id: true,
+            email: true,
+            displayName: true,
+            resellerPartnerId: true,
+            resellerPartner: { select: { id: true, email: true, displayName: true } },
+          },
+        },
         _count: { select: { assignedWallets: true } },
       },
     }),
@@ -1384,10 +1500,21 @@ router.get("/api/v1/admin/users", async (req, res) => {
     users: rows.map((u) => {
       const asg = assignStats.get(u.id);
       const pay = payerStats.get(u.id);
+      const merch = u.merchant;
       return {
         id: u.id,
         external_user_id: u.externalUserId,
-        merchant: u.merchant,
+        merchant: {
+          id: merch.id,
+          email: merch.email,
+          display_name: merch.displayName,
+          reseller_partner_id: merch.resellerPartnerId ?? null,
+          reseller_partner_email: merch.resellerPartner?.email ?? null,
+          reseller_partner_display_name: merch.resellerPartner?.displayName ?? null,
+        },
+        reseller_partner_id: merch.resellerPartnerId ?? null,
+        reseller_partner_email: merch.resellerPartner?.email ?? null,
+        reseller_partner_display_name: merch.resellerPartner?.displayName ?? null,
         wallets_now_assigned: u._count.assignedWallets,
         wallet_assignment_event_count: asg?.event_count ?? 0,
         distinct_wallets_in_assignment_log: asg?.distinct_wallets ?? 0,
@@ -1621,14 +1748,26 @@ router.get("/api/v1/admin/transactions", async (req, res) => {
               payerUser: {
                 include: {
                   merchant: {
-                    select: { id: true, email: true, displayName: true },
+                    select: {
+                      id: true,
+                      email: true,
+                      displayName: true,
+                      resellerPartnerId: true,
+                      resellerPartner: { select: { id: true, email: true, displayName: true } },
+                    },
                   },
                 },
               },
               wallet: {
                 include: {
                   merchant: {
-                    select: { id: true, email: true, displayName: true },
+                    select: {
+                      id: true,
+                      email: true,
+                      displayName: true,
+                      resellerPartnerId: true,
+                      resellerPartner: { select: { id: true, email: true, displayName: true } },
+                    },
                   },
                   assignedUser: { select: { id: true, externalUserId: true } },
                 },
@@ -1657,6 +1796,17 @@ router.get("/api/v1/admin/transactions", async (req, res) => {
     transactions: rows.map((t) => {
       const endUser = t.payerUser ?? t.wallet.assignedUser;
       const merch = t.wallet.merchant;
+      const rpId = merch.resellerPartnerId ?? null;
+      const rpEmail = merch.resellerPartner?.email ?? null;
+      const rpDisplay = merch.resellerPartner?.displayName ?? null;
+      const merchantOut = {
+        id: merch.id,
+        email: merch.email,
+        display_name: merch.displayName ?? null,
+        reseller_partner_id: rpId,
+        reseller_partner_email: rpEmail,
+        reseller_partner_display_name: rpDisplay,
+      };
       return {
         id: t.id,
         transaction_id: t.referenceTransactionId ?? null,
@@ -1682,9 +1832,12 @@ router.get("/api/v1/admin/transactions", async (req, res) => {
         end_user_id: endUser?.id ?? null,
         external_user_id: endUser?.externalUserId ?? null,
         gateway_environment: t.wallet.environment,
-        merchant: merch,
-        merchant_id: merch.id,
-        merchant_email: merch.email,
+        merchant: merchantOut,
+        merchant_id: merchantOut.id,
+        merchant_email: merchantOut.email,
+        reseller_partner_id: rpId,
+        reseller_partner_email: rpEmail,
+        reseller_partner_display_name: rpDisplay,
         created_at: t.createdAt,
         updated_at: t.updatedAt,
       };
@@ -1880,7 +2033,15 @@ router.get("/api/v1/admin/wallets", async (req, res) => {
 
   const walletInclude = {
     _count: { select: { transactions: true } },
-    merchant: { select: { id: true, email: true, displayName: true } },
+    merchant: {
+      select: {
+        id: true,
+        email: true,
+        displayName: true,
+        resellerPartnerId: true,
+        resellerPartner: { select: { id: true, email: true, displayName: true } },
+      },
+    },
     assignedUser: { select: { id: true, externalUserId: true } },
   };
 
@@ -1944,7 +2105,17 @@ router.get("/api/v1/admin/wallets", async (req, res) => {
         derivation_index: w.derivationIndex,
         end_user_id: w.assignedUser?.id ?? null,
         external_user_id: w.assignedUser?.externalUserId ?? null,
-        merchant: w.merchant,
+        merchant: {
+          id: w.merchant.id,
+          email: w.merchant.email,
+          display_name: w.merchant.displayName,
+          reseller_partner_id: w.merchant.resellerPartnerId ?? null,
+          reseller_partner_email: w.merchant.resellerPartner?.email ?? null,
+          reseller_partner_display_name: w.merchant.resellerPartner?.displayName ?? null,
+        },
+        reseller_partner_id: w.merchant.resellerPartnerId ?? null,
+        reseller_partner_email: w.merchant.resellerPartner?.email ?? null,
+        reseller_partner_display_name: w.merchant.resellerPartner?.displayName ?? null,
         gateway_environment: w.environment,
         created_at: w.createdAt,
         scan_expires_at: exp?.toISOString() ?? null,
@@ -2407,6 +2578,8 @@ async function resolveMerchantByEmailForSettlements(emailRaw) {
       settlementRatePercent: true,
       minSettlementAmount: true,
       settlementPeriodDays: true,
+      resellerPartnerId: true,
+      resellerPartner: { select: { email: true, displayName: true } },
     },
   });
   if (!merchant) {
@@ -2441,7 +2614,14 @@ router.get("/api/v1/admin/settlements", async (req, res) => {
       skip,
       take,
       include: {
-        merchant: { select: { email: true, displayName: true } },
+        merchant: {
+          select: {
+            email: true,
+            displayName: true,
+            resellerPartnerId: true,
+            resellerPartner: { select: { email: true, displayName: true } },
+          },
+        },
       },
     }),
   ]);
@@ -2454,6 +2634,9 @@ router.get("/api/v1/admin/settlements", async (req, res) => {
       merchant_id: s.merchantId,
       merchant_email: s.merchant.email,
       merchant_display_name: s.merchant.displayName,
+      reseller_partner_id: s.merchant.resellerPartnerId ?? null,
+      reseller_partner_email: s.merchant.resellerPartner?.email ?? null,
+      reseller_partner_display_name: s.merchant.resellerPartner?.displayName ?? null,
       environment: s.environment,
       chain: s.chain,
       token_symbol: s.tokenSymbol,
@@ -2487,6 +2670,9 @@ router.get("/api/v1/admin/settlements/pending-preview", async (req, res) => {
     merchant_id: merchantId,
     merchant_email: merchant.email,
     merchant_display_name: merchant.displayName,
+    reseller_partner_id: merchant.resellerPartnerId ?? null,
+    reseller_partner_email: merchant.resellerPartner?.email ?? null,
+    reseller_partner_display_name: merchant.resellerPartner?.displayName ?? null,
     environment,
     fee_rates: {
       mdr_percent: Number(merchant.mdrPercent),

@@ -38,6 +38,7 @@ export function AuthEntryGate({ children }) {
         if (cancelled) return;
         if (u?.role === "ADMIN") setPhase("admin");
         else if (u?.role === "MERCHANT") setPhase("merchant");
+        else if (u?.role === "RP") setPhase("rp");
         else setPhase("anonymous");
       } catch (e) {
         if (cancelled) return;
@@ -82,6 +83,9 @@ export function AuthEntryGate({ children }) {
   }
   if (phase === "merchant") {
     return <Navigate to="/" replace />;
+  }
+  if (phase === "rp") {
+    return <Navigate to="/rp" replace />;
   }
 
   return children;

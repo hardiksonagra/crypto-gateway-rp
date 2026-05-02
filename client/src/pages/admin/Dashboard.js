@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useState } from "react";
 import { api } from "../../api";
+import { usePanelApiPrefix } from "../../hooks/usePanelApiPrefix.js";
 import { useMerchantPortalEnvironment } from "../../hooks/useMerchantPortalEnvironment.js";
 import { useTheme } from "../../hooks/useTheme.js";
 import { BrandLoader } from "../../components/BrandLoader.js";
@@ -531,6 +532,7 @@ function dashRangePillClass(isDark, active) {
 }
 
 export default function AdminDashboard() {
+  const { apiPrefix, isRp } = usePanelApiPrefix();
   const { portalEnvironmentKey, environment } = useMerchantPortalEnvironment();
   const { theme } = useTheme();
   const isDark = theme === "dark";
@@ -545,7 +547,7 @@ export default function AdminDashboard() {
 
   const { data, isLoading } = useQuery({
     queryKey: [
-      "admin-dash",
+      isRp ? "rp-dash" : "admin-dash",
       portalEnvironmentKey,
       dashTz,
       metricsAll,
@@ -569,7 +571,7 @@ export default function AdminDashboard() {
         p.set("metrics_from", lo);
         p.set("metrics_to", hi);
       }
-      return api(`/api/v1/admin/dashboard?${p}`);
+      return api(`${apiPrefix}/dashboard?${p}`);
     },
   });
 
@@ -579,7 +581,7 @@ export default function AdminDashboard() {
         variant="section"
         title=""
         subtitle="Loading dashboard…"
-        aria-label="Loading admin dashboard"
+        aria-label={isRp ? "Loading partner dashboard" : "Loading admin dashboard"}
       />
     );
   }
@@ -618,11 +620,24 @@ export default function AdminDashboard() {
             Live metrics
           </h2>
           <p className="mt-1 max-w-3xl text-sm leading-relaxed text-pretty" style={{ color: "var(--text-2)" }}>
-            Merchants are global; wallet and user counts follow your portal environment (
-            <span className="font-medium" style={{ color: "var(--text-1)" }}>
-              {envLabel}
-            </span>
-            ). Transaction totals respect the date range (local calendar days).
+            {isRp ? (
+              <>
+                Counts include only merchants linked to your partner account. Lists follow your portal
+                environment (
+                <span className="font-medium" style={{ color: "var(--text-1)" }}>
+                  {envLabel}
+                </span>
+                ). Transaction totals respect the date range (local calendar days).
+              </>
+            ) : (
+              <>
+                Merchants are global; wallet and user counts follow your portal environment (
+                <span className="font-medium" style={{ color: "var(--text-1)" }}>
+                  {envLabel}
+                </span>
+                ). Transaction totals respect the date range (local calendar days).
+              </>
+            )}
           </p>
         </div>
 

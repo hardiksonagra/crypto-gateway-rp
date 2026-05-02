@@ -4,13 +4,14 @@ import { useBreadcrumbExtras } from "../contexts/BreadcrumbExtrasContext.js";
 import {
   buildAdminBreadcrumbs,
   buildMerchantBreadcrumbs,
+  buildRpBreadcrumbs,
 } from "../lib/shellBreadcrumbs.js";
 
 /**
  * Auto trail from pathname + optional merchant detail label (admin).
  *
  * @param {object} props
- * @param {"admin" | "merchant"} props.variant Which app routes to map (admin vs merchant paths).
+ * @param {"admin" | "merchant" | "rp"} props.variant Which app routes to map (admin vs merchant vs RP paths).
  * @param {"admin" | "merchant"} [props.uiVariant] Breadcrumb colors; defaults to `variant`. Use `"admin"` for theme-aware shell top bar on merchant.
  * @param {string} [props.className]
  */
@@ -25,12 +26,17 @@ export default function ShellBreadcrumbs({
   const items =
     variant === "admin"
       ? buildAdminBreadcrumbs(pathname, { merchantCrumb })
-      : buildMerchantBreadcrumbs(pathname);
+      : variant === "rp"
+        ? buildRpBreadcrumbs(pathname, { merchantCrumb })
+        : buildMerchantBreadcrumbs(pathname);
+
+  const breadcrumbVariant =
+    uiVariant ?? (variant === "rp" ? "admin" : variant);
 
   return (
     <Breadcrumbs
       items={items}
-      variant={uiVariant ?? variant}
+      variant={breadcrumbVariant}
       className={className}
     />
   );

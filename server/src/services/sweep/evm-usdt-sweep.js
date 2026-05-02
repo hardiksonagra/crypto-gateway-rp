@@ -1,6 +1,7 @@
 import { Chain } from "@prisma/client";
 import { Contract, HDNodeWallet, JsonRpcProvider, ethers } from "ethers";
-import { env, getErc20Contracts } from "../../config/env.js";
+import { getErc20Contracts } from "../../config/env.js";
+import { getMerchantWalletMnemonic } from "../../lib/merchant-mnemonic.js";
 import { re } from "../../config/runtime-env.js";
 import { chainToRpcUrl, chainToStaticNetwork } from "../../config/chains.js";
 import { parseWalletDbId } from "../../lib/parse-wallet-db-id.js";
@@ -164,8 +165,9 @@ export async function sweepEvmUsdtOne(walletId, chain, opts = {}) {
     return { ok: false, error: "SOURCE_IS_DESTINATION" };
   }
 
+  const mnemonicPhrase = await getMerchantWalletMnemonic(wallet.merchantId);
   const path = `m/44'/60'/0'/0/${wallet.derivationIndex}`;
-  const signer = HDNodeWallet.fromPhrase(env.mnemonic, undefined, path);
+  const signer = HDNodeWallet.fromPhrase(mnemonicPhrase, undefined, path);
   if (signer.address.toLowerCase() !== wallet.address.toLowerCase()) {
     logger.error("evm usdt sweep: derived address mismatch", {
       walletId,

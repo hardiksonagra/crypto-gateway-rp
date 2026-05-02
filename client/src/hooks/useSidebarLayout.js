@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 
 /**
  * Collapsed = narrow icon rail (md+). Mobile drawer open state separate.
- * @param {"admin"|"merchant"} scope Persist collapse per portal.
+ * @param {"admin"|"merchant"|"rp"} scope Persist collapse per portal.
  */
 export function useSidebarLayout(scope) {
   const storageKey = `cpg_sidebar_collapsed_${scope}`;

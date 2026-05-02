@@ -22,6 +22,7 @@ import { merchantFilterSchema } from "../../admin/merchantSchemas";
 import ConfirmModal from "../../components/ConfirmModal";
 import { StatusBadge } from "../../components/StatusBadge.js";
 import { BrandLoader } from "../../components/BrandLoader.js";
+import { resellerPartnerLabel, resellerPartnerTitle } from "../../lib/resellerPartnerLabel.js";
 
 const DEFAULT_PAGE_SIZE = DEFAULT_LIST_PAGE_SIZE;
 
@@ -575,11 +576,12 @@ export default function AdminMerchants() {
 
       <div className="mt-10 space-y-4">
         <div className="data-table-surface">
-          <table className="data-table min-w-[880px]">
+          <table className="data-table min-w-[980px]">
             <thead>
               <tr>
                 <th className="whitespace-nowrap text-xs">Merchant ID</th>
                 <th>Email</th>
+                <th className="text-xs">RP (display name)</th>
                 <th>Chains</th>
                 <th>Rails</th>
                 <th className="text-xs">Users (live)</th>
@@ -591,14 +593,14 @@ export default function AdminMerchants() {
             <tbody>
               {q.isLoading ? (
                 <tr>
-                  <td colSpan={8} className="!py-8">
+                  <td colSpan={9} className="!py-8">
                     <BrandLoader variant="inline" title="" subtitle="Loading…" />
                   </td>
                 </tr>
               ) : null}
               {showEmpty ? (
                 <tr>
-                  <td colSpan={8} className="!py-12 text-center text-sm text-white/45">
+                  <td colSpan={9} className="!py-12 text-center text-sm text-white/45">
                     No record found.
                   </td>
                 </tr>
@@ -620,6 +622,12 @@ export default function AdminMerchants() {
                           Deleted
                         </span>
                       ) : null}
+                    </td>
+                    <td
+                      className="max-w-[200px] truncate text-xs text-white/80"
+                      title={resellerPartnerTitle(m)}
+                    >
+                      {resellerPartnerLabel(m)}
                     </td>
                     <td className="max-w-[200px] text-xs text-white/55">
                       {(m.default_chains ?? []).length

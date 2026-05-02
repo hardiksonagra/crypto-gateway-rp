@@ -2,6 +2,10 @@ import { PrismaClient, Chain, MerchantGatewayEnv } from "@prisma/client";
 import bcrypt from "bcrypt";
 import crypto from "crypto";
 import { encryptMerchantApiKey } from "../src/lib/merchant-api-key-cipher.js";
+import {
+  encryptMerchantMnemonic,
+  normalizeMnemonicPhrase,
+} from "../src/lib/merchant-mnemonic.js";
 
 const prisma = new PrismaClient();
 
@@ -44,6 +48,12 @@ async function main() {
     "cpg_demo_dev_only_change_me";
   const apiHash = sha256Hex(apiSecret);
 
+  const demoMnemonic = normalizeMnemonicPhrase(
+    process.env.SEED_MERCHANT_MNEMONIC ??
+      "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+  );
+  const mnemonicCipher = encryptMerchantMnemonic(demoMnemonic);
+
   const existingMerch = await prisma.merchant.findFirst({
     where: { email: merchEmail, deletedAt: null },
   });
@@ -58,6 +68,7 @@ async function main() {
         sandboxApiKeyHash: apiHash,
         sandboxApiKeyHint: apiSecret.slice(-6),
         sandboxApiKeyCipher: encryptMerchantApiKey(apiSecret),
+        mnemonicCipher,
         defaultChains: [Chain.TRON],
         portalEnvironment: MerchantGatewayEnv.sandbox,
       },
@@ -74,6 +85,7 @@ async function main() {
         sandboxApiKeyHash: apiHash,
         sandboxApiKeyHint: apiSecret.slice(-6),
         sandboxApiKeyCipher: encryptMerchantApiKey(apiSecret),
+        mnemonicCipher,
         defaultChains: [Chain.TRON],
         callbackUrl: process.env.SEED_MERCHANT_CALLBACK_URL ?? null,
         portalEnvironment: MerchantGatewayEnv.sandbox,

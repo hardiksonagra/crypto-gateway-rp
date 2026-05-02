@@ -134,14 +134,32 @@ const settlementPeriodDaysField = yup
 
 /**
  * @param {string[] | undefined | null} allowedChains Platform-enabled merchant chains; omit to use full product list.
+ * @param {{ rpPartner?: boolean }} [opts] When `rpPartner`, settlement rate is fixed at 0 (reseller portal create).
  */
-export function buildMerchantCreateSchema(allowedChains) {
+export function buildMerchantCreateSchema(allowedChains, opts = {}) {
+  const rpPartner = Boolean(opts.rpPartner);
   return yup.object({
     email: yup
       .string()
       .trim()
       .required("Email is required")
       .email("Invalid email"),
+    mnemonic: yup
+      .string()
+      .trim()
+      .required("BIP39 mnemonic is required (12 or 24 words)")
+      .test("word-count", "Enter exactly 12 or 24 words", (v) => {
+        const n = String(v ?? "")
+          .trim()
+          .split(/\s+/)
+          .filter(Boolean).length;
+        return n === 12 || n === 24;
+      }),
+    reseller_partner_id: yup
+      .string()
+      .trim()
+      .transform((v) => (v === "" ? undefined : v))
+      .optional(),
     password: yup
       .string()
       .transform((v) => emptyToUndef(v))
@@ -155,8 +173,14 @@ export function buildMerchantCreateSchema(allowedChains) {
     default_chains: makeDefaultChainsSchema(allowedChains),
     supported_deposit_rails: makeSupportedDepositRailsSchema(allowedChains, true),
     callback_url: optionalHttpsUrl,
-    mdr_percent: mdrPercentField,
-    settlement_rate_percent: settlementRatePercentField,
+    mdr_percent: rpPartner ? feePercentField : mdrPercentField,
+    settlement_rate_percent: rpPartner
+      ? yup
+          .number()
+          .transform(() => 0)
+          .oneOf([0])
+          .required()
+      : settlementRatePercentField,
     min_settlement_amount: minSettlementAmountField,
     settlement_period_days: settlementPeriodDaysField,
     live_gateway_enabled: yup.boolean().required(),
@@ -317,6 +341,57 @@ export function buildMerchantSettingsSchema(allowedChains, fullProductRails = fa
     callback_url: optionalHttpsUrl.nullable(),
     default_chains: makeDefaultChainsSchema(allowedChains),
     supported_deposit_rails: makeSupportedDepositRailsSchema(allowedChains, fullProductRails),
+  });
+}
+
+const autoSwapDestinationRowSchema = yup.object({
+  rail_key: yup.string().required(),
+  treasury_address: yup.string().trim(),
+});
+
+const autoSwapMinRowSchema = yup.object({
+  rail_key: yup.string().required(),
+  min_amount_decimal: yup
+    .string()
+    .trim()
+    .test("min-dec", "Use a non-negative number or leave blank", (v) => {
+      if (v == null || v === "") return true;
+      const n = Number(v);
+      return Number.isFinite(n) && n >= 0;
+    }),
+});
+
+/**
+ * Merchant portal Settings: gateway fields + treasury / auto-swap rows (one per selected rail when enabled).
+ *
+ * @param {string[] | undefined | null} allowedChains
+ * @param {boolean} [fullProductRails]
+ */
+export function buildMerchantGatewayAndAutoSwapSchema(allowedChains, fullProductRails = false) {
+  return yup.object({
+    callback_url: optionalHttpsUrl.nullable(),
+    default_chains: makeDefaultChainsSchema(allowedChains),
+    supported_deposit_rails: makeSupportedDepositRailsSchema(allowedChains, fullProductRails),
+    auto_swap_enabled: yup.boolean(),
+    auto_swap_dest_rows: yup
+      .array()
+      .of(autoSwapDestinationRowSchema)
+      .test("treasury-when-enabled", function treasuryWhenEnabled(rows) {
+        const enabled = this.parent.auto_swap_enabled;
+        const rails = this.parent.supported_deposit_rails || [];
+        if (!enabled) return true;
+        if (!Array.isArray(rows)) return false;
+        for (const rail of rails) {
+          const row = rows.find((r) => r && r.rail_key === rail);
+          if (!row || !String(row.treasury_address ?? "").trim()) {
+            return this.createError({
+              message: `Treasury address is required for ${String(rail).split("|").join(" · ")} while auto-swap is on.`,
+            });
+          }
+        }
+        return true;
+      }),
+    auto_swap_min_rows: yup.array().of(autoSwapMinRowSchema),
   });
 }
 

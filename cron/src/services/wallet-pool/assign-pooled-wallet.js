@@ -2,7 +2,6 @@ import { randomBytes } from "crypto";
 import { Chain, TxStatus } from "@prisma/client";
 import { tokenDecimalsForGatewayRail } from "crypto-payment-gateway/src/lib/gateway-expected-amount.js";
 import { generateGatewayReferenceTransactionId } from "crypto-payment-gateway/src/lib/gateway-reference-transaction-id.js";
-import { env } from "crypto-payment-gateway/src/config/env.js";
 import { re } from "crypto-payment-gateway/src/config/runtime-env.js";
 import {
   EVM_CHAINS,
@@ -13,6 +12,7 @@ import { nextScanExpiresAt } from "crypto-payment-gateway/src/lib/wallet-scan.js
 import { deriveEvmAddress } from "crypto-payment-gateway/src/services/wallet/evm-wallet.js";
 import { deriveTronAddress } from "crypto-payment-gateway/src/services/wallet/tron-wallet.js";
 import { ACTIVE } from "crypto-payment-gateway/src/lib/active-row.js";
+import { getMerchantWalletMnemonic } from "crypto-payment-gateway/src/lib/merchant-mnemonic.js";
 
 /** @typedef {import("@prisma/client").Prisma.TransactionClient} Tx */
 
@@ -45,14 +45,16 @@ function isWalletAssignmentTableMissingError(e) {
 }
 
 /**
- * Assign a reusable deposit wallet for an end-user (merchant pool). Runs on gateway API request, not on a timer.
- * If this user already has an **active** assignment on the rail (`hold_expires_at` or `scan_expires_at` still
- * in the future), refreshes hold/scan and returns that wallet. If both TTLs are null or both in the past,
- * treats as no session and picks the **oldest free** pool row by `created_at`. If none available, creates a new address.
- * Same on-chain `(environment, chain, address)` is never assigned while **any** merchant’s row for that address
- * still has `assigned_user_id` set (HD can produce identical addresses across merchants at the same index).
- * Pool rows with `assigned_user_id` null are eligible even if legacy `hold_expires_at` / `scan_expires_at`
- * are still in the future — avoids creating new derivations while unassigned pool rows exist.
+ * Assign a deposit wallet for an end-user (gateway). Runs on gateway API request, not on a timer.
+ *
+ * **Dedicated per user (per rail):** each `(merchant, environment, chain, currency, network)` keeps at most one
+ * wallet row for a given `userId`. That user always receives the same address on repeat `deposit-address`
+ * calls; the wallet is never reassigned to another user after a successful deposit or hold expiry.
+ *
+ * Resolution order: (1) existing row for this user on the rail — refresh hold/scan TTLs; (2) else the oldest
+ * **unassigned** pool row (`assigned_user_id` null) for the rail; (3) else derive a new address.
+ * Same on-chain `(environment, chain, address)` is never picked from the pool while **any** row for that
+ * address still has `assigned_user_id` set (HD collision guard across merchants).
  *
  * @param {Tx} tx
  * @param {{
@@ -89,14 +91,13 @@ export async function assignPooledWalletForDeposit(tx, p) {
       : 30;
   const holdUntil = new Date(Date.now() + holdMin * 60 * 1000);
   const scanAt = nextScanExpiresAt();
-  const now = new Date();
 
   /** @type {import("@prisma/client").Wallet} */
   let wallet;
   /** @type {string} */
   let source;
 
-  const stillAssigned = await tx.wallet.findFirst({
+  const dedicatedForUser = await tx.wallet.findFirst({
     where: {
       merchantId,
       environment,
@@ -105,12 +106,11 @@ export async function assignPooledWalletForDeposit(tx, p) {
       network,
       assignedUserId: userId,
       ...ACTIVE,
-      OR: [{ holdExpiresAt: { gt: now } }, { scanExpiresAt: { gt: now } }],
     },
   });
-  if (stillAssigned) {
+  if (dedicatedForUser) {
     wallet = await tx.wallet.update({
-      where: { id: stillAssigned.id },
+      where: { id: dedicatedForUser.id },
       data: {
         holdExpiresAt: holdUntil,
         scanExpiresAt: scanAt,
@@ -257,13 +257,7 @@ async function tryPickFreePoolWallet(tx, args) {
         AND w2."currency" = ${currency}
         AND w2."network" = ${network}
         AND w2."deleted_at" IS NULL
-        AND (
-          w2."assigned_user_id" IS NULL
-          OR NOT (
-            (w2."hold_expires_at" IS NOT NULL AND w2."hold_expires_at" > NOW())
-            OR (w2."scan_expires_at" IS NOT NULL AND w2."scan_expires_at" > NOW())
-          )
-        )
+        AND w2."assigned_user_id" IS NULL
         AND NOT EXISTS (
           SELECT 1 FROM "wallets" wo
           WHERE wo."deleted_at" IS NULL
@@ -330,6 +324,8 @@ async function createNewPooledWallet(tx, args) {
    * Skip derivation indices whose address string is still assigned on **any** merchant row so two
    * merchants never checkout the same on-chain destination while another hold is active.
    */
+  const mnemonicPhrase = await getMerchantWalletMnemonic(merchantId, tx);
+
   const derivationBase = await nextDerivationIndex(
     tx,
     merchantId,
@@ -344,9 +340,9 @@ async function createNewPooledWallet(tx, args) {
     derivationIndex = derivationBase + bump;
     let candidate;
     if (isEvmChain(chain)) {
-      candidate = deriveEvmAddress(derivationIndex);
+      candidate = deriveEvmAddress(derivationIndex, mnemonicPhrase);
     } else if (chain === Chain.TRON) {
-      candidate = deriveTronAddress(derivationIndex, env.mnemonic);
+      candidate = deriveTronAddress(derivationIndex, mnemonicPhrase);
     } else {
       throw new Error(`Unsupported chain: ${chain}`);
     }

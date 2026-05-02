@@ -5,7 +5,11 @@ import { MerchantGatewayEnv } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
 import { signAuthToken } from "../lib/auth-jwt.js";
 import { requireAuth } from "../middleware/require-auth.js";
-import { PORTAL_ROLE_ADMIN, PORTAL_ROLE_MERCHANT } from "../constants/portal-role.js";
+import {
+  PORTAL_ROLE_ADMIN,
+  PORTAL_ROLE_MERCHANT,
+  PORTAL_ROLE_RP,
+} from "../constants/portal-role.js";
 import { decryptMerchantApiKey } from "../lib/merchant-api-key-cipher.js";
 import {
   assertPortalEnvironmentUpdateAllowed,
@@ -23,6 +27,7 @@ import {
   redactPanelBody,
 } from "../services/panel-audit-log.js";
 import { sendPasswordResetEmail } from "../lib/mailer.js";
+import { getTrxSweepFunderDisplayAddress } from "../lib/trx-sweep-funder-display.js";
 
 const router = Router();
 
@@ -113,10 +118,45 @@ async function adminLoginHandler(req, res) {
   });
 }
 
+/** Reseller partner portal — queries `reseller_partners` table. */
+async function resellerPartnerLoginHandler(req, res) {
+  const body = req.body ?? {};
+  const email = body.email?.trim().toLowerCase();
+  const password = body.password ?? "";
+  if (!email || !password) {
+    res.status(400).json({ error: "email and password required" });
+    return;
+  }
+  const account = await prisma.resellerPartner.findFirst({
+    where: { email, deletedAt: null },
+  });
+  if (!account || !account.isActive) {
+    res.status(401).json({ error: "invalid_credentials" });
+    return;
+  }
+  const ok = await bcrypt.compare(password, account.passwordHash);
+  if (!ok) {
+    res.status(401).json({ error: "invalid_credentials" });
+    return;
+  }
+  const token = signAuthToken({
+    sub: String(account.id),
+    role: PORTAL_ROLE_RP,
+  });
+  res.json({
+    token,
+    role: PORTAL_ROLE_RP,
+    email: account.email,
+    display_name: account.displayName,
+  });
+}
+
 router.post("/api/v1/auth/login", merchantLoginHandler);
 router.post("/api/v1/auth/login/", merchantLoginHandler);
 router.post("/api/v1/auth/login/admin", adminLoginHandler);
 router.post("/api/v1/auth/login/admin/", adminLoginHandler);
+router.post("/api/v1/auth/login/rp", resellerPartnerLoginHandler);
+router.post("/api/v1/auth/login/rp/", resellerPartnerLoginHandler);
 
 router.get("/api/v1/auth/me", requireAuth(), async (req, res) => {
   const id = req.auth?.sub;
@@ -169,6 +209,51 @@ router.get("/api/v1/auth/me", requireAuth(), async (req, res) => {
     return;
   }
 
+  if (jwtRole === PORTAL_ROLE_RP) {
+    const rp = await prisma.resellerPartner.findUnique({
+      where: { id: pk },
+      select: {
+        id: true,
+        email: true,
+        displayName: true,
+        mdrPercent: true,
+        isActive: true,
+        portalEnvironment: true,
+      },
+    });
+    if (!rp) {
+      res.status(401).json({ error: "unauthorized" });
+      return;
+    }
+    res.json({
+      id: rp.id,
+      email: rp.email,
+      role: PORTAL_ROLE_RP,
+      displayName: rp.displayName,
+      mdr_percent: Number(rp.mdrPercent),
+      isActive: rp.isActive,
+      portalEnvironment: rp.portalEnvironment,
+      defaultChains: [],
+      defaultCurrency: "USDT",
+      defaultNetwork: "TRC20",
+      supportedDepositRails: [],
+      gateway_tron_usdt_only: false,
+      gateway_supported_rail_keys: [],
+      callbackUrl: null,
+      apiKeyHint: null,
+      sandboxApiKeyHint: null,
+      liveGatewayEnabled: true,
+      sandboxGatewayEnabled: true,
+      hasSandboxApiKey: false,
+    });
+    return;
+  }
+
+  if (jwtRole !== PORTAL_ROLE_MERCHANT) {
+    res.status(401).json({ error: "unauthorized" });
+    return;
+  }
+
   const user = await prisma.merchant.findUnique({
     where: { id: pk },
     select: {
@@ -193,6 +278,8 @@ router.get("/api/v1/auth/me", requireAuth(), async (req, res) => {
       apiKeyCipher: true,
       sandboxApiKeyCipher: true,
       sandboxApiKeyHash: true,
+      autoSwapEnabled: true,
+      autoSwapSettingsJson: true,
     },
   });
   if (!user) {
@@ -207,6 +294,8 @@ router.get("/api/v1/auth/me", requireAuth(), async (req, res) => {
     settlementRatePercent,
     minSettlementAmount,
     settlementPeriodDays,
+    autoSwapEnabled,
+    autoSwapSettingsJson,
     ...rest
   } = user;
   const out = {
@@ -216,6 +305,11 @@ router.get("/api/v1/auth/me", requireAuth(), async (req, res) => {
     settlement_rate_percent: Number(settlementRatePercent),
     min_settlement_amount: minSettlementAmount ?? "0",
     settlement_period_days: Number(settlementPeriodDays ?? 0),
+    auto_swap_enabled: Boolean(autoSwapEnabled),
+    auto_swap_settings:
+      typeof autoSwapSettingsJson === "object" && autoSwapSettingsJson !== null
+        ? autoSwapSettingsJson
+        : {},
   };
   out.hasSandboxApiKey = Boolean(sandboxApiKeyHash);
   out.api_key_cipher_present = Boolean(apiKeyCipher);
@@ -251,6 +345,10 @@ router.get("/api/v1/auth/me", requireAuth(), async (req, res) => {
   out.gateway_supported_rail_keys = gatewayPairs.map((p) =>
     depositRailKey(p.currency, p.network),
   );
+  {
+    const a = getTrxSweepFunderDisplayAddress().trim();
+    out.auto_swap_trx_fee_source_address = a || null;
+  }
   res.json(out);
 });
 
@@ -285,6 +383,11 @@ router.patch("/api/v1/auth/me/portal-environment", requireAuth(), async (req, re
   }
   if (req.auth.role === PORTAL_ROLE_ADMIN) {
     await prisma.admin.update({
+      where: { id: pk },
+      data: { portalEnvironment: next },
+    });
+  } else if (req.auth.role === PORTAL_ROLE_RP) {
+    await prisma.resellerPartner.update({
       where: { id: pk },
       data: { portalEnvironment: next },
     });

@@ -29,6 +29,7 @@ import {
   IconUsers,
   IconWallet,
   IconSettlements,
+  IconHandshake,
 } from "./shellNavIcons.js";
 
 const navGroups = [
@@ -37,6 +38,7 @@ const navGroups = [
     items: [
       { to: "/control", label: "Dashboard", end: true, Icon: IconDashboard },
       { to: "/control/merchants", label: "Merchants", Icon: IconMerchants },
+      { to: "/control/reseller-partners", label: "Reseller partners", Icon: IconHandshake },
       { to: "/control/users", label: "Users", Icon: IconUsers },
       { to: "/control/wallets", label: "All wallets", Icon: IconWallet },
       { to: "/control/wallet-details", label: "Wallet details", Icon: IconDoc },

@@ -1,9 +1,11 @@
 import { useEffect } from "react";
 import { formatTokenAmount } from "../lib/formatTokenAmount.js";
 import { formatLocalDateTime } from "../lib/formatLocalDateTime.js";
+import { resellerPartnerLabel } from "../lib/resellerPartnerLabel.js";
 
-/** @param {string} label @param {string | number | null | undefined} value */
-function DetailRow(label, value) {
+/** @param {string} label @param {string | number | null | undefined} value @param {{ mono?: boolean }} [opts] */
+function DetailRow(label, value, opts) {
+  const mono = opts?.mono !== false;
   const v =
     value === null || value === undefined || value === ""
       ? "—"
@@ -16,7 +18,14 @@ function DetailRow(label, value) {
       <dt className="shrink-0 text-xs font-medium sm:pt-0.5" style={{ color: "var(--text-3)" }}>
         {label}
       </dt>
-      <dd className="min-w-0 break-words font-mono text-xs [overflow-wrap:anywhere]" style={{ color: "var(--text-1)" }}>
+      <dd
+        className={
+          mono
+            ? "min-w-0 break-words font-mono text-xs [overflow-wrap:anywhere]"
+            : "min-w-0 break-words text-sm [overflow-wrap:anywhere]"
+        }
+        style={{ color: "var(--text-1)" }}
+      >
         {v}
       </dd>
     </div>
@@ -54,6 +63,9 @@ function DetailRow(label, value) {
  * @property {string} [merchant_id]
  * @property {string} [merchant_email]
  * @property {string | null} [transaction_id]
+ * @property {string | null} [reseller_partner_email]
+ * @property {string | null} [reseller_partner_display_name]
+ * @property {string | number | null} [reseller_partner_id]
  */
 
 /**
@@ -68,6 +80,7 @@ function DetailRow(label, value) {
  * @param {() => void} [props.onRescanTronDeposit]
  * @param {boolean} [props.rescanTronDepositLoading]
  * @param {string | null} [props.rescanTronDepositError]
+ * @param {boolean} [props.operatorActions] When false, hide webhook resend / TRON rescan (e.g. RP portal).
  */
 export default function TransactionDetailModal({
   open,
@@ -80,6 +93,7 @@ export default function TransactionDetailModal({
   onRescanTronDeposit,
   rescanTronDepositLoading = false,
   rescanTronDepositError = null,
+  operatorActions = true,
 }) {
   const blockClose = redeliverLoading || rescanTronDepositLoading;
 
@@ -160,6 +174,13 @@ export default function TransactionDetailModal({
             {DetailRow("External user ID", t.external_user_id)}
             {t.merchant_id ? DetailRow("Merchant ID", t.merchant_id) : null}
             {t.merchant_email ? DetailRow("Merchant email", t.merchant_email) : null}
+            {resellerPartnerLabel(t) !== "—"
+              ? DetailRow("Reseller (RP)", resellerPartnerLabel(t), { mono: false })
+              : null}
+            {String(t?.reseller_partner_display_name ?? "").trim() &&
+            String(t?.reseller_partner_email ?? "").trim()
+              ? DetailRow("Reseller (RP) login email", t.reseller_partner_email)
+              : null}
             {DetailRow("Gateway environment", t.gateway_environment)}
             {DetailRow("Block number", t.block_number)}
             {DetailRow("Log index", t.log_index)}
@@ -172,7 +193,26 @@ export default function TransactionDetailModal({
           </dl>
         </div>
         <div className="shrink-0 space-y-3 border-t px-5 py-4 sm:px-6" style={{ borderColor: "var(--border)" }}>
-          {rescanTronDepositVisible ? (
+          {!operatorActions ? (
+            <div className="flex flex-col-reverse gap-2 sm:flex-row sm:flex-wrap sm:justify-end sm:gap-3">
+              <button
+                type="button"
+                disabled={blockClose}
+                onClick={onClose}
+                className="w-full rounded-xl border px-4 py-2.5 text-sm transition disabled:opacity-40 sm:w-auto"
+                style={{ borderColor: "var(--border-mid)", color: "var(--text-2)" }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = "var(--bg-surface3)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = "";
+                }}
+              >
+                Close
+              </button>
+            </div>
+          ) : null}
+          {operatorActions && rescanTronDepositVisible ? (
             <p className="text-xs leading-relaxed [overflow-wrap:anywhere]" style={{ color: "var(--text-3)" }}>
               <span style={{ color: "var(--text-2)" }}>Rescan TRON deposit</span> runs the same TronScan
               USDT·TRC20 ingest as the deposit worker for this wallet. If this row is still the checkout
@@ -181,7 +221,7 @@ export default function TransactionDetailModal({
               callback settings).
             </p>
           ) : null}
-          {rescanTronDepositError ? (
+          {operatorActions && rescanTronDepositError ? (
             <p
               className="rounded-lg border px-3 py-2 text-xs"
               style={{
@@ -193,60 +233,72 @@ export default function TransactionDetailModal({
               {rescanTronDepositError}
             </p>
           ) : null}
-          <p className="text-xs leading-relaxed [overflow-wrap:anywhere]" style={{ color: "var(--text-3)" }}>
-            <span style={{ color: "var(--text-2)" }}>Resend webhook</span> posts the same{" "}
-            <span className="font-mono" style={{ color: "var(--text-2)" }}>payment</span> payload (
-            <span className="font-mono" style={{ color: "var(--text-2)" }}>X-Webhook-Event: payment</span>,{" "}
-            <span className="font-mono" style={{ color: "var(--text-2)" }}>status: success</span>) again. It does{" "}
-            <strong style={{ color: "var(--text-1)" }}>not</strong> create another transaction in this
-            system. Your server should treat the same{" "}
-            <span className="font-mono" style={{ color: "var(--text-2)" }}>transaction_id</span> idempotently.
-          </p>
-          {redeliverError ? (
+          {operatorActions ? (
+            <p className="text-xs leading-relaxed [overflow-wrap:anywhere]" style={{ color: "var(--text-3)" }}>
+              <span style={{ color: "var(--text-2)" }}>Resend webhook</span> posts the same{" "}
+              <span className="font-mono" style={{ color: "var(--text-2)" }}>payment</span> payload (
+              <span className="font-mono" style={{ color: "var(--text-2)" }}>X-Webhook-Event: payment</span>,{" "}
+              <span className="font-mono" style={{ color: "var(--text-2)" }}>status: success</span>) again. It does{" "}
+              <strong style={{ color: "var(--text-1)" }}>not</strong> create another transaction in this
+              system. Your server should treat the same{" "}
+              <span className="font-mono" style={{ color: "var(--text-2)" }}>transaction_id</span> idempotently.
+            </p>
+          ) : null}
+          {operatorActions && redeliverError ? (
             <p className="rounded-lg border px-3 py-2 text-xs"
                style={{ borderColor: "rgba(239,68,68,0.3)", background: "rgba(239,68,68,0.1)", color: "#f87171" }}>
               {redeliverError}
             </p>
           ) : null}
-          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:flex-wrap sm:justify-end sm:gap-3">
-            <button
-              type="button"
-              disabled={blockClose}
-              onClick={onClose}
-              className="w-full rounded-xl border px-4 py-2.5 text-sm transition disabled:opacity-40 sm:w-auto"
-              style={{ borderColor: "var(--border-mid)", color: "var(--text-2)" }}
-              onMouseEnter={(e) => { e.currentTarget.style.background = "var(--bg-surface3)"; }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = ""; }}
-            >
-              Close
-            </button>
-            {rescanTronDepositVisible && onRescanTronDeposit ? (
+          {operatorActions ? (
+            <div className="flex flex-col-reverse gap-2 sm:flex-row sm:flex-wrap sm:justify-end sm:gap-3">
               <button
                 type="button"
-                disabled={rescanTronDepositLoading || redeliverLoading}
-                onClick={onRescanTronDeposit}
-                className="w-full rounded-xl border px-4 py-2.5 text-sm font-semibold transition disabled:opacity-40 sm:w-auto"
-                style={{ borderColor: "var(--border-mid)", color: "var(--text-1)" }}
-                onMouseEnter={(e) => { e.currentTarget.style.background = "var(--bg-surface3)"; }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = ""; }}
+                disabled={blockClose}
+                onClick={onClose}
+                className="w-full rounded-xl border px-4 py-2.5 text-sm transition disabled:opacity-40 sm:w-auto"
+                style={{ borderColor: "var(--border-mid)", color: "var(--text-2)" }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = "var(--bg-surface3)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = "";
+                }}
               >
-                {rescanTronDepositLoading ? "Scanning…" : "Rescan TRON deposit"}
+                Close
               </button>
-            ) : null}
-            <button
-              type="button"
-              disabled={!canRedeliver || redeliverLoading}
-              onClick={onRedeliverCallback}
-              className="w-full rounded-xl px-4 py-2.5 text-sm font-semibold transition disabled:opacity-40 btn-primary sm:w-auto"
-              title={
-                canRedeliver
-                  ? undefined
-                  : "Only successful transactions can resend the payment webhook."
-              }
-            >
-              {redeliverLoading ? "Sending…" : "Resend payment webhook"}
-            </button>
-          </div>
+              {rescanTronDepositVisible && onRescanTronDeposit ? (
+                <button
+                  type="button"
+                  disabled={rescanTronDepositLoading || redeliverLoading}
+                  onClick={onRescanTronDeposit}
+                  className="w-full rounded-xl border px-4 py-2.5 text-sm font-semibold transition disabled:opacity-40 sm:w-auto"
+                  style={{ borderColor: "var(--border-mid)", color: "var(--text-1)" }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = "var(--bg-surface3)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = "";
+                  }}
+                >
+                  {rescanTronDepositLoading ? "Scanning…" : "Rescan TRON deposit"}
+                </button>
+              ) : null}
+              <button
+                type="button"
+                disabled={!canRedeliver || redeliverLoading}
+                onClick={onRedeliverCallback}
+                className="w-full rounded-xl px-4 py-2.5 text-sm font-semibold transition disabled:opacity-40 btn-primary sm:w-auto"
+                title={
+                  canRedeliver
+                    ? undefined
+                    : "Only successful transactions can resend the payment webhook."
+                }
+              >
+                {redeliverLoading ? "Sending…" : "Resend payment webhook"}
+              </button>
+            </div>
+          ) : null}
         </div>
       </div>
     </div>

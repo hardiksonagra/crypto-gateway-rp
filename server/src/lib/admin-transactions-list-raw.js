@@ -15,6 +15,7 @@
  * @property {string} qAddr
  * @property {string} qExtUser
  * @property {string} qTxRef
+ * @property {number[] | null} [rpMerchantIds] When set and `merchantId` is empty, restrict to these merchants (RP portal).
  */
 
 import { Prisma } from "@prisma/client";
@@ -32,6 +33,7 @@ const FROM_SQL = Prisma.sql`
   FROM transactions t
   INNER JOIN wallets w ON w.id = t.wallet_id AND w.deleted_at IS NULL
   INNER JOIN merchants wm ON wm.id = w.merchant_id
+  LEFT JOIN reseller_partners wm_rp ON wm_rp.id = wm.reseller_partner_id
   LEFT JOIN users pu ON pu.id = t.payer_user_id
   LEFT JOIN merchants pum ON pum.id = pu.merchant_id
   LEFT JOIN users au ON au.id = w.assigned_user_id
@@ -48,6 +50,7 @@ const FROM_SQL = Prisma.sql`
  *   qAddr: string,
  *   qExtUser: string,
  *   qTxRef: string,
+ *   rpMerchantIds?: number[] | null,
  * }} p
  * @returns {Prisma.Sql[]}
  */
@@ -59,6 +62,8 @@ function adminTransactionsWhereParts(p) {
   if (p.merchantId) {
     if (!p.txListMerch) parts.push(Prisma.sql`FALSE`);
     else parts.push(Prisma.sql`w.merchant_id = ${p.txListMerch.id}`);
+  } else if (p.rpMerchantIds && p.rpMerchantIds.length > 0) {
+    parts.push(Prisma.sql`w.merchant_id IN (${Prisma.join(p.rpMerchantIds)})`);
   }
   if (p.qAddr) {
     if (p.qAddr.startsWith("0x")) {
@@ -86,6 +91,12 @@ function adminTransactionsWhereParts(p) {
     if (p.txListMerch) {
       parts.push(Prisma.sql`(
         (pu.id IS NOT NULL AND pu.deleted_at IS NULL AND pu.external_user_id ILIKE ${pat} AND pu.merchant_id = ${p.txListMerch.id})
+        OR
+        (au.id IS NOT NULL AND au.external_user_id ILIKE ${pat})
+      )`);
+    } else if (p.rpMerchantIds && p.rpMerchantIds.length > 0) {
+      parts.push(Prisma.sql`(
+        (pu.id IS NOT NULL AND pu.deleted_at IS NULL AND pu.external_user_id ILIKE ${pat} AND pu.merchant_id IN (${Prisma.join(p.rpMerchantIds)}))
         OR
         (au.id IS NOT NULL AND au.external_user_id ILIKE ${pat})
       )`);
@@ -155,6 +166,18 @@ function mapAdminTransactionListRow(row) {
         id: row.wm_id,
         email: row.wm_email,
         displayName: row.wm_display_name,
+        resellerPartnerId: row.wm_reseller_partner_id ?? null,
+        resellerPartner:
+          row.wm_rp_email != null && String(row.wm_rp_email).trim()
+            ? {
+                id: row.wm_reseller_partner_id ?? null,
+                email: String(row.wm_rp_email).trim(),
+                displayName:
+                  row.wm_rp_display_name != null && String(row.wm_rp_display_name).trim()
+                    ? String(row.wm_rp_display_name).trim()
+                    : null,
+              }
+            : null,
       },
       assignedUser:
         row.au_id == null
@@ -184,6 +207,7 @@ function rawListParams(args) {
     qAddr: args.qAddr,
     qExtUser: args.qExtUser,
     qTxRef: args.qTxRef,
+    rpMerchantIds: args.rpMerchantIds ?? null,
   };
 }
 
@@ -242,6 +266,9 @@ export async function listAdminTransactionsListRaw(prisma, args) {
         wm.id AS wm_id,
         wm.email AS wm_email,
         wm.display_name AS wm_display_name,
+        wm.reseller_partner_id AS wm_reseller_partner_id,
+        wm_rp.email AS wm_rp_email,
+        wm_rp.display_name AS wm_rp_display_name,
         pu.id AS pu_id,
         pu.external_user_id AS pu_external_user_id,
         pu.merchant_id AS pu_merchant_id,

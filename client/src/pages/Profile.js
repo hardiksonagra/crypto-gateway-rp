@@ -194,18 +194,22 @@ function MerchantProfileHeroPortal() {
   );
 }
 
-function AdminProfilePortalSection() {
+/**
+ * @param {{ variant?: "admin" | "rp" }} props
+ */
+function AdminProfilePortalSection({ variant = "admin" }) {
+  const isRp = variant === "rp";
   const { environment, flagsLoading } = useMerchantPortalEnvironment();
 
   if (flagsLoading) {
     return (
-      <SectionCard title="Admin data scope">
+      <SectionCard title={isRp ? "Partner portal data scope" : "Admin data scope"}>
         <BrandLoader
           variant="inline"
           title=""
           subtitle="Loading…"
           className="min-h-0 py-4"
-          aria-label="Loading admin data scope"
+          aria-label={isRp ? "Loading partner data scope" : "Loading admin data scope"}
         />
       </SectionCard>
     );
@@ -213,8 +217,12 @@ function AdminProfilePortalSection() {
 
   return (
     <SectionCard
-      title="Admin data scope"
-      subtitle="The global Users and Transactions lists show only the selected environment's data."
+      title={isRp ? "Partner portal data scope" : "Admin data scope"}
+      subtitle={
+        isRp
+          ? "Users, wallets, and transactions lists show only your merchants' data for the selected environment."
+          : "The global Users and Transactions lists show only the selected environment's data."
+      }
     >
       <div className="space-y-4">
         <div>
@@ -524,7 +532,7 @@ export default function Profile() {
       </div>
 
       <div className="mt-6">
-        <AdminProfilePortalSection />
+        <AdminProfilePortalSection variant={me.role === "RP" ? "rp" : "admin"} />
       </div>
 
       <div className="mt-6">

@@ -10,6 +10,7 @@ import { PendingSettlementBucketCard } from "../../components/PendingSettlementB
 import { formatTokenAmount } from "../../lib/formatTokenAmount.js";
 import { formatLocalDateTime } from "../../lib/formatLocalDateTime.js";
 import { BrandLoader } from "../../components/BrandLoader.js";
+import { resellerPartnerLabel, resellerPartnerTitle } from "../../lib/resellerPartnerLabel.js";
 
 const DEFAULT_PAGE_SIZE = DEFAULT_LIST_PAGE_SIZE;
 
@@ -56,6 +57,10 @@ export default function AdminSettlements() {
   const buckets = pendingQ.data?.buckets ?? [];
   const pendingMerchantEmail = pendingQ.data?.merchant_email;
   const pendingMerchantDisplayName = pendingQ.data?.merchant_display_name;
+  const pendingRpRow = {
+    reseller_partner_display_name: pendingQ.data?.reseller_partner_display_name,
+    reseller_partner_email: pendingQ.data?.reseller_partner_email,
+  };
 
   function invalidateSettlementQueries() {
     void qc.invalidateQueries({
@@ -156,11 +161,18 @@ export default function AdminSettlements() {
                   · {pendingMerchantDisplayName.trim()}
                 </span>
               ) : null}
+              {resellerPartnerLabel(pendingRpRow) !== "—" ? (
+                <span className="text-white/55" title={resellerPartnerTitle(pendingRpRow)}>
+                  {" "}
+                  · RP <span className="text-white/80">{resellerPartnerLabel(pendingRpRow)}</span>
+                </span>
+              ) : null}
             </p>
           ) : null}
           <p className="mt-1 text-xs text-white/40">
-            MDR applies to gross; settlement fee applies to the amount after
-            MDR. Net is what reduces the merchant&apos;s portal balance when you
+            MDR applies to gross; settlement fee applies to the amount after MDR
+            (RP-linked merchants use MDR only — no platform settlement fee).
+            Net is what reduces the merchant&apos;s portal balance when you
             settle. Minimum settlement on the merchant is in{" "}
             <span className="font-medium text-white/70">token units</span> (e.g.
             3000 USDT), converted per asset using decimals. Proof is required;
@@ -217,6 +229,7 @@ export default function AdminSettlements() {
             <tr>
               <th>When</th>
               <th>Merchant</th>
+              <th>RP</th>
               <th>Asset</th>
               <th>Txs</th>
               <th>Gross</th>
@@ -230,7 +243,7 @@ export default function AdminSettlements() {
             {!hasFilter ? (
               <tr>
                 <td
-                  colSpan={9}
+                  colSpan={10}
                   className="!py-12 text-center text-sm text-white/45"
                 >
                   Enter a merchant email and click Load merchant.
@@ -238,21 +251,23 @@ export default function AdminSettlements() {
               </tr>
             ) : listQ.isLoading ? (
               <tr>
-                <td colSpan={9} className="!py-8">
+                <td colSpan={10} className="!py-8">
                   <BrandLoader variant="inline" title="" subtitle="Loading…" />
                 </td>
               </tr>
             ) : rows.length === 0 ? (
               <tr>
                 <td
-                  colSpan={9}
+                  colSpan={10}
                   className="!py-12 text-center text-sm text-white/45"
                 >
                   No live settlements recorded for this merchant yet.
                 </td>
               </tr>
             ) : (
-              rows.map((s) => (
+              rows.map((s) => {
+                const rpLab = resellerPartnerLabel(s);
+                return (
                 <tr key={s.id}>
                   <td className="whitespace-nowrap text-xs text-white/45">
                     {formatLocalDateTime(s.created_at)}
@@ -262,6 +277,16 @@ export default function AdminSettlements() {
                     title={s.merchant_email}
                   >
                     {s.merchant_email}
+                  </td>
+                  <td
+                    className="max-w-[140px] truncate text-xs text-white/55"
+                    title={resellerPartnerTitle(s)}
+                  >
+                    {rpLab !== "—" ? (
+                      <span className="text-white/75">{rpLab}</span>
+                    ) : (
+                      <span className="text-white/35">—</span>
+                    )}
                   </td>
                   <td className="text-xs text-white/70">
                     {s.chain} {s.token_symbol}
@@ -298,7 +323,8 @@ export default function AdminSettlements() {
                     )}
                   </td>
                 </tr>
-              ))
+                );
+              })
             )}
           </tbody>
         </table>

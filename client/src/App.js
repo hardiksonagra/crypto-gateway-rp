@@ -23,6 +23,7 @@ import DecodeGatewayData from "./pages/admin/DecodeGatewayData";
 import ToolSendUsdt from "./pages/admin/ToolSendUsdt";
 import AdminUnifiedSweep from "./pages/admin/UnifiedSweep";
 import AdminSettlements from "./pages/admin/Settlements";
+import ResellerPartners from "./pages/admin/ResellerPartners";
 import MerchantDashboard from "./pages/merchant/Dashboard";
 import MerchantUsers from "./pages/merchant/Users";
 import MerchantWallets from "./pages/merchant/Wallets";
@@ -33,6 +34,10 @@ import GatewayApiKey from "./pages/merchant/GatewayApiKey";
 import GatewayApiDocs from "./pages/merchant/GatewayApiDocs";
 import PaymentPage from "./pages/PaymentPage";
 import { AuthEntryGate } from "./components/AuthEntryGate.js";
+import RpLoginPage from "./pages/rp/RpLoginPage";
+import RpShell from "./layouts/RpShell";
+import RpMerchants from "./pages/rp/RpMerchants";
+import RpSettlements from "./pages/rp/RpSettlements";
 
 /** Bookmarked `/admin/...` → `/control/...` */
 function RedirectAdminToControl() {
@@ -92,6 +97,7 @@ export default function App() {
         <Route path="merchants/:id/edit" element={<MerchantEdit />} />
         <Route path="merchants/:id" element={<MerchantDetail />} />
         <Route path="merchants" element={<AdminMerchants />} />
+        <Route path="reseller-partners" element={<ResellerPartners />} />
         <Route path="users" element={<AdminUsers />} />
         <Route path="wallets" element={<AdminWallets />} />
         <Route path="wallet-details" element={<AdminWalletDetails />} />
@@ -111,6 +117,28 @@ export default function App() {
         <Route path="decode-gateway-data" element={<DecodeGatewayData />} />
         <Route path="tool-send-usdt" element={<ToolSendUsdt />} />
       </Route>
+      <Route
+        path="/rp/login"
+        element={
+          <AuthEntryGate>
+            <RpLoginPage />
+          </AuthEntryGate>
+        }
+      />
+      <Route path="/rp" element={<RpShell />}>
+        <Route index element={<AdminDashboard />} />
+        <Route path="profile" element={<Profile />} />
+        <Route path="merchants/new" element={<MerchantCreate />} />
+        <Route path="merchants/:id/edit" element={<MerchantEdit />} />
+        <Route path="merchants/:id" element={<MerchantDetail />} />
+        <Route path="merchants" element={<RpMerchants />} />
+        <Route path="users" element={<AdminUsers />} />
+        <Route path="wallets" element={<AdminWallets />} />
+        <Route path="wallet-details" element={<AdminWalletDetails />} />
+        <Route path="transactions" element={<AdminTransactions />} />
+        <Route path="settlements" element={<RpSettlements />} />
+        <Route path="decode-gateway-data" element={<DecodeGatewayData />} />
+      </Route>
       <Route path="/admin" element={<Navigate to="/control" replace />} />
       <Route path="/admin/*" element={<RedirectAdminToControl />} />
       <Route path="/m" element={<Navigate to="/" replace />} />
@@ -126,6 +154,7 @@ export default function App() {
         <Route path="api-key" element={<GatewayApiKey />} />
         <Route path="docs" element={<GatewayApiDocs />} />
         <Route path="profile" element={<Profile />} />
+        <Route path="tool-send-usdt" element={<ToolSendUsdt />} />
       </Route>
       <Route path="*" element={<Navigate to="/login" replace />} />
     </Routes>

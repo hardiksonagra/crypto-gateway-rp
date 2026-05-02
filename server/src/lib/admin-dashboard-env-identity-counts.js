@@ -7,9 +7,14 @@ import { EVM_CHAINS } from "../config/chains.js";
  *
  * @param {import("@prisma/client").PrismaClient} prisma
  * @param {import("@prisma/client").MerchantGatewayEnv} listEnv
+ * @param {number[] | null} [merchantIds] When set, only wallets for these merchants (e.g. RP scope).
  * @returns {Promise<number>}
  */
-export async function countDistinctWalletDepositIdentitiesInEnv(prisma, listEnv) {
+export async function countDistinctWalletDepositIdentitiesInEnv(
+  prisma,
+  listEnv,
+  merchantIds = null,
+) {
   const evmChainSql =
     EVM_CHAINS.length === 0
       ? Prisma.sql`FALSE`
@@ -17,6 +22,10 @@ export async function countDistinctWalletDepositIdentitiesInEnv(prisma, listEnv)
           EVM_CHAINS.map((c) => Prisma.sql`w.chain = ${c}::"Chain"`),
           Prisma.sql` OR `,
         );
+  const midFilter =
+    merchantIds && merchantIds.length > 0
+      ? Prisma.sql`AND w.merchant_id IN (${Prisma.join(merchantIds)})`
+      : Prisma.empty;
   const rows = await prisma.$queryRaw(
     Prisma.sql`
       SELECT COUNT(*)::int AS cnt
@@ -25,6 +34,7 @@ export async function countDistinctWalletDepositIdentitiesInEnv(prisma, listEnv)
         FROM wallets w
         WHERE w.environment = ${listEnv}::"MerchantGatewayEnv"
           AND w.deleted_at IS NULL
+          ${midFilter}
         GROUP BY
           CASE
             WHEN (${evmChainSql}) THEN lower(trim(w.address::text))

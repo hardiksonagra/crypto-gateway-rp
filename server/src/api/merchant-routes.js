@@ -39,6 +39,7 @@ import { PORTAL_ROLE_MERCHANT } from "../constants/portal-role.js";
 import { logPanelMutations } from "../middleware/log-panel-mutations.js";
 import { parsePageQuery } from "../lib/pagination.js";
 import { ensureMerchantPortalEnvironmentConsistent } from "../lib/merchant-gateway-env.js";
+import { resolveMerchantPortalForLists } from "../lib/merchant-portal-for-lists.js";
 import { computeMerchantBalances } from "../services/merchant-balance.js";
 import { buildAllPendingPreviews } from "../services/settlement-batch.js";
 import { proofPathForFileName } from "../lib/settlement-upload.js";
@@ -59,8 +60,17 @@ import {
 } from "../lib/merchant-default-pair.js";
 import { generateApiKey, hashApiKey } from "../lib/api-key.js";
 import { encryptMerchantApiKey } from "../lib/merchant-api-key-cipher.js";
+import { adminDirectionalUsdtSend } from "../services/sweep/admin-directional-usdt-send.js";
+import {
+  mergeAutoSwapSettingsPayload,
+  validateMerchantAutoSwapState,
+} from "../lib/merchant-auto-swap-settings.js";
 
 const CHAIN_SET = new Set(Object.values(Chain));
+
+function railsSortedKey(rails) {
+  return [...(rails ?? [])].map(String).sort().join("\u0001");
+}
 
 const router = Router();
 const merchantOnly = requireAuth(PORTAL_ROLE_MERCHANT);
@@ -77,56 +87,6 @@ function merchantId(req) {
   if (sub == null || sub === "") return null;
   const n = parseInt(String(sub).trim(), 10);
   return Number.isInteger(n) && n >= 1 ? n : null;
-}
-
-/**
- * Portal lists use `portal_environment` on the merchant row (not query params).
- *
- * @param {number} mid
- */
-async function resolveMerchantPortalForLists(mid) {
-  const synced = await ensureMerchantPortalEnvironmentConsistent(mid);
-  if (!synced) {
-    return { ok: false, status: 401, error: "unauthorized" };
-  }
-  const environment = synced.portalEnvironment;
-  if (
-    environment === MerchantGatewayEnv.sandbox &&
-    !synced.sandboxGatewayEnabled
-  ) {
-    return {
-      ok: false,
-      status: 403,
-      error: "sandbox_gateway_disabled",
-      message:
-        "Sandbox is disabled for your account. Ask an admin to enable it.",
-    };
-  }
-  if (environment === MerchantGatewayEnv.live && !synced.liveGatewayEnabled) {
-    return {
-      ok: false,
-      status: 403,
-      error: "live_gateway_disabled",
-      message: "Live gateway is disabled for your account.",
-    };
-  }
-  if (!synced.liveGatewayEnabled && !synced.sandboxGatewayEnabled) {
-    return {
-      ok: false,
-      status: 403,
-      error: "gateway_disabled",
-      message:
-        "Neither live nor sandbox gateway is enabled for your account. Contact support.",
-    };
-  }
-  return {
-    ok: true,
-    environment,
-    flags: {
-      liveGatewayEnabled: synced.liveGatewayEnabled,
-      sandboxGatewayEnabled: synced.sandboxGatewayEnabled,
-    },
-  };
 }
 
 /**
@@ -792,6 +752,46 @@ router.post(
   },
 );
 
+/**
+ * Same rules as POST /api/v1/admin/tool/send-usdt, but `from_address` must be a USDT deposit wallet for this merchant.
+ */
+router.post("/api/v1/merchant/tool/send-usdt", async (req, res) => {
+  const mid = merchantId(req);
+  if (!mid) {
+    res.status(401).json({ error: "unauthorized" });
+    return;
+  }
+  const from_address =
+    typeof req.body?.from_address === "string"
+      ? req.body.from_address
+      : typeof req.body?.fromAddress === "string"
+        ? req.body.fromAddress
+        : "";
+  const to_address =
+    typeof req.body?.to_address === "string"
+      ? req.body.to_address
+      : typeof req.body?.toAddress === "string"
+        ? req.body.toAddress
+        : "";
+  try {
+    const result = await adminDirectionalUsdtSend({
+      from_address,
+      to_address,
+      merchant_id: mid,
+    });
+    if (!result.ok) {
+      const err = String(result.error ?? "");
+      const status =
+        err === "FROM_WALLET_NOT_FOUND" || err === "ambiguous_from" ? 404 : 400;
+      return res.status(status).json(result);
+    }
+    res.json(result);
+  } catch (e) {
+    logger.error("merchant tool send-usdt failed", { err: String(e) });
+    res.status(500).json({ error: "server_error", message: String(e) });
+  }
+});
+
 router.get("/api/v1/merchant/transactions", async (req, res) => {
   const mid = merchantId(req);
   if (!mid) {
@@ -1087,6 +1087,8 @@ router.patch("/api/v1/merchant/settings", async (req, res) => {
       defaultCurrency: true,
       defaultNetwork: true,
       supportedDepositRails: true,
+      autoSwapEnabled: true,
+      autoSwapSettingsJson: true,
     },
   });
   if (!existing) {
@@ -1135,6 +1137,9 @@ router.patch("/api/v1/merchant/settings", async (req, res) => {
     nextSupported = v.keys;
   }
 
+  const railsChanged =
+    railsSortedKey(nextSupported) !== railsSortedKey(existing.supportedDepositRails);
+
   const constraintKeys = nextSupported.length > 0 ? nextSupported : null;
   const needPairUpdate =
     body.default_chains !== undefined ||
@@ -1170,6 +1175,45 @@ router.patch("/api/v1/merchant/settings", async (req, res) => {
     }
     data.defaultCurrency = picked.currency;
     data.defaultNetwork = picked.network;
+  }
+
+  const bodyTouchesAutoSwap =
+    body.auto_swap_enabled !== undefined ||
+    body.autoSwapEnabled !== undefined ||
+    body.auto_swap_settings !== undefined ||
+    body.autoSwapSettings !== undefined;
+
+  const runAutoSwapValidation =
+    bodyTouchesAutoSwap || (railsChanged && existing.autoSwapEnabled === true);
+
+  if (runAutoSwapValidation) {
+    const rawSettings =
+      body.auto_swap_settings !== undefined
+        ? body.auto_swap_settings
+        : body.autoSwapSettings !== undefined
+          ? body.autoSwapSettings
+          : undefined;
+    const merged = mergeAutoSwapSettingsPayload(
+      rawSettings,
+      existing.autoSwapSettingsJson,
+    );
+    const nextAutoEnabled =
+      body.auto_swap_enabled !== undefined
+        ? Boolean(body.auto_swap_enabled)
+        : body.autoSwapEnabled !== undefined
+          ? Boolean(body.autoSwapEnabled)
+          : existing.autoSwapEnabled;
+    const v = validateMerchantAutoSwapState(merged, nextSupported, nextAutoEnabled);
+    if (!v.ok) {
+      res.status(400).json({
+        error: v.error,
+        message: v.message ?? "Invalid auto-swap settings",
+        ...(v.rail_key ? { rail_key: v.rail_key } : {}),
+      });
+      return;
+    }
+    data.autoSwapEnabled = nextAutoEnabled;
+    data.autoSwapSettingsJson = v.json;
   }
 
   if (Object.keys(data).length === 0) {

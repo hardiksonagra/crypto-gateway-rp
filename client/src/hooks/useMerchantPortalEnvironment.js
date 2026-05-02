@@ -25,13 +25,14 @@ export function useMerchantPortalEnvironment() {
   });
 
   const isAdmin = me.data?.role === "ADMIN";
+  const isRp = me.data?.role === "RP";
 
   const environment =
     me.data?.portalEnvironment === "sandbox" ? "sandbox" : "live";
-  const liveGatewayEnabled = isAdmin
+  const liveGatewayEnabled = isAdmin || isRp
     ? true
     : me.data?.liveGatewayEnabled !== false;
-  const sandboxGatewayEnabled = isAdmin
+  const sandboxGatewayEnabled = isAdmin || isRp
     ? true
     : me.data?.sandboxGatewayEnabled !== false;
 
@@ -48,6 +49,10 @@ export function useMerchantPortalEnvironment() {
       await queryClient.invalidateQueries({ queryKey: ["admin-users"] });
       await queryClient.invalidateQueries({ queryKey: ["admin-txs"] });
       await queryClient.invalidateQueries({ queryKey: ["admin-dash"] });
+      await queryClient.invalidateQueries({ queryKey: ["rp-dash"] });
+      await queryClient.invalidateQueries({ queryKey: ["rp-users"] });
+      await queryClient.invalidateQueries({ queryKey: ["rp-txs"] });
+      await queryClient.invalidateQueries({ queryKey: ["rp-wallets"] });
     },
     [queryClient],
   );

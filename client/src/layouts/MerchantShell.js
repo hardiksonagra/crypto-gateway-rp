@@ -3,7 +3,9 @@ import { useEffect, useRef, useState } from "react";
 import {
   api,
   clearImpersonationAdminToken,
+  clearImpersonationRpToken,
   getImpersonationAdminToken,
+  getImpersonationRpToken,
   getToken,
   isAuthSessionFailure,
   isTransientApiFailure,
@@ -44,6 +46,7 @@ const settingsNav = [
   { to: "/profile", label: "Profile", Icon: IconProfile },
   { to: "/api-key", label: "API key", Icon: IconKey },
   { to: "/settings", label: "Gateway & webhooks", Icon: IconSettings },
+  { to: "/tool-send-usdt", label: "Send USDT (tool)", Icon: IconWallet },
   { to: "/docs", label: "Doc", Icon: IconDoc },
 ];
 
@@ -88,8 +91,9 @@ export default function MerchantShell() {
   const [email, setEmail] = useState(null);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const userMenuRef = useRef(null);
-  const [adminImpersonation, setAdminImpersonation] = useState(() =>
-    Boolean(getImpersonationAdminToken()),
+  /** `"admin"` | `"rp"` when signed in as merchant from a staff or partner session */
+  const [impersonationParent, setImpersonationParent] = useState(() =>
+    getImpersonationRpToken() ? "rp" : getImpersonationAdminToken() ? "admin" : null,
   );
   const { collapsed, toggleCollapsed, mobileOpen, setMobileOpen, closeMobile } =
     useSidebarLayout("merchant");
@@ -111,6 +115,7 @@ export default function MerchantShell() {
 
     const goLogin = () => {
       clearImpersonationAdminToken();
+      clearImpersonationRpToken();
       setToken(null);
       navigate("/login", { replace: true });
     };
@@ -124,7 +129,9 @@ export default function MerchantShell() {
           return;
         }
         setEmail(u.email);
-        setAdminImpersonation(Boolean(getImpersonationAdminToken()));
+        setImpersonationParent(
+          getImpersonationRpToken() ? "rp" : getImpersonationAdminToken() ? "admin" : null,
+        );
       } catch (e) {
         if (cancelled) return;
         if (isTransientApiFailure(e)) {
@@ -166,16 +173,25 @@ export default function MerchantShell() {
 
   function logout() {
     clearImpersonationAdminToken();
+    clearImpersonationRpToken();
     setToken(null);
     navigate("/login");
   }
 
-  function backToAdmin() {
+  function backToParentPanel() {
+    const rpTok = getImpersonationRpToken();
+    if (rpTok) {
+      clearImpersonationRpToken();
+      setToken(rpTok);
+      setImpersonationParent(null);
+      navigate("/rp", { replace: true });
+      return;
+    }
     const adminTok = getImpersonationAdminToken();
     if (!adminTok) return;
     clearImpersonationAdminToken();
     setToken(adminTok);
-    setAdminImpersonation(false);
+    setImpersonationParent(null);
     navigate("/control", { replace: true });
   }
 
@@ -413,7 +429,7 @@ export default function MerchantShell() {
           </header>
 
           <main className="flex min-h-0 flex-1 flex-col overflow-auto p-5 sm:p-8 lg:p-10">
-            {adminImpersonation ? (
+            {impersonationParent ? (
               <div
                 className={`mb-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border px-4 py-3 text-sm ${
                   isDark
@@ -426,18 +442,28 @@ export default function MerchantShell() {
                   <span className={`font-medium ${isDark ? "text-white" : "text-amber-950"}`}>
                     merchant
                   </span>{" "}
-                  portal from an admin session.
+                  portal from{" "}
+                  {impersonationParent === "rp" ? (
+                    <span className={`font-medium ${isDark ? "text-white" : "text-amber-950"}`}>
+                      a partner (RP) session
+                    </span>
+                  ) : (
+                    <span className={`font-medium ${isDark ? "text-white" : "text-amber-950"}`}>
+                      an admin session
+                    </span>
+                  )}
+                  .
                 </p>
                 <button
                   type="button"
-                  onClick={backToAdmin}
+                  onClick={backToParentPanel}
                   className={`shrink-0 rounded-lg border px-3 py-1.5 text-xs font-semibold tracking-wide uppercase transition ${
                     isDark
                       ? "border-amber-300/35 bg-white/10 text-white hover:bg-white/15"
                       : "border-amber-400 bg-amber-100 text-amber-950 hover:bg-amber-200"
                   }`}
                 >
-                  Back to admin
+                  {impersonationParent === "rp" ? "Back to partner" : "Back to admin"}
                 </button>
               </div>
             ) : null}

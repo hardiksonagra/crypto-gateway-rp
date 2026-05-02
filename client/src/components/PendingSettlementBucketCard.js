@@ -12,7 +12,7 @@ const labelCls = "mb-1 block text-xs font-medium text-white/60";
 function statusLabelFor(b, variant) {
   if (!b.transaction_count) return "No volume";
   const eligible = b.transaction_count > 0 && b.meets_min;
-  if (variant === "admin") {
+  if (variant === "admin" || variant === "rp") {
     return eligible ? "Ready to settle" : "Below threshold";
   }
   return eligible ? "Above minimum" : "Below minimum";
@@ -20,7 +20,7 @@ function statusLabelFor(b, variant) {
 
 /**
  * @param {{
- *   variant: 'admin' | 'merchant';
+ *   variant: 'admin' | 'merchant' | 'rp';
  *   b: Record<string, unknown> & {
  *     chain: string;
  *     token_symbol: string;
@@ -63,8 +63,12 @@ export function PendingSettlementBucketCard({
 
   const netColSpan = showMin ? "xl:col-span-2" : "xl:col-span-5";
 
+  const feeMdrOnly = variant === "rp";
+
   const showAdminSettle =
-    variant === "admin" && Boolean(merchantId) && typeof onSettled === "function";
+    (variant === "admin" || variant === "rp") &&
+    Boolean(merchantId) &&
+    typeof onSettled === "function";
 
   return (
     <article className="surface-adaptive-card group relative w-full overflow-hidden rounded-2xl border border-white/[0.09] bg-gradient-to-br from-[#141a2e]/95 via-[#0e1222]/98 to-[#090c18] shadow-[0_24px_48px_-12px_rgba(0,0,0,0.55)] ring-1 ring-inset ring-white/[0.04] transition-[box-shadow,transform] duration-300 hover:shadow-[0_28px_56px_-12px_rgba(60,80,200,0.12)]">
@@ -136,28 +140,51 @@ export function PendingSettlementBucketCard({
 
           <div className="rounded-xl border border-amber-500/15 border-l-[3px] border-l-amber-400/50 bg-gradient-to-r from-amber-500/[0.06] to-transparent px-3 py-2 xl:col-span-5 xl:py-2.5">
             <p className="text-[9px] font-bold uppercase tracking-widest text-amber-200/55 xl:mb-1.5">
-              Fee pipeline
+              {feeMdrOnly ? "Fees (partner merchants)" : "Fee pipeline"}
             </p>
-            <div className="grid grid-cols-3 gap-2 text-[11px]">
-              <div className="min-w-0">
-                <p className="truncate text-white/40">MDR ({Number(b.mdr_percent).toFixed(2)}%)</p>
-                <p className="font-mono tabular-nums text-amber-200/85">
-                  −{formatTokenAmount(b.mdr_amount_raw, b.token_decimals)}
-                </p>
+            {feeMdrOnly ? (
+              <div className="grid grid-cols-2 gap-2 text-[11px]">
+                <div className="min-w-0">
+                  <p className="truncate text-white/40">MDR ({Number(b.mdr_percent).toFixed(2)}%)</p>
+                  <p className="font-mono tabular-nums text-amber-200/85">
+                    −{formatTokenAmount(b.mdr_amount_raw, b.token_decimals)}
+                  </p>
+                </div>
+                <div className="min-w-0">
+                  <p className="text-white/40">After MDR (net)</p>
+                  <p className="font-mono tabular-nums text-white/75">
+                    {formatTokenAmount(b.net_to_merchant_raw, b.token_decimals)}
+                  </p>
+                </div>
               </div>
-              <div className="min-w-0">
-                <p className="text-white/40">After MDR</p>
-                <p className="font-mono tabular-nums text-white/75">
-                  {formatTokenAmount(b.after_mdr_raw, b.token_decimals)}
-                </p>
+            ) : (
+              <div className="grid grid-cols-3 gap-2 text-[11px]">
+                <div className="min-w-0">
+                  <p className="truncate text-white/40">MDR ({Number(b.mdr_percent).toFixed(2)}%)</p>
+                  <p className="font-mono tabular-nums text-amber-200/85">
+                    −{formatTokenAmount(b.mdr_amount_raw, b.token_decimals)}
+                  </p>
+                </div>
+                <div className="min-w-0">
+                  <p className="text-white/40">After MDR</p>
+                  <p className="font-mono tabular-nums text-white/75">
+                    {formatTokenAmount(b.after_mdr_raw, b.token_decimals)}
+                  </p>
+                </div>
+                <div className="min-w-0">
+                  <p className="truncate text-white/40">Settle ({Number(b.settlement_rate_percent).toFixed(2)}%)</p>
+                  <p className="font-mono tabular-nums text-amber-200/85">
+                    −{formatTokenAmount(b.settlement_fee_raw, b.token_decimals)}
+                  </p>
+                </div>
               </div>
-              <div className="min-w-0">
-                <p className="truncate text-white/40">Settle ({Number(b.settlement_rate_percent).toFixed(2)}%)</p>
-                <p className="font-mono tabular-nums text-amber-200/85">
-                  −{formatTokenAmount(b.settlement_fee_raw, b.token_decimals)}
-                </p>
-              </div>
-            </div>
+            )}
+            {feeMdrOnly ? (
+              <p className="mt-2 text-[10px] leading-snug text-white/38">
+                Platform settlement fee is not applied to merchants under a reseller partner; net matches MDR
+                deduction only.
+              </p>
+            ) : null}
           </div>
 
           <div
@@ -205,6 +232,9 @@ export function PendingSettlementBucketCard({
                 bucket={b}
                 onSettled={onSettled}
                 embedded
+                submitUrl={
+                  variant === "rp" ? "/api/v1/rp/settlements/batch" : "/api/v1/admin/settlements/batch"
+                }
               />
             </div>
           </div>
@@ -220,9 +250,16 @@ export function PendingSettlementBucketCard({
  *   bucket: Record<string, unknown> & { chain: string; token_symbol: string; token_decimals: number; transaction_count: number; meets_min: boolean };
  *   onSettled: () => void;
  *   embedded?: boolean;
+ *   submitUrl?: string;
  * }} props
  */
-function BatchSettleForm({ merchantId, bucket, onSettled, embedded }) {
+function BatchSettleForm({
+  merchantId,
+  bucket,
+  onSettled,
+  embedded,
+  submitUrl = "/api/v1/admin/settlements/batch",
+}) {
   const fileRef = useRef(null);
   const bucketKey = `${bucket.chain}-${bucket.token_symbol}-${bucket.token_decimals}`;
   const canSettle = bucket.transaction_count > 0 && bucket.meets_min;
@@ -248,7 +285,7 @@ function BatchSettleForm({ merchantId, bucket, onSettled, embedded }) {
           fd.append("token_symbol", bucket.token_symbol);
           fd.append("token_decimals", String(bucket.token_decimals));
           fd.append("proof", f);
-          await apiForm("/api/v1/admin/settlements/batch", fd);
+          await apiForm(submitUrl, fd);
           if (fileRef.current) fileRef.current.value = "";
           onSettled();
         } catch (e) {

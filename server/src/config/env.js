@@ -21,9 +21,13 @@ function required(name) {
  * the first “word” is actually `\uFEFFabandon` from a UTF-8 BOM on the line.
  * @returns {string}
  */
+/**
+ * Legacy global HD root: optional when every merchant has `mnemonic_cipher` set.
+ * @returns {string | null}
+ */
 function loadNormalizedMnemonic() {
   const raw = process.env.MNEMONIC;
-  if (!raw?.trim()) throw new Error("Missing required env: MNEMONIC");
+  if (!raw?.trim()) return null;
   return String(raw)
     .trim()
     .replace(/^\uFEFF/, "")

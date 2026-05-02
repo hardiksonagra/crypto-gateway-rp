@@ -5,7 +5,7 @@ import { BrandLoader } from "./BrandLoader.js";
 import { formatLocalDateTime } from "../lib/formatLocalDateTime.js";
 
 /**
- * @param {"admin" | "merchant"} panel
+ * @param {"admin" | "merchant" | "rp"} panel
  * @param {string} userId
  * @param {string} [adminMerchantId]
  * @param {"assignments" | "deposits"} kind
@@ -14,13 +14,13 @@ function userHistoryUrl(panel, userId, kind, adminMerchantId) {
   const enc = encodeURIComponent(userId);
   const base =
     kind === "assignments"
-      ? panel === "admin"
-        ? `/api/v1/admin/users/${enc}/wallet-assignment-history?limit=200`
+      ? panel === "admin" || panel === "rp"
+        ? `/api/v1/${panel === "rp" ? "rp" : "admin"}/users/${enc}/wallet-assignment-history?limit=200`
         : `/api/v1/merchant/users/${enc}/wallet-assignment-history?limit=200`
-      : panel === "admin"
-        ? `/api/v1/admin/users/${enc}/payer-deposit-history?limit=200`
+      : panel === "admin" || panel === "rp"
+        ? `/api/v1/${panel === "rp" ? "rp" : "admin"}/users/${enc}/payer-deposit-history?limit=200`
         : `/api/v1/merchant/users/${enc}/payer-deposit-history?limit=200`;
-  if (panel === "admin" && adminMerchantId) {
+  if ((panel === "admin" || panel === "rp") && adminMerchantId) {
     return `${base}&merchant_id=${encodeURIComponent(adminMerchantId)}`;
   }
   return base;
@@ -77,7 +77,7 @@ function ModalShell({ id, title, subtitle, extra, onClose, children }) {
  * @param {object} props
  * @param {boolean} props.open
  * @param {string | null} props.userId
- * @param {"admin" | "merchant"} props.panel
+ * @param {"admin" | "merchant" | "rp"} props.panel
  * @param {string} [props.adminMerchantId]
  * @param {() => void} props.onClose
  */
@@ -189,7 +189,7 @@ export function UserAssignmentHistoryModal({
  * @param {object} props
  * @param {boolean} props.open
  * @param {string | null} props.userId
- * @param {"admin" | "merchant"} props.panel
+ * @param {"admin" | "merchant" | "rp"} props.panel
  * @param {string} [props.adminMerchantId]
  * @param {() => void} props.onClose
  */

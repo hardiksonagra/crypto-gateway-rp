@@ -7,7 +7,7 @@ import { Link } from "react-router-dom";
 /**
  * @param {object} props
  * @param {BreadcrumbItem[]} props.items
- * @param {"admin" | "merchant"} [props.variant]
+ * @param {"admin" | "merchant"} [props.variant] RP shell uses `"admin"` styling via `ShellBreadcrumbs`.
  * @param {string} [props.className]
  */
 export default function Breadcrumbs({ items, variant = "admin", className = "" }) {

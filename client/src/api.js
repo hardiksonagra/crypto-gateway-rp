@@ -1,6 +1,8 @@
 const TOKEN_KEY = "cpg_token";
 /** Saved while an admin uses “Log in as merchant”; restored on “Back to admin”. */
 const IMPERSONATION_ADMIN_TOKEN_KEY = "cpg_impersonation_admin_token";
+/** Saved while an RP uses “Log in as merchant”; restored on “Back to partner”. */
+const IMPERSONATION_RP_TOKEN_KEY = "cpg_impersonation_rp_token";
 
 const API_BASE = String(import.meta.env.VITE_API_ORIGIN ?? "").replace(/\/$/, "");
 
@@ -31,6 +33,20 @@ export function setImpersonationAdminToken(t) {
 
 export function clearImpersonationAdminToken() {
   localStorage.removeItem(IMPERSONATION_ADMIN_TOKEN_KEY);
+}
+
+export function getImpersonationRpToken() {
+  return localStorage.getItem(IMPERSONATION_RP_TOKEN_KEY);
+}
+
+/** @param {string | null | undefined} t */
+export function setImpersonationRpToken(t) {
+  if (t) localStorage.setItem(IMPERSONATION_RP_TOKEN_KEY, t);
+  else localStorage.removeItem(IMPERSONATION_RP_TOKEN_KEY);
+}
+
+export function clearImpersonationRpToken() {
+  localStorage.removeItem(IMPERSONATION_RP_TOKEN_KEY);
 }
 
 /**
@@ -110,10 +126,11 @@ export async function api(path, init) {
       setToken(null);
       const p = String(path);
       if (typeof window !== "undefined" && !p.includes("/auth/login")) {
-        const dest =
-          typeof window.location?.pathname === "string" &&
-          window.location.pathname.startsWith("/control")
-            ? "/control/login"
+        const path = typeof window.location?.pathname === "string" ? window.location.pathname : "";
+        const dest = path.startsWith("/control")
+          ? "/control/login"
+          : path.startsWith("/rp")
+            ? "/rp/login"
             : "/login";
         window.location.assign(dest);
       }

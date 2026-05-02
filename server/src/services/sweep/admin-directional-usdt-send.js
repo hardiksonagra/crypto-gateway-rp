@@ -22,12 +22,17 @@ function tronAddrEq(a, b) {
  * Resolves `from_address` to a gateway-managed USDT deposit wallet and sends **full on-chain USDT balance**
  * to `to_address` (same rail: TRC20 or ERC20). Does not perform DEX swaps — on-chain USDT `transfer` only.
  *
- * @param {{ from_address: string, to_address: string }} p
+ * @param {{ from_address: string, to_address: string, merchant_id?: number }} p
+ * When `merchant_id` is set, the source wallet must belong to that merchant (merchant portal send tool).
  * @returns {Promise<object>}
  */
 export async function adminDirectionalUsdtSend(p) {
   const from = String(p.from_address ?? "").trim();
   const to = String(p.to_address ?? "").trim();
+  const mid =
+    typeof p.merchant_id === "number" && Number.isInteger(p.merchant_id) && p.merchant_id > 0
+      ? p.merchant_id
+      : null;
   if (!from || !to) {
     return {
       ok: false,
@@ -36,6 +41,8 @@ export async function adminDirectionalUsdtSend(p) {
     };
   }
 
+  const merchantClause = mid != null ? { merchantId: mid } : {};
+
   const ethWallet = await prisma.wallet.findFirst({
     where: {
       chain: Chain.ETH,
@@ -43,6 +50,7 @@ export async function adminDirectionalUsdtSend(p) {
       network: "ERC20",
       address: { equals: from, mode: "insensitive" },
       ...ACTIVE,
+      ...merchantClause,
     },
     select: { id: true, address: true },
   });
@@ -53,6 +61,7 @@ export async function adminDirectionalUsdtSend(p) {
       currency: "USDT",
       network: "TRC20",
       ...ACTIVE,
+      ...merchantClause,
     },
     select: { id: true, address: true },
   });

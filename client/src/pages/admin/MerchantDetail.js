@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { api } from "../../api";
+import { usePanelApiPrefix } from "../../hooks/usePanelApiPrefix.js";
 import ListPaginationBar, { DEFAULT_LIST_PAGE_SIZE } from "../../components/ListPaginationBar";
 import { BrandLoader } from "../../components/BrandLoader.js";
 import {
@@ -30,6 +31,7 @@ import {
 } from "../../components/UserHistoryModals.js";
 import { useBreadcrumbExtras } from "../../contexts/BreadcrumbExtrasContext.js";
 import { StatusBadge } from "../../components/StatusBadge.js";
+import { resellerPartnerLabel, resellerPartnerTitle } from "../../lib/resellerPartnerLabel.js";
 
 const DEFAULT_PAGE_SIZE = DEFAULT_LIST_PAGE_SIZE;
 const TX_STATUS_OPTIONS = ["created", "pending", "success", "failed", "underpaid"];
@@ -43,13 +45,14 @@ const MERCHANT_DETAIL_TABS = [
 
 export default function MerchantDetail() {
   const { id: merchantId } = useParams();
+  const { apiPrefix, isRp, listBase } = usePanelApiPrefix();
   const [tab, setTab] = useState("details");
   const { setMerchantCrumb } = useBreadcrumbExtras();
 
   const merchantQ = useQuery({
-    queryKey: ["admin-merchant", merchantId],
+    queryKey: [isRp ? "rp-merchant" : "admin-merchant", merchantId],
     enabled: Boolean(merchantId),
-    queryFn: () => api(`/api/v1/admin/merchants/${merchantId}`),
+    queryFn: () => api(`${apiPrefix}/merchants/${merchantId}`),
   });
 
   useEffect(() => {
@@ -107,7 +110,7 @@ export default function MerchantDetail() {
 
   const txsQ = useQuery({
     queryKey: [
-      "admin-merchant-txs",
+      isRp ? "rp-merchant-txs" : "admin-merchant-txs",
       merchantId,
       txPage,
       txApplied.pageSize,
@@ -129,13 +132,13 @@ export default function MerchantDetail() {
       if (txApplied.token_symbol.trim()) p.set("token_symbol", txApplied.token_symbol.trim());
       if (txApplied.address.trim()) p.set("address", txApplied.address.trim());
       if (txApplied.transaction_id.trim()) p.set("transaction_id", txApplied.transaction_id.trim());
-      return api(`/api/v1/admin/transactions?${p}`);
+      return api(`${apiPrefix}/transactions?${p}`);
     },
   });
 
   const walletsQ = useQuery({
     queryKey: [
-      "admin-merchant-wallets",
+      isRp ? "rp-merchant-wallets" : "admin-merchant-wallets",
       merchantId,
       walPage,
       walApplied.pageSize,
@@ -161,13 +164,13 @@ export default function MerchantDetail() {
       if (walApplied.q.trim()) p.set("q", walApplied.q.trim());
       if (walApplied.created_from) p.set("created_from", walApplied.created_from);
       if (walApplied.created_to) p.set("created_to", walApplied.created_to);
-      return api(`/api/v1/admin/wallets?${p}`);
+      return api(`${apiPrefix}/wallets?${p}`);
     },
   });
 
   const usersQ = useQuery({
     queryKey: [
-      "admin-merchant-users",
+      isRp ? "rp-merchant-users" : "admin-merchant-users",
       merchantId,
       userPage,
       userApplied.pageSize,
@@ -185,7 +188,7 @@ export default function MerchantDetail() {
       if (userApplied.q.trim()) p.set("q", userApplied.q.trim());
       if (userApplied.created_from) p.set("created_from", userApplied.created_from);
       if (userApplied.created_to) p.set("created_to", userApplied.created_to);
-      return api(`/api/v1/admin/users?${p}`);
+      return api(`${apiPrefix}/users?${p}`);
     },
   });
 
@@ -207,7 +210,7 @@ export default function MerchantDetail() {
   if (merchantQ.isError || !merchantQ.data) {
     return (
       <div>
-        <Link to="/control/merchants" className="text-sm text-white/60 hover:text-white">
+        <Link to={`${listBase}/merchants`} className="text-sm text-white/60 hover:text-white">
           ← Merchants
         </Link>
         <p className="mt-4 text-rose-400">Merchant not found.</p>
@@ -254,7 +257,7 @@ export default function MerchantDetail() {
     <div className="w-full max-w-none">
       <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
-          <Link to="/control/merchants" className="text-sm text-white/50 hover:text-white">
+          <Link to={`${listBase}/merchants`} className="text-sm text-white/50 hover:text-white">
             ← Merchants
           </Link>
           <h1 className="mt-3 font-display text-2xl font-semibold text-white">Merchant</h1>
@@ -262,10 +265,27 @@ export default function MerchantDetail() {
           {m.display_name ? (
             <p className="text-sm text-white/55">{m.display_name}</p>
           ) : null}
+          {!isRp &&
+          (m.reseller_partner_id ||
+            m.reseller_partner_email ||
+            m.reseller_partner_display_name) ? (
+            <p className="mt-2 text-xs text-white/50" title={resellerPartnerTitle(m)}>
+              <span className="text-white/40">Reseller (RP)</span>{" "}
+              <span className="font-medium text-indigo-200/90">{resellerPartnerLabel(m)}</span>
+              {m.reseller_partner_id ? (
+                <Link
+                  to="/control/reseller-partners"
+                  className="ml-2 text-sky-300/90 underline decoration-white/15 underline-offset-2 hover:text-sky-200"
+                >
+                  All partners
+                </Link>
+              ) : null}
+            </p>
+          ) : null}
         </div>
         {m.deleted_at ? null : (
           <Link
-            to={`/control/merchants/${merchantId}/edit`}
+            to={`${listBase}/merchants/${merchantId}/edit`}
             className="inline-flex items-center gap-2 rounded-xl border border-white/12 bg-white/5 px-4 py-2.5 text-sm font-medium text-white/80 transition-colors hover:border-white/20 hover:bg-white/10"
           >
             Edit merchant
@@ -327,6 +347,21 @@ export default function MerchantDetail() {
                       ? "Active"
                       : "Inactive"}
                 </p>
+              </div>
+              <div>
+                <p className="text-[10px] font-semibold tracking-wide text-white/40 uppercase">
+                  Reseller partner (RP)
+                </p>
+                <p className="mt-1 text-sm text-white/85">{resellerPartnerLabel(m)}</p>
+                {m.reseller_partner_email?.trim() ? (
+                  <p className="mt-0.5 font-mono text-xs text-white/45" title="Login email">
+                    {m.reseller_partner_email.trim()}
+                  </p>
+                ) : m.reseller_partner_id ? (
+                  <p className="mt-0.5 font-mono text-xs text-white/45">id {m.reseller_partner_id}</p>
+                ) : (
+                  <p className="mt-0.5 text-xs text-white/45">— (platform merchant)</p>
+                )}
               </div>
               {m.deleted_at ? (
                 <div className="lg:col-span-2">
@@ -1471,14 +1506,14 @@ export default function MerchantDetail() {
       <UserAssignmentHistoryModal
         open={userAssignmentModalId != null}
         userId={userAssignmentModalId}
-        panel="admin"
+        panel={isRp ? "rp" : "admin"}
         adminMerchantId={merchantId}
         onClose={() => setUserAssignmentModalId(null)}
       />
       <UserPayerDepositHistoryModal
         open={userDepositModalId != null}
         userId={userDepositModalId}
-        panel="admin"
+        panel={isRp ? "rp" : "admin"}
         adminMerchantId={merchantId}
         onClose={() => setUserDepositModalId(null)}
       />

@@ -1,6 +1,10 @@
 import { verifyAuthToken } from "../lib/auth-jwt.js";
 import { prisma } from "../lib/prisma.js";
-import { PORTAL_ROLE_ADMIN, PORTAL_ROLE_MERCHANT } from "../constants/portal-role.js";
+import {
+  PORTAL_ROLE_ADMIN,
+  PORTAL_ROLE_MERCHANT,
+  PORTAL_ROLE_RP,
+} from "../constants/portal-role.js";
 
 /**
  * Bearer JWT + live DB check: account must exist, not soft-deleted (`deleted_at`), and active.
@@ -26,7 +30,11 @@ export function requireAuth(...allowed) {
     }
 
     const role = payload.role;
-    if (role !== PORTAL_ROLE_ADMIN && role !== PORTAL_ROLE_MERCHANT) {
+    if (
+      role !== PORTAL_ROLE_ADMIN &&
+      role !== PORTAL_ROLE_MERCHANT &&
+      role !== PORTAL_ROLE_RP
+    ) {
       res.status(401).json({ error: "invalid_token" });
       return;
     }
@@ -41,6 +49,11 @@ export function requireAuth(...allowed) {
     try {
       if (role === PORTAL_ROLE_ADMIN) {
         account = await prisma.admin.findUnique({
+          where: { id: subId },
+          select: { isActive: true, deletedAt: true },
+        });
+      } else if (role === PORTAL_ROLE_RP) {
+        account = await prisma.resellerPartner.findUnique({
           where: { id: subId },
           select: { isActive: true, deletedAt: true },
         });

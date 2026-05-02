@@ -1,6 +1,6 @@
 import { Formik, Form, Field, ErrorMessage } from "formik";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { api, clearImpersonationAdminToken, setToken } from "../api";
+import { api, clearImpersonationAdminToken, clearImpersonationRpToken, setToken } from "../api";
 import { loginSchema } from "../admin/merchantSchemas";
 import { useTheme } from "../hooks/useTheme.js";
 import { BrandMark } from "../components/BrandMark.js";
@@ -119,6 +119,7 @@ export default function LoginPage() {
                   json: { email: values.email.trim().toLowerCase(), password: values.password },
                 });
                 clearImpersonationAdminToken();
+                clearImpersonationRpToken();
                 setToken(r.token);
                 nav("/", { replace: true });
               } catch (e) {

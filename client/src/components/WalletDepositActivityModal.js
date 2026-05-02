@@ -9,13 +9,13 @@ import { BrandLoader } from "./BrandLoader.js";
  * @param {object} props
  * @param {boolean} props.open
  * @param {string | null} props.walletId
- * @param {"admin" | "merchant"} props.panel
+ * @param {"admin" | "merchant" | "rp"} props.panel
  * @param {() => void} props.onClose
  */
 export default function WalletDepositActivityModal({ open, walletId, panel, onClose }) {
   const path =
-    panel === "admin"
-      ? `/api/v1/admin/wallets/${encodeURIComponent(walletId ?? "")}/deposit-activity?limit=200`
+    panel === "admin" || panel === "rp"
+      ? `/api/v1/${panel === "rp" ? "rp" : "admin"}/wallets/${encodeURIComponent(walletId ?? "")}/deposit-activity?limit=200`
       : `/api/v1/merchant/wallets/${encodeURIComponent(walletId ?? "")}/deposit-activity?limit=200`;
 
   const q = useQuery({

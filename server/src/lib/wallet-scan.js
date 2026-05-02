@@ -53,12 +53,10 @@ export function nextScanExpiresAt() {
 }
 
 /**
- * Do not poll explorers for rows with **both** `hold_expires_at` and `scan_expires_at` SQL null (idle pool).
- * Only exception: `deposit_scan_single_tick_requested` (explicit rescan).
- *
- * **No** `gateway-created` exception here: a stray placeholder on a pooled wallet would otherwise keep
- * TronScan polling forever. Open checkouts must keep at least one TTL column non-null from assign
- * (expired timestamps still count — only **both** null is blocked).
+ * Do not poll explorers for rows with **both** `hold_expires_at` and `scan_expires_at` SQL null **unless**
+ * the wallet is dedicated to an end-user (`assigned_user_id` set) so deposits to that static address still
+ * match between checkouts. Unassigned pool rows stay gated off when both TTLs are null.
+ * Also: `deposit_scan_single_tick_requested` (explicit rescan).
  *
  * @returns {import("@prisma/client").Prisma.WalletWhereInput}
  */
@@ -71,38 +69,25 @@ export function depositScanBothTtlsNullGate() {
         },
       },
       { depositScanSingleTickRequested: true },
+      { assignedUserId: { not: null } },
     ],
   };
 }
 
 /**
  * Prisma `where` fragment: live worker hot path (each poll).
- * - **Gate:** both TTLs null → no tracking (see {@link depositScanBothTtlsNullGate}).
- * - `assigned_user_id` set and `scan_expires_at` still in the future — checkout scan window (`WALLET_SCAN_TTL_MINUTES`).
- * - Assigned wallet whose **pooled hold** has not expired — keep scanning until `WALLET_ASSIGNMENT_HOLD_MINUTES`
- *   ends even after scan TTL (e.g. UI 10m, hold 30m).
+ * - **Gate:** see {@link depositScanBothTtlsNullGate} (idle unassigned pool vs dedicated addresses).
+ * - **Dedicated user wallet:** `assigned_user_id` set — always poll (per-user deposit address persists after checkout).
  * - `deposit_scan_single_tick_requested` (merchant/admin rescan, one tick per chain).
  * - **Open checkout:** at least one active `transactions` row `status: created` with synthetic
  *   `gateway-created:*` hash — keeps scanning after hold/assign cleared so late USDT credits are
  *   not stuck until `DEPOSIT_FULL_SCAN_INTERVAL_HOURS` (requires Prisma client with `TxStatus.created`).
  */
 export function liveWorkerWalletScanFilter() {
-  const now = new Date();
   /** @type {import("@prisma/client").Prisma.WalletWhereInput[]} */
   const or = [
-    {
-      AND: [
-        { assignedUserId: { not: null } },
-        { scanExpiresAt: { gt: now } },
-      ],
-    },
+    { assignedUserId: { not: null } },
     { depositScanSingleTickRequested: true },
-    {
-      AND: [
-        { assignedUserId: { not: null } },
-        { holdExpiresAt: { gt: now } },
-      ],
-    },
   ];
   if (prismaClientKnowsTxStatusCreated()) {
     or.push({

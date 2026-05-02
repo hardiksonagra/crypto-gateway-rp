@@ -108,6 +108,15 @@ export async function assertPortalEnvironmentUpdateAllowed(userId, environment) 
   if (adminRow) {
     return { ok: true };
   }
+  if (typeof userId === "number" && Number.isInteger(userId)) {
+    const rp = await prisma.resellerPartner.findFirst({
+      where: { id: userId, deletedAt: null },
+      select: { id: true },
+    });
+    if (rp) {
+      return { ok: true };
+    }
+  }
   const merchWhere =
     typeof userId === "number" && Number.isInteger(userId)
       ? { id: userId }

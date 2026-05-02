@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import { api } from "../../api";
+import { usePanelApiPrefix } from "../../hooks/usePanelApiPrefix.js";
 import { buildMerchantEditSchema } from "../../admin/merchantSchemas";
 import ChainMultiSelectField from "../../components/ChainMultiSelectField";
 import DepositRailsMultiSelectField from "../../components/DepositRailsMultiSelectField";
@@ -12,6 +13,7 @@ import {
   railKeyFromParts,
 } from "../../admin/depositRailOptions.js";
 import { BrandLoader } from "../../components/BrandLoader.js";
+import { resellerPartnerLabel, resellerPartnerTitle } from "../../lib/resellerPartnerLabel.js";
 import { useBreadcrumbExtras } from "../../contexts/BreadcrumbExtrasContext.js";
 
 const input =
@@ -20,15 +22,16 @@ const label = "mb-1 block text-xs font-medium text-white/60";
 
 export default function MerchantEdit() {
   const { id } = useParams();
+  const { apiPrefix, isRp, listBase } = usePanelApiPrefix();
   const nav = useNavigate();
   const qc = useQueryClient();
   const [newKeysModal, setNewKeysModal] = useState(null);
   const { setMerchantCrumb } = useBreadcrumbExtras();
 
   const q = useQuery({
-    queryKey: ["admin-merchant", id],
+    queryKey: [isRp ? "rp-merchant" : "admin-merchant", id],
     enabled: Boolean(id),
-    queryFn: () => api(`/api/v1/admin/merchants/${id}`),
+    queryFn: () => api(`${apiPrefix}/merchants/${id}`),
   });
 
   useEffect(() => {
@@ -60,7 +63,7 @@ export default function MerchantEdit() {
   if (q.isError || !q.data) {
     return (
       <div>
-        <Link to="/control/merchants" className="text-sm text-white/60 hover:text-white">
+        <Link to={`${listBase}/merchants`} className="text-sm text-white/60 hover:text-white">
           ← Back
         </Link>
         <p className="mt-4 text-rose-400">Merchant not found.</p>
@@ -73,7 +76,7 @@ export default function MerchantEdit() {
   if (m.deleted_at) {
     return (
       <div>
-        <Link to="/control/merchants" className="text-sm text-white/50 hover:text-white">
+        <Link to={`${listBase}/merchants`} className="text-sm text-white/50 hover:text-white">
           ← Merchants
         </Link>
         <p className="mt-4 text-rose-200/90">
@@ -81,7 +84,7 @@ export default function MerchantEdit() {
           read-only view.
         </p>
         <Link
-          to={`/control/merchants/${id}`}
+          to={`${listBase}/merchants/${id}`}
           className="mt-4 inline-block text-sm text-sky-300/90 hover:text-sky-200"
         >
           View merchant →
@@ -138,7 +141,7 @@ export default function MerchantEdit() {
     <div className="w-full max-w-none">
       <div className="mb-6">
         <Link
-          to="/control/merchants"
+          to={`${listBase}/merchants`}
           className="text-sm text-white/50 hover:text-white"
         >
           ← Merchants
@@ -150,6 +153,17 @@ export default function MerchantEdit() {
         Users — live: {m.end_users_live ?? 0}, sandbox: {m.end_users_sandbox ?? 0} · Gateway key
         hint: …{m.api_key_hint ?? "—"}
       </p>
+      {!isRp &&
+      (m.reseller_partner_email || m.reseller_partner_id || m.reseller_partner_display_name) ? (
+        <p
+          className="mt-2 rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 text-xs text-white/65"
+          title={resellerPartnerTitle(m)}
+        >
+          <span className="font-medium text-white/50">Reseller (RP)</span>{" "}
+          <span className="text-indigo-200/90">{resellerPartnerLabel(m)}</span>
+          <span className="text-white/35"> — set at merchant creation; change in the database if needed.</span>
+        </p>
+      ) : null}
 
       <div className="glass mt-8 w-full rounded-2xl p-6 lg:p-8">
         <Formik
@@ -162,7 +176,7 @@ export default function MerchantEdit() {
           onSubmit={async (values, { setStatus, setSubmitting }) => {
             setStatus(undefined);
             try {
-              const r = await api(`/api/v1/admin/merchants/${id}`, {
+              const r = await api(`${apiPrefix}/merchants/${id}`, {
                 method: "PATCH",
                 json: {
                   display_name:
@@ -190,7 +204,9 @@ export default function MerchantEdit() {
                 });
               }
               void qc.invalidateQueries({ queryKey: ["admin-merchants"] });
+              void qc.invalidateQueries({ queryKey: ["rp-merchants"] });
               void qc.invalidateQueries({ queryKey: ["admin-merchant", id] });
+              void qc.invalidateQueries({ queryKey: ["rp-merchant", id] });
               if (!r.api_key && !r.sandbox_api_key) setStatus("Saved.");
             } catch (e) {
               setStatus(String(e));
@@ -429,7 +445,7 @@ export default function MerchantEdit() {
                   {isSubmitting ? "Saving…" : "Save changes"}
                 </button>
                 <Link
-                  to="/control/merchants"
+                  to={`${listBase}/merchants`}
                   className="rounded-lg border border-white/15 px-4 py-2 text-sm text-white/70"
                 >
                   Cancel
@@ -460,7 +476,7 @@ export default function MerchantEdit() {
               className="mt-6 rounded-lg bg-white/10 px-4 py-2 text-sm"
               onClick={() => {
                 setNewKeysModal(null);
-                nav("/control/merchants");
+                nav(`${listBase}/merchants`);
               }}
             >
               Close

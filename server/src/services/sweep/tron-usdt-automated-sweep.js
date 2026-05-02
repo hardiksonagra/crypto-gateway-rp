@@ -1,10 +1,17 @@
+/** Post-deposit treasury routing: `getMerchantAutoSwapPlan` in `server/src/lib/merchant-auto-swap-settings.js`. */
 import { Chain, MerchantGatewayEnv } from "@prisma/client";
 import { utils as tronUtils } from "tronweb";
 import { env } from "../../config/env.js";
+import { getMerchantWalletMnemonic } from "../../lib/merchant-mnemonic.js";
 import { re } from "../../config/runtime-env.js";
 import { ACTIVE } from "../../lib/active-row.js";
 import { logger } from "../../lib/logger.js";
 import { prisma } from "../../lib/prisma.js";
+import {
+  getMerchantAutoSwapPlan,
+  merchantMinDecimalUsdtToAtomic6,
+  USDT_TRC20_RAIL_KEY,
+} from "../../lib/merchant-auto-swap-settings.js";
 import { acquireOutboundRpcSlot } from "../../lib/network-rpc-rate-limit.js";
 import { deriveTronPrivateKeyHex } from "../wallet/tron-wallet.js";
 import {
@@ -129,16 +136,20 @@ async function sendTrxTopUpFromFunder(toAddress, amountSun) {
 }
 
 /**
- * One deposit wallet: optional TRX top-up, then USDT → master if balance ≥ min.
+ * One deposit wallet: optional TRX top-up, then USDT → `master` when balance clears the minimum rule.
  *
- * @param {{ id: string, address: string, derivationIndex: number }} wallet
+ * @param {{ id: string, address: string, derivationIndex: number, merchantId: number }} wallet
+ * @param {string} master Base58 treasury (platform sweep master or merchant auto-swap destination).
+ * @param {bigint} minAtomic Minimum threshold (6-decimal USDT atomic). See `minExclusiveAbove`.
+ * @param {boolean} [minExclusiveAbove] When true (merchant auto-swap), sweep only if balance **&gt;** `minAtomic`. When false (platform sweep), use **≥** (`usdt` &gt;= min).
  */
 export async function sweepTronUsdtOneWithAutoTopUp(
   wallet,
   master,
   contractAddr,
+  minAtomic,
+  minExclusiveAbove = false,
 ) {
-  const minAtomic = re.sweepTronUsdtMinAtomic;
 
   if (tronAddrEq(wallet.address, master)) {
     return { status: "skipped", reason: "source_is_master" };
@@ -162,14 +173,19 @@ export async function sweepTronUsdtOneWithAutoTopUp(
     };
   }
 
-  if (usdtAtomic < minAtomic) {
+  const belowMin = minExclusiveAbove
+    ? minAtomic > 0n && usdtAtomic <= minAtomic
+    : usdtAtomic < minAtomic;
+  if (belowMin) {
     logger.info("tron_auto_sweep_skip_below_min", {
       event: "tron_auto_sweep_skip_below_min",
       at: new Date().toISOString(),
       wallet_id: wallet.id,
+      merchant_id: wallet.merchantId,
       deposit_address: wallet.address,
       usdt_atomic: usdtAtomic.toString(),
       min_usdt_atomic: minAtomic.toString(),
+      min_exclusive_above: minExclusiveAbove,
     });
     return {
       status: "skipped",
@@ -188,7 +204,8 @@ export async function sweepTronUsdtOneWithAutoTopUp(
     return { status: "skipped", reason: "zero_usdt" };
   }
 
-  const pkHex = deriveTronPrivateKeyHex(wallet.derivationIndex, env.mnemonic);
+  const mnemonicPhrase = await getMerchantWalletMnemonic(wallet.merchantId);
+  const pkHex = deriveTronPrivateKeyHex(wallet.derivationIndex, mnemonicPhrase);
   const depositTw = createTronWebFromPrivateKeyHex(pkHex);
 
   const neededTrxSun = await estimateTrxSunRequiredForTrc20Transfer(
@@ -303,26 +320,63 @@ export async function sweepTronUsdtOneWithAutoTopUp(
 }
 
 /**
- * Live TRON USDT·TRC20 wallets, oldest first — TRX top-up (if configured) then sweep to `SWEEP_MASTER_TRON`.
+ * Resolves sweep destination + USDT minimum for one merchant (live TRC20 cron).
+ *
+ * @param {number} merchantId
+ * @returns {Promise<
+ *   | { ok: true, master: string, minAtomic: bigint, minExclusiveAbove: boolean, mode: "merchant_auto_swap" | "platform" }
+ *   | { ok: false, reason: string }
+ * >}
+ */
+async function resolveTronUsdtSweepTargetForMerchant(merchantId) {
+  const plan = await getMerchantAutoSwapPlan(merchantId);
+  if (plan.enabled) {
+    const dest = plan.destinations.find((d) => d.rail_key === USDT_TRC20_RAIL_KEY);
+    if (!dest?.treasury_address?.trim()) {
+      return {
+        ok: false,
+        reason: "merchant_auto_swap_missing_usdt_trc20_destination",
+      };
+    }
+    let minAtomic = 0n;
+    const minDec = plan.minAmountsByRail?.[USDT_TRC20_RAIL_KEY];
+    if (minDec != null && String(minDec).trim() !== "") {
+      const parsed = merchantMinDecimalUsdtToAtomic6(minDec);
+      if (parsed === null) {
+        return { ok: false, reason: "merchant_auto_swap_invalid_min_amount" };
+      }
+      minAtomic = parsed;
+    }
+    return {
+      ok: true,
+      master: dest.treasury_address.trim(),
+      minAtomic,
+      minExclusiveAbove: true,
+      mode: "merchant_auto_swap",
+    };
+  }
+  const master = re.sweepMasterTron?.trim() ?? "";
+  if (!master) {
+    return { ok: false, reason: "SWEEP_MASTER_TRON_NOT_SET" };
+  }
+  return {
+    ok: true,
+    master,
+    minAtomic: re.sweepTronUsdtMinAtomic,
+    minExclusiveAbove: false,
+    mode: "platform",
+  };
+}
+
+/**
+ * Live TRON USDT·TRC20 wallets, oldest first — TRX top-up (if configured) then sweep:
+ * merchant **auto-swap** treasury + per-rail minimum when enabled; otherwise platform `SWEEP_MASTER_TRON` + `SWEEP_TRON_USDT_MIN_ATOMIC`.
  *
  * @returns {Promise<{ round_started_at: string, master: string, wallet_count: number, results: object[] }>}
  */
 export async function runAutomatedTronUsdtSweepRound() {
   const started = new Date().toISOString();
-  const master = re.sweepMasterTron?.trim() ?? "";
-  if (!master) {
-    logger.warn("tron_auto_sweep_round_aborted", {
-      event: "tron_auto_sweep_round_aborted",
-      at: started,
-      reason: "SWEEP_MASTER_TRON_NOT_SET",
-    });
-    return {
-      round_started_at: started,
-      master: "",
-      wallet_count: 0,
-      results: [],
-    };
-  }
+  const platformMaster = re.sweepMasterTron?.trim() ?? "";
 
   let contractAddr;
   try {
@@ -334,7 +388,12 @@ export async function runAutomatedTronUsdtSweepRound() {
       reason: "NO_USDT_TRC20_CONTRACT",
       err: String(e),
     });
-    return { round_started_at: started, master, wallet_count: 0, results: [] };
+    return {
+      round_started_at: started,
+      master: platformMaster,
+      wallet_count: 0,
+      results: [],
+    };
   }
 
   const wallets = await prisma.wallet.findMany({
@@ -346,24 +405,55 @@ export async function runAutomatedTronUsdtSweepRound() {
       ...ACTIVE,
     },
     orderBy: { createdAt: "asc" },
-    select: { id: true, address: true, derivationIndex: true },
+    select: { id: true, address: true, derivationIndex: true, merchantId: true },
   });
+
+  const merchantIds = [...new Set(wallets.map((w) => w.merchantId))];
+  /** @type {Map<number, Awaited<ReturnType<typeof resolveTronUsdtSweepTargetForMerchant>>>} */
+  const targetByMerchant = new Map();
+  for (const mid of merchantIds) {
+    targetByMerchant.set(mid, await resolveTronUsdtSweepTargetForMerchant(mid));
+  }
 
   logger.info("tron_auto_sweep_round_start", {
     event: "tron_auto_sweep_round_start",
     at: started,
-    master_address: master,
+    platform_master_configured: Boolean(platformMaster),
     wallet_count: wallets.length,
-    min_usdt_atomic: re.sweepTronUsdtMinAtomic.toString(),
+    platform_min_usdt_atomic: re.sweepTronUsdtMinAtomic.toString(),
     trx_fee_model: "dynamic_estimate_energy_bandwidth",
     funder_configured: Boolean(env.sweepTrxFunderPrivateKey?.trim()),
+    merchants_resolved: merchantIds.length,
   });
 
   /** @type {object[]} */
   const results = [];
   for (const w of wallets) {
-    const r = await sweepTronUsdtOneWithAutoTopUp(w, master, contractAddr);
-    results.push({ wallet_id: w.id, address: w.address, ...r });
+    const cfg = targetByMerchant.get(w.merchantId);
+    if (!cfg || !cfg.ok) {
+      results.push({
+        wallet_id: w.id,
+        merchant_id: w.merchantId,
+        address: w.address,
+        status: "skipped",
+        reason: cfg && !cfg.ok ? cfg.reason : "unknown_sweep_config",
+      });
+      continue;
+    }
+    const r = await sweepTronUsdtOneWithAutoTopUp(
+      w,
+      cfg.master,
+      contractAddr,
+      cfg.minAtomic,
+      cfg.minExclusiveAbove,
+    );
+    results.push({
+      wallet_id: w.id,
+      merchant_id: w.merchantId,
+      address: w.address,
+      sweep_mode: cfg.mode,
+      ...r,
+    });
   }
 
   const swept = results.filter((x) => x.status === "swept").length;
@@ -374,7 +464,7 @@ export async function runAutomatedTronUsdtSweepRound() {
     event: "tron_auto_sweep_round_complete",
     at: new Date().toISOString(),
     round_started_at: started,
-    master_address: master,
+    platform_master_configured: Boolean(platformMaster),
     wallet_count: wallets.length,
     swept,
     skipped,
@@ -383,7 +473,7 @@ export async function runAutomatedTronUsdtSweepRound() {
 
   return {
     round_started_at: started,
-    master,
+    master: platformMaster,
     wallet_count: wallets.length,
     results,
   };
