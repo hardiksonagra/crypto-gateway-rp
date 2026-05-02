@@ -22,7 +22,7 @@
 module.exports = {
   apps: [
     {
-      name: "crypto-gateway-api",
+      name: "crypto-gateway-api-app",
       cwd: "./server",
       script: "src/index.js",
       interpreter: "node",
@@ -35,7 +35,7 @@ module.exports = {
       },
     },
     {
-      name: "crypto-gateway-worker-erc20",
+      name: "crypto-gateway-worker-erc20-app",
       cwd: "./cron",
       script: "src/entry-worker-erc20.js",
       interpreter: "node",
@@ -48,7 +48,7 @@ module.exports = {
       },
     },
     {
-      name: "crypto-gateway-worker-trc20",
+      name: "crypto-gateway-worker-trc20-app",
       cwd: "./cron",
       script: "src/entry-worker-trc20.js",
       interpreter: "node",
@@ -61,7 +61,7 @@ module.exports = {
       },
     },
     {
-      name: "crypto-gateway-cron-maintenance",
+      name: "crypto-gateway-cron-maintenance-app",
       cwd: "./cron",
       script: "src/entry-cron-1.js",
       interpreter: "node",
@@ -74,7 +74,7 @@ module.exports = {
       },
     },
     {
-      name: "crypto-gateway-cron-deposit-full-scan",
+      name: "crypto-gateway-cron-deposit-full-scan-app",
       cwd: "./cron",
       script: "src/entry-cron-deposit-full-scan.js",
       interpreter: "node",
@@ -87,7 +87,7 @@ module.exports = {
       },
     },
     {
-      name: "crypto-gateway-cron-tron-sweep",
+      name: "crypto-gateway-cron-tron-sweep-app",
       cwd: "./cron",
       script: "src/entry-cron-2.js",
       interpreter: "node",
