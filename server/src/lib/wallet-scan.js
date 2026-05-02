@@ -47,16 +47,13 @@ export const paymentPageCheckoutFallbackMinutes = 10;
  */
 export function nextScanExpiresAt() {
   const m = re.walletScanTtlMinutes;
-  const minutes =
-    typeof m === "number" && Number.isFinite(m) && m > 0 ? m : 10;
+  const minutes = typeof m === "number" && Number.isFinite(m) && m > 0 ? m : 10;
   return new Date(Date.now() + minutes * 60 * 1000);
 }
 
 /**
- * Do not poll explorers for rows with **both** `hold_expires_at` and `scan_expires_at` SQL null **unless**
- * the wallet is dedicated to an end-user (`assigned_user_id` set) so deposits to that static address still
- * match between checkouts. Unassigned pool rows stay gated off when both TTLs are null.
- * Also: `deposit_scan_single_tick_requested` (explicit rescan).
+ * Poll only when **at least one** of `hold_expires_at` / `scan_expires_at` is set, or a one-shot rescan
+ * was requested. Rows with **both** TTLs null do not pass this fragment alone.
  *
  * @returns {import("@prisma/client").Prisma.WalletWhereInput}
  */
@@ -69,28 +66,23 @@ export function depositScanBothTtlsNullGate() {
         },
       },
       { depositScanSingleTickRequested: true },
-      { assignedUserId: { not: null } },
     ],
   };
 }
 
 /**
  * Prisma `where` fragment: live worker hot path (each poll).
- * - **Gate:** see {@link depositScanBothTtlsNullGate} (idle unassigned pool vs dedicated addresses).
- * - **Dedicated user wallet:** `assigned_user_id` set — always poll (per-user deposit address persists after checkout).
- * - `deposit_scan_single_tick_requested` (merchant/admin rescan, one tick per chain).
- * - **Open checkout:** at least one active `transactions` row `status: created` with synthetic
- *   `gateway-created:*` hash — keeps scanning after hold/assign cleared so late USDT credits are
- *   not stuck until `DEPOSIT_FULL_SCAN_INTERVAL_HOURS` (requires Prisma client with `TxStatus.created`).
+ * - **Open checkout** (when Prisma knows `TxStatus.created`): `gateway-created:*` + `created` — scan even if
+ *   both TTLs were cleared after assign, so late credits are not missed.
+ * - Else: {@link depositScanBothTtlsNullGate} **and** (`assigned_user_id` set **or** `deposit_scan_single_tick_requested`).
+ *   Dedicated wallets with both TTLs null and no active placeholder are excluded until TTL refresh,
+ *   rescan, or a new checkout row exists.
  */
 export function liveWorkerWalletScanFilter() {
   /** @type {import("@prisma/client").Prisma.WalletWhereInput[]} */
-  const or = [
-    { assignedUserId: { not: null } },
-    { depositScanSingleTickRequested: true },
-  ];
+  const outerOr = [];
   if (prismaClientKnowsTxStatusCreated()) {
-    or.push({
+    outerOr.push({
       transactions: {
         some: {
           deletedAt: null,
@@ -100,9 +92,18 @@ export function liveWorkerWalletScanFilter() {
       },
     });
   }
-  return {
-    AND: [depositScanBothTtlsNullGate(), { OR: or }],
-  };
+  outerOr.push({
+    AND: [
+      depositScanBothTtlsNullGate(),
+      {
+        OR: [
+          { assignedUserId: { not: null } },
+          { depositScanSingleTickRequested: true },
+        ],
+      },
+    ],
+  });
+  return { OR: outerOr };
 }
 
 /**

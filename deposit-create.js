@@ -36,7 +36,7 @@ const MERCHANT_SECRET = "cpg_be88e3959209003bbe9ab20c0617383425bc27ee2b03bae8";
 const URL = "http://localhost:3000/api/v1/gateway/deposit-address";
 
 async function makeCalls() {
-  for (let i = 1; i <= 1; i++) {
+  for (let i = 2; i <= 2; i++) {
     const body = {
       external_user_id: `${i}`,
       currency: "USDT",
