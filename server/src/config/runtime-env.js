@@ -318,6 +318,14 @@ export const re = {
     return getResolvedBoolTronGateway("GATEWAY_TRON_USDT_ONLY", () => env.gatewayTronUsdtOnly);
   },
 
+  get gatewayDepositAddressCooldownSec() {
+    const n = getResolvedInt(
+      "GATEWAY_DEPOSIT_ADDRESS_COOLDOWN_SEC",
+      () => env.gatewayDepositAddressCooldownSec,
+    );
+    return Math.max(0, Math.min(86400, n));
+  },
+
   get outboundRpcMaxPerSecond() {
     return getResolvedInt(
       "OUTBOUND_RPC_MAX_PER_SECOND",

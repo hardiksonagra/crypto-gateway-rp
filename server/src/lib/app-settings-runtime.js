@@ -490,6 +490,8 @@ function envFallbackString(key) {
       return env.gatewaySandbox ? "true" : "false";
     case "GATEWAY_TRON_USDT_ONLY":
       return env.gatewayTronUsdtOnly ? "true" : "false";
+    case "GATEWAY_DEPOSIT_ADDRESS_COOLDOWN_SEC":
+      return String(env.gatewayDepositAddressCooldownSec);
     case "OUTBOUND_RPC_MAX_PER_SECOND":
       return String(env.outboundRpcMaxPerSecond);
     case "ERC20_CONTRACTS": {
@@ -551,6 +553,11 @@ function validateStoredValue(key, stored) {
       if (key === "CHECKOUT_CREATED_EXPIRY_HOURS") {
         if (n < 1 || n > 8760) {
           throw new Error(`${key}: must be between 1 and 8760`);
+        }
+      }
+      if (key === "GATEWAY_DEPOSIT_ADDRESS_COOLDOWN_SEC") {
+        if (n < 0 || n > 86400) {
+          throw new Error(`${key}: must be between 0 (off) and 86400`);
         }
       }
       return String(n);

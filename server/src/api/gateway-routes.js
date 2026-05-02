@@ -609,6 +609,36 @@ router.post("/api/v1/gateway/deposit-address", async (req, res) => {
       createdNewUser = true;
     }
 
+    const cooldownSec = re.gatewayDepositAddressCooldownSec;
+    if (cooldownSec > 0 && u.lastGatewayDepositAddressAt) {
+      const elapsedMs = Date.now() - u.lastGatewayDepositAddressAt.getTime();
+      const cooldownMs = cooldownSec * 1000;
+      if (elapsedMs < cooldownMs) {
+        const retryAfterSeconds = Math.max(
+          1,
+          Math.ceil((cooldownMs - elapsedMs) / 1000),
+        );
+        auditGatewayApi(req, {
+          action: "deposit_address",
+          merchantId: merchant.id,
+          actorType: "gateway_api_key",
+          summary: `deposit-address 429 — deposit_address_cooldown · retry_after=${retryAfterSeconds}s`,
+          metadata: {
+            request_in: redactGatewayBody(body),
+            http_status: 429,
+            external_user_id: externalUserId,
+            retry_after_seconds: retryAfterSeconds,
+          },
+        });
+        res.status(429).json({
+          error: "deposit_address_cooldown",
+          message: `Another deposit address can be requested after ${retryAfterSeconds} second(s).`,
+          retry_after_seconds: retryAfterSeconds,
+        });
+        return;
+      }
+    }
+
     const { wallet, depositSessionKey, referenceTransactionId } =
       await prisma.$transaction(async (tx) => {
         const assigned = await assignPooledWalletForDeposit(tx, {
@@ -621,12 +651,17 @@ router.post("/api/v1/gateway/deposit-address", async (req, res) => {
           referenceTransactionId: txRefParsed.value,
           expectedAmountAtomic,
         });
+        await tx.user.update({
+          where: { id: u.id },
+          data: { lastGatewayDepositAddressAt: new Date() },
+        });
         return {
           wallet: assigned.wallet,
           depositSessionKey: assigned.depositSessionKey,
           referenceTransactionId: assigned.referenceTransactionId,
         };
       });
+
     let checkout_expires_at =
       prismaClientKnowsTxStatusCreated() && depositSessionKey
         ? new Date(

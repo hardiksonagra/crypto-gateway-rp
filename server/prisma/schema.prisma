@@ -179,6 +179,8 @@ model User {
   accountIndex   Int       @unique @default(autoincrement()) @map("account_index")
   createdAt      DateTime  @default(now()) @map("created_at")
   deletedAt      DateTime? @map("deleted_at")
+  /// Last successful `POST /api/v1/gateway/deposit-address` (per merchant + external user + environment). Used for optional cooldown.
+  lastGatewayDepositAddressAt DateTime? @map("last_gateway_deposit_address_at")
 
   assignedWallets Wallet[] @relation("WalletPoolAssignment")
   payerTransactions Transaction[]

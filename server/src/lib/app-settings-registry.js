@@ -312,6 +312,15 @@ export const APP_SETTING_DEFINITIONS = [
     type: "bool_tron_gateway",
   },
   {
+    key: "GATEWAY_DEPOSIT_ADDRESS_COOLDOWN_SEC",
+    label:
+      "Min seconds between deposit-address calls per end-user (same merchant + external_user_id + environment). 0 = off",
+    category: "Gateway",
+    type: "int",
+    helpText:
+      "After a successful address response, the same end-user cannot call deposit-address again until this many seconds pass. HTTP 429 with retry_after_seconds when blocked.",
+  },
+  {
     key: "OUTBOUND_RPC_MAX_PER_SECOND",
     label: "Outbound RPC max per second (0 = off)",
     category: "Rate limits",

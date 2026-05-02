@@ -313,6 +313,15 @@ export const env = {
   })(),
 
   /**
+   * Min seconds between successful `deposit-address` responses for the same merchant + external_user_id + gateway environment.
+   * `0` = disabled. Admin: `GATEWAY_DEPOSIT_ADDRESS_COOLDOWN_SEC`.
+   */
+  gatewayDepositAddressCooldownSec: intEnv(
+    "GATEWAY_DEPOSIT_ADDRESS_COOLDOWN_SEC",
+    0,
+  ),
+
+  /**
    * Max outbound RPC / explorer HTTP calls per rolling 1s **per network bucket** (EVM_ETH, TRON, …).
    * `0` = disable limiting. Requests wait (queue) instead of returning errors to integrators.
    */
