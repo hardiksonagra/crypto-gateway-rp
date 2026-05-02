@@ -1,4 +1,5 @@
 import { Formik, Form, Field, ErrorMessage } from "formik";
+import { useQueryClient } from "@tanstack/react-query";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { api, clearImpersonationAdminToken, clearImpersonationRpToken, setToken } from "../api";
 import { loginSchema } from "../admin/merchantSchemas";
@@ -25,6 +26,7 @@ function IconMoon() {
 }
 
 export default function LoginPage() {
+  const queryClient = useQueryClient();
   const nav = useNavigate();
   const location = useLocation();
   const resetOk = Boolean(location.state?.resetOk);
@@ -62,32 +64,6 @@ export default function LoginPage() {
               style={{ color: "var(--text-1)" }}>
             Your gateway dashboard.
           </h1>
-          <p className="mt-5 max-w-sm text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
-            Merchant portal: users, wallets, transactions, API keys, and webhooks. Platform operators sign in at Control.
-          </p>
-
-          {/* Feature pills */}
-          <div className="mt-8 flex flex-wrap gap-2">
-            {["Multi-chain", "Deposits & callbacks", "Live & sandbox", "API integration"].map((f) => (
-              <span
-                key={f}
-                className="rounded-full px-3 py-1 text-xs font-medium"
-                style={{ background: "var(--link-active-bg)", color: "var(--link-active-color)", border: "1px solid var(--link-active-border)" }}
-              >
-                {f}
-              </span>
-            ))}
-          </div>
-        </div>
-
-        <div className="relative mt-10 flex flex-wrap gap-6 pt-8 text-xs lg:mt-0"
-             style={{ borderTop: "1px solid var(--border)" }}>
-          {[["Portal","Merchant"],["Ops","/control/login for admins"]].map(([label, val]) => (
-            <div key={label}>
-              <p className="font-mono text-[10px] uppercase tracking-wider" style={{ color: "var(--text-3)" }}>{label}</p>
-              <p className="mt-1" style={{ color: "var(--text-2)" }}>{val}</p>
-            </div>
-          ))}
         </div>
       </section>
 
@@ -101,9 +77,6 @@ export default function LoginPage() {
             <h2 className="font-display text-2xl font-bold tracking-tight" style={{ color: "var(--text-1)" }}>
               Merchant sign in
             </h2>
-            <p className="mt-1.5 text-sm" style={{ color: "var(--text-2)" }}>
-              Use your merchant gateway account. Operators use Control.
-            </p>
           </div>
 
           <Formik
@@ -121,6 +94,7 @@ export default function LoginPage() {
                 clearImpersonationAdminToken();
                 clearImpersonationRpToken();
                 setToken(r.token);
+                queryClient.removeQueries({ queryKey: ["auth-me"] });
                 nav("/", { replace: true });
               } catch (e) {
                 setStatus(String(e));

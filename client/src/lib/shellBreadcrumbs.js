@@ -50,7 +50,6 @@ export function buildAdminBreadcrumbs(pathname, extras) {
     "wallet-details": { label: "Wallet details", to: "/control/wallet-details" },
     transactions: { label: "Transactions", to: "/control/transactions" },
     settlements: { label: "Settlements", to: "/control/settlements" },
-    sweep: { label: "Sweep", to: "/control/sweep" },
     activity: { label: "Activity log", to: "/control/activity" },
     settings: { label: "System settings", to: "/control/settings" },
     "supported-chains": { label: "Supported chains", to: "/control/supported-chains" },

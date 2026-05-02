@@ -2,6 +2,10 @@ import { Chain } from "@prisma/client";
 import { Contract, HDNodeWallet, JsonRpcProvider, ethers } from "ethers";
 import { getErc20Contracts } from "../../config/env.js";
 import { getMerchantWalletMnemonic } from "../../lib/merchant-mnemonic.js";
+import {
+  resolveMerchantRailSweepFromSettings,
+  USDT_ERC20_RAIL_KEY,
+} from "../../lib/merchant-auto-swap-settings.js";
 import { re } from "../../config/runtime-env.js";
 import { chainToRpcUrl, chainToStaticNetwork } from "../../config/chains.js";
 import { parseWalletDbId } from "../../lib/parse-wallet-db-id.js";
@@ -39,22 +43,12 @@ export function pickUsdtTokenAddress(chain) {
 
 /**
  * @param {import("@prisma/client").Chain} chain
- * @returns {string}
- */
-function masterForChain(chain) {
-  if (chain === Chain.ETH) return re.sweepMasterUsdtEth?.trim() ?? "";
-  return "";
-}
-
-/**
- * @param {import("@prisma/client").Chain} chain
  */
 export async function listEvmUsdtSweepTargets(chain) {
   if (chain !== Chain.ETH) {
     throw new Error("UNSUPPORTED_EVM_SWEEP_CHAIN");
   }
   const network = EXPECTED_NETWORK_ETH;
-  const master = masterForChain(chain);
   const token = pickUsdtTokenAddress(chain);
 
   const wallets = await prisma.wallet.findMany({
@@ -74,8 +68,8 @@ export async function listEvmUsdtSweepTargets(chain) {
   return {
     chain,
     network,
-    configured: Boolean(master),
-    master_address: master || null,
+    configured: true,
+    master_address: null,
     usdt_contract: token,
     wallets: wallets.map((w) => ({
       id: w.id,
@@ -94,7 +88,7 @@ export async function listEvmUsdtSweepTargets(chain) {
 /**
  * @param {string | number} walletId
  * @param {import("@prisma/client").Chain} chain
- * @param {{ to_address?: string }} [opts] When `to_address` is set, send full USDT balance there (admin tool). Otherwise send to `SWEEP_MASTER_USDT_ETH`.
+ * @param {{ to_address?: string }} [opts] When `to_address` is set, send full USDT balance there. Otherwise send to the merchant’s USDT·ERC20 treasury from Gateway settings.
  */
 export async function sweepEvmUsdtOne(walletId, chain, opts = {}) {
   if (chain !== Chain.ETH) {
@@ -117,28 +111,6 @@ export async function sweepEvmUsdtOne(walletId, chain, opts = {}) {
 
   const toOverride =
     typeof opts.to_address === "string" ? opts.to_address.trim() : "";
-  /** @type {string} */
-  let recipient;
-  if (toOverride) {
-    try {
-      recipient = ethers.getAddress(toOverride);
-    } catch {
-      return {
-        ok: false,
-        error: "INVALID_TO_ADDRESS",
-        detail: "to_address is not a valid Ethereum address",
-      };
-    }
-  } else {
-    const master = masterForChain(chain);
-    if (!master) {
-      return {
-        ok: false,
-        error: "SWEEP_MASTER_USDT_ETH_NOT_SET",
-      };
-    }
-    recipient = ethers.getAddress(master);
-  }
 
   const tokenAddr = pickUsdtTokenAddress(chain);
   if (!tokenAddr) {
@@ -159,6 +131,33 @@ export async function sweepEvmUsdtOne(walletId, chain, opts = {}) {
 
   if (!wallet) {
     return { ok: false, error: "WALLET_NOT_FOUND" };
+  }
+
+  /** @type {string} */
+  let recipient;
+  if (toOverride) {
+    try {
+      recipient = ethers.getAddress(toOverride);
+    } catch {
+      return {
+        ok: false,
+        error: "INVALID_TO_ADDRESS",
+        detail: "to_address is not a valid Ethereum address",
+      };
+    }
+  } else {
+    const dest = await resolveMerchantRailSweepFromSettings(
+      wallet.merchantId,
+      USDT_ERC20_RAIL_KEY,
+    );
+    if (!dest.ok) {
+      return {
+        ok: false,
+        error: dest.reason,
+        detail: dest.message,
+      };
+    }
+    recipient = ethers.getAddress(dest.master);
   }
 
   if (wallet.address.toLowerCase() === recipient.toLowerCase()) {
@@ -270,14 +269,6 @@ export async function sweepEvmUsdtOne(walletId, chain, opts = {}) {
  */
 export async function sweepEvmUsdtAll(chain) {
   const list = await listEvmUsdtSweepTargets(chain);
-  if (!list.configured) {
-    return {
-      configured: false,
-      chain,
-      results: [],
-      summary: { attempted: 0, ok: 0, skipped: 0, failed: 0 },
-    };
-  }
 
   const results = [];
   let ok = 0;

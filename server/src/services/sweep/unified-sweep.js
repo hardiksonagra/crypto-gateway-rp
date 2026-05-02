@@ -1,5 +1,10 @@
 import { Chain } from "@prisma/client";
 import { re } from "../../config/runtime-env.js";
+import {
+  resolveMerchantRailSweepFromSettings,
+  USDT_ERC20_RAIL_KEY,
+  USDT_TRC20_RAIL_KEY,
+} from "../../lib/merchant-auto-swap-settings.js";
 import { parseWalletDbId } from "../../lib/parse-wallet-db-id.js";
 import { ACTIVE } from "../../lib/active-row.js";
 import { prisma } from "../../lib/prisma.js";
@@ -23,37 +28,6 @@ export function sweepKindForWallet(w) {
   return null;
 }
 
-/**
- * @param {SweepKind} kind
- */
-function sweepConfiguration(kind) {
-  switch (kind) {
-    case "tron_usdt": {
-      const m = re.sweepMasterTron?.trim() ?? "";
-      return {
-        configured: Boolean(m),
-        destination_address: m || null,
-        master_env: "SWEEP_MASTER_TRON",
-      };
-    }
-    case "evm_usdt_eth": {
-      const m = re.sweepMasterUsdtEth?.trim() ?? "";
-      return {
-        configured: Boolean(m),
-        destination_address: m || null,
-        master_env: "SWEEP_MASTER_USDT_ETH",
-        usdt_contract: pickUsdtTokenAddress(Chain.ETH),
-      };
-    }
-    default:
-      return {
-        configured: false,
-        destination_address: null,
-        master_env: "",
-      };
-  }
-}
-
 const sweepWalletInclude = {
   merchant: { select: { email: true, displayName: true } },
   assignedUser: { select: { externalUserId: true } },
@@ -75,10 +49,27 @@ export async function listUnifiedSweepTargets() {
     include: sweepWalletInclude,
   });
 
-  const wallets = rows.map((w) => {
+  const wallets = [];
+  for (const w of rows) {
     const kind = sweepKindForWallet(w);
-    const cfg = kind ? sweepConfiguration(kind) : null;
-    return {
+    let cfg = null;
+    if (kind === "tron_usdt") {
+      const r = await resolveMerchantRailSweepFromSettings(w.merchantId, USDT_TRC20_RAIL_KEY);
+      cfg = {
+        configured: r.ok,
+        destination_address: r.ok ? r.master : null,
+        master_env: "merchant_gateway_auto_swap",
+      };
+    } else if (kind === "evm_usdt_eth") {
+      const r = await resolveMerchantRailSweepFromSettings(w.merchantId, USDT_ERC20_RAIL_KEY);
+      cfg = {
+        configured: r.ok,
+        destination_address: r.ok ? r.master : null,
+        master_env: "merchant_gateway_auto_swap",
+        usdt_contract: pickUsdtTokenAddress(Chain.ETH),
+      };
+    }
+    wallets.push({
       id: w.id,
       address: w.address,
       chain: w.chain,
@@ -94,8 +85,8 @@ export async function listUnifiedSweepTargets() {
       destination_address: cfg?.destination_address ?? null,
       master_env: cfg?.master_env ?? null,
       ...(cfg?.usdt_contract ? { usdt_contract: cfg.usdt_contract } : {}),
-    };
-  });
+    });
+  }
 
   return {
     wallets,
@@ -128,7 +119,7 @@ export async function sweepUnifiedOne(walletId) {
   }
   const wallet = await prisma.wallet.findFirst({
     where: { id: wid, ...ACTIVE },
-    select: { id: true, chain: true, currency: true, network: true },
+    select: { id: true, chain: true, currency: true, network: true, merchantId: true },
   });
 
   if (!wallet) {
@@ -140,13 +131,20 @@ export async function sweepUnifiedOne(walletId) {
     return { ok: false, error: "NOT_SWEEPABLE" };
   }
 
-  const cfg = sweepConfiguration(kind);
-  if (!cfg.configured) {
+  let sweepOk = false;
+  if (kind === "tron_usdt") {
+    const r = await resolveMerchantRailSweepFromSettings(wallet.merchantId, USDT_TRC20_RAIL_KEY);
+    sweepOk = r.ok;
+  } else if (kind === "evm_usdt_eth") {
+    const r = await resolveMerchantRailSweepFromSettings(wallet.merchantId, USDT_ERC20_RAIL_KEY);
+    sweepOk = r.ok;
+  }
+  if (!sweepOk) {
     return {
       ok: false,
       error: "SWEEP_NOT_CONFIGURED",
       sweep_kind: kind,
-      master_env: cfg.master_env,
+      master_env: "merchant_gateway_auto_swap",
     };
   }
 
@@ -186,11 +184,10 @@ export async function sweepUnifiedAll() {
   async function ingest(kind, p) {
     const batch = await p;
     if (!batch.configured) {
-      const cfg = sweepConfiguration(kind);
       unconfigured.push({
         sweep_kind: kind,
         sweep_label: sweepKindLabel(kind),
-        master_env: cfg.master_env,
+        master_env: "merchant_gateway_auto_swap",
       });
       return;
     }

@@ -101,22 +101,6 @@ export default function SupportedChains() {
       <h1 className="font-display text-2xl font-bold" style={{ color: "var(--text-1)" }}>
         Supported chains
       </h1>
-      <p className="mt-1 text-sm" style={{ color: "var(--text-2)" }}>
-        Turn chains off to stop deposit scanning, gateway deposit addresses, and balance probes on that network.
-        Merchants cannot assign rails on disabled chains.
-      </p>
-      <p className="mt-2 max-w-3xl text-sm text-white/55 text-pretty">
-        Changes apply after save. Restart{" "}
-        <span className="font-mono text-white/80">
-          crypto-gateway-worker-erc20
-        </span>{" "}
-        /{" "}
-        <span className="font-mono text-white/80">
-          crypto-gateway-worker-trc20
-        </span>{" "}
-        and deposit-scan crons so the
-        scanner picks up updates immediately.
-      </p>
 
       <div className="glass mt-8 w-full rounded-2xl p-6 lg:p-8">
         <Formik

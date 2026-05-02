@@ -171,7 +171,6 @@ export default function AdminActivityLog() {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
           <h1 className="font-display text-2xl font-bold" style={{ color: "var(--text-1)" }}>Activity log</h1>
-          <p className="mt-1 text-sm" style={{ color: "var(--text-2)" }}>Gateway events, webhooks, and portal admin/merchant actions.</p>
         </div>
         <ListFilterToolbar
           onOpenDrawer={() => (tab === "gateway" ? setGwDrawerOpen(true) : setPlDrawerOpen(true))}

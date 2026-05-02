@@ -15,6 +15,11 @@ export async function resolveMerchantPortalForLists(mid) {
   if (!synced) {
     return { ok: false, status: 401, error: "unauthorized" };
   }
+  const snapshot = {
+    portalEnvironment: synced.portalEnvironment,
+    liveGatewayEnabled: synced.liveGatewayEnabled,
+    sandboxGatewayEnabled: synced.sandboxGatewayEnabled,
+  };
   const environment = synced.portalEnvironment;
   if (
     environment === MerchantGatewayEnv.sandbox &&
@@ -26,6 +31,7 @@ export async function resolveMerchantPortalForLists(mid) {
       error: "sandbox_gateway_disabled",
       message:
         "Sandbox is disabled for your account. Ask an admin to enable it.",
+      snapshot,
     };
   }
   if (environment === MerchantGatewayEnv.live && !synced.liveGatewayEnabled) {
@@ -34,6 +40,7 @@ export async function resolveMerchantPortalForLists(mid) {
       status: 403,
       error: "live_gateway_disabled",
       message: "Live gateway is disabled for your account.",
+      snapshot,
     };
   }
   if (!synced.liveGatewayEnabled && !synced.sandboxGatewayEnabled) {
@@ -43,6 +50,7 @@ export async function resolveMerchantPortalForLists(mid) {
       error: "gateway_disabled",
       message:
         "Neither live nor sandbox gateway is enabled for your account. Contact support.",
+      snapshot,
     };
   }
   return {
@@ -52,5 +60,6 @@ export async function resolveMerchantPortalForLists(mid) {
       liveGatewayEnabled: synced.liveGatewayEnabled,
       sandboxGatewayEnabled: synced.sandboxGatewayEnabled,
     },
+    snapshot,
   };
 }

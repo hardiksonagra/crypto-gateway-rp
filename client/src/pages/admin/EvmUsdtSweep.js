@@ -5,9 +5,9 @@ import ConfirmModal from "../../components/ConfirmModal";
 import { BrandLoader } from "../../components/BrandLoader.js";
 
 /**
- * @param {{ chain: "ETH", title: string, masterEnv: string, networkLabel: string, sectionClassName?: string }} props
+ * @param {{ chain: "ETH", title: string, networkLabel: string, sectionClassName?: string }} props
  */
-function UsdtChainSweepPanel({ chain, title, masterEnv, networkLabel, sectionClassName = "mt-10" }) {
+function UsdtChainSweepPanel({ chain, title, networkLabel, sectionClassName = "mt-10" }) {
   const qc = useQueryClient();
   const [selectedId, setSelectedId] = useState(null);
   const [confirmOne, setConfirmOne] = useState(false);
@@ -46,42 +46,17 @@ function UsdtChainSweepPanel({ chain, title, masterEnv, networkLabel, sectionCla
 
   const data = targets.data;
   const wallets = data?.wallets ?? [];
-  const configured = Boolean(data?.configured);
+  const listReady = !targets.isLoading && !targets.isError;
   const radioName = `evm-usdt-sweep-${chain}`;
 
   return (
     <section className={`w-full ${sectionClassName}`}>
       <h2 className="font-display text-xl font-semibold text-white">{title}</h2>
-      <p className="mt-2 max-w-3xl text-sm leading-relaxed text-white/55">
-        Move <span className="font-mono text-white/80">USDT · {networkLabel}</span> from deposit addresses (
-        <span className="font-mono text-white/70">chain</span> = {chain}) to your main{" "}
-        <span className="font-mono text-white/70">0x</span> address (
-        <span className="font-mono text-sky-200/90">{masterEnv}</span>). Each deposit address must hold enough native{" "}
-        ETH for gas. USDT contract:{" "}
-        <span className="break-all font-mono text-white/50">{data?.usdt_contract ?? "—"}</span>.
-      </p>
-
-      {!targets.isLoading && !configured ? (
-        <div className="mt-6 rounded-xl border border-amber-400/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100/95">
-          <p className="font-medium text-white">Sweep is not configured</p>
-          <p className="mt-1 text-white/70">
-            Set <span className="font-mono text-amber-100/90">{masterEnv}</span> in the server{" "}
-            <span className="font-mono">.env</span>, then restart the API.
-          </p>
-        </div>
-      ) : null}
-
-      {configured ? (
-        <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white/70">
-          <span className="text-white/45">Master (destination): </span>
-          <span className="break-all font-mono text-sky-200/90">{data.master_address}</span>
-        </div>
-      ) : null}
 
       <div className="mt-6 flex flex-wrap items-center gap-3">
         <button
           type="button"
-          disabled={!configured || !selectedId || sweepOneMut.isPending || sweepAllMut.isPending}
+          disabled={!listReady || !selectedId || sweepOneMut.isPending || sweepAllMut.isPending}
           onClick={() => setConfirmOne(true)}
           className="rounded-xl border border-white/15 px-4 py-2.5 text-sm font-medium text-white/90 transition hover:bg-white/5 disabled:cursor-not-allowed disabled:opacity-40"
         >
@@ -89,7 +64,7 @@ function UsdtChainSweepPanel({ chain, title, masterEnv, networkLabel, sectionCla
         </button>
         <button
           type="button"
-          disabled={!configured || sweepAllMut.isPending || sweepOneMut.isPending || wallets.length === 0}
+          disabled={!listReady || sweepAllMut.isPending || sweepOneMut.isPending || wallets.length === 0}
           onClick={() => setConfirmAll(true)}
           className="rounded-xl bg-rose-600/90 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-rose-600 disabled:cursor-not-allowed disabled:opacity-40"
         >
@@ -207,9 +182,7 @@ function UsdtChainSweepPanel({ chain, title, masterEnv, networkLabel, sectionCla
           });
         }}
       >
-        USDT on this deposit address will be sent to{" "}
-        <span className="font-mono text-white/85">{data?.master_address}</span>. The deposit address must have native
-        gas on {chain}.
+        Send USDT to this merchant&apos;s treasury. The source wallet needs ETH for network fees.
       </ConfirmModal>
 
       <ConfirmModal
@@ -227,8 +200,7 @@ function UsdtChainSweepPanel({ chain, title, masterEnv, networkLabel, sectionCla
           });
         }}
       >
-        Every listed wallet is processed in order. Zero-balance wallets are skipped. Wallets without gas fail for that
-        row only.
+        Processes each wallet in order. Wallets with nothing to send are skipped.
       </ConfirmModal>
     </section>
   );
@@ -238,15 +210,10 @@ export default function AdminEvmUsdtSweep() {
   return (
     <div className="w-full">
       <h1 className="font-display text-2xl font-semibold text-white">EVM USDT sweep</h1>
-      <p className="mt-2 max-w-3xl text-sm leading-relaxed text-white/55">
-        Consolidate gateway deposit wallets for Ethereum USDT (ERC20) into your main address. Sandbox and live wallets
-        both appear in the table.
-      </p>
 
       <UsdtChainSweepPanel
         chain="ETH"
         title="Ethereum — USDT (ERC20)"
-        masterEnv="SWEEP_MASTER_USDT_ETH"
         networkLabel="ERC20"
         sectionClassName="mt-10"
       />

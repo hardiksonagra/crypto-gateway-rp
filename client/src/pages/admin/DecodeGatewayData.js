@@ -44,12 +44,6 @@ export default function DecodeGatewayData() {
         <h1 className="font-display text-xl font-bold sm:text-2xl" style={{ color: "var(--text-1)" }}>
           Decode gateway data
         </h1>
-        <p className="mt-1 max-w-3xl text-sm" style={{ color: "var(--text-2)" }}>
-          Paste the merchant&apos;s gateway API key and an{" "}
-          <span className="font-mono text-xs">X-Token</span> value (base64 from their integration). Decryption
-          runs in your browser only — the secret is not sent to the server. Same algorithm as{" "}
-          <span className="font-mono text-xs">MERCHANT_API_INTEGRATION.md</span> §3.1.
-        </p>
       </div>
 
       <div

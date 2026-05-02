@@ -13,8 +13,8 @@ import {
 import { decryptMerchantApiKey } from "../lib/merchant-api-key-cipher.js";
 import {
   assertPortalEnvironmentUpdateAllowed,
-  ensureMerchantPortalEnvironmentConsistent,
 } from "../lib/merchant-gateway-env.js";
+import { resolveMerchantPortalForLists } from "../lib/merchant-portal-for-lists.js";
 import { logger } from "../lib/logger.js";
 import { re } from "../config/runtime-env.js";
 import { listMerchantSelectableChainsForAdmin } from "../lib/chain-enable.js";
@@ -27,7 +27,7 @@ import {
   redactPanelBody,
 } from "../services/panel-audit-log.js";
 import { sendPasswordResetEmail } from "../lib/mailer.js";
-import { getTrxSweepFunderDisplayAddress } from "../lib/trx-sweep-funder-display.js";
+import { getMerchantTrxSweepFunderDisplayAddress } from "../lib/merchant-trx-funder.js";
 
 const router = Router();
 
@@ -333,9 +333,16 @@ router.get("/api/v1/auth/me", requireAuth(), async (req, res) => {
       });
     }
   }
-  const synced = await ensureMerchantPortalEnvironmentConsistent(user.id);
-  if (synced) {
-    out.portalEnvironment = synced.portalEnvironment;
+  const listGate = await resolveMerchantPortalForLists(user.id);
+  out.portalListAccess = listGate.ok;
+  if (listGate.snapshot) {
+    out.portalEnvironment = listGate.snapshot.portalEnvironment;
+  }
+  if (!listGate.ok) {
+    out.portalListDeniedReason = listGate.error;
+    if (listGate.message) {
+      out.portalListDeniedMessage = listGate.message;
+    }
   }
   out.platform_enabled_chains = listMerchantSelectableChainsForAdmin(
     re.chainEnabledRecord,
@@ -346,8 +353,9 @@ router.get("/api/v1/auth/me", requireAuth(), async (req, res) => {
     depositRailKey(p.currency, p.network),
   );
   {
-    const a = getTrxSweepFunderDisplayAddress().trim();
-    out.auto_swap_trx_fee_source_address = a || null;
+    const merchantA = await getMerchantTrxSweepFunderDisplayAddress(user.id);
+    out.auto_swap_trx_fee_source_address = merchantA || null;
+    out.trx_sweep_funder_has_merchant_key = Boolean(merchantA);
   }
   res.json(out);
 });

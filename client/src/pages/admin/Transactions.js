@@ -188,11 +188,6 @@ export default function AdminTransactions() {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
           <h1 className="font-display text-2xl font-bold" style={{ color: "var(--text-1)" }}>Transactions</h1>
-          <p className="mt-1 text-sm" style={{ color: "var(--text-2)" }}>
-            {isRp
-              ? "Payment transactions for merchants linked to your partner account."
-              : "All payment transactions across merchants and chains."}
-          </p>
         </div>
         <ListFilterToolbar
           onOpenDrawer={() => setDrawerOpen(true)}

@@ -124,6 +124,8 @@ model Merchant {
   autoSwapEnabled      Boolean @default(false) @map("auto_swap_enabled")
   /// JSON: `{ "version": 2, "destinations": [{ "rail_key", "treasury_address" }], "min_amounts_by_rail": { ... } }` — per-rail treasury; optional minimums when auto-swap is on (v1 destinations with embedded min still read).
   autoSwapSettingsJson Json    @default("{}") @map("auto_swap_settings_json")
+  /// AES-GCM encrypted TRON private key (hex). When set, TRX top-ups for this merchant’s deposit wallets use this account before the platform `SWEEP_TRX_FUNDER_*` env wallet.
+  trxSweepFunderPrivateKeyCipher String? @map("trx_sweep_funder_private_key_cipher")
   createdAt    DateTime  @default(now()) @map("created_at")
   updatedAt    DateTime  @updatedAt @map("updated_at")
 

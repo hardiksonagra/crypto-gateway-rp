@@ -64,31 +64,6 @@ export default function AdminLoginPage() {
               style={{ color: "var(--text-1)" }}>
             Operator console.
           </h1>
-          <p className="mt-5 max-w-sm text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
-            Full-platform access: merchants, chains, settlements, and audit. Use a platform admin account only.
-          </p>
-
-          <div className="mt-8 flex flex-wrap gap-2">
-            {["All merchants", "System settings", "Sweep & ops", "Audit trail"].map((f) => (
-              <span
-                key={f}
-                className="rounded-full px-3 py-1 text-xs font-medium"
-                style={{ background: "var(--link-active-bg)", color: "var(--link-active-color)", border: "1px solid var(--link-active-border)" }}
-              >
-                {f}
-              </span>
-            ))}
-          </div>
-        </div>
-
-        <div className="relative mt-10 flex flex-wrap gap-6 pt-8 text-xs lg:mt-0"
-             style={{ borderTop: "1px solid var(--border)" }}>
-          {[["Surface","/control"],["Merchants","Merchant portal is /login"]].map(([label, val]) => (
-            <div key={label}>
-              <p className="font-mono text-[10px] uppercase tracking-wider" style={{ color: "var(--text-3)" }}>{label}</p>
-              <p className="mt-1" style={{ color: "var(--text-2)" }}>{val}</p>
-            </div>
-          ))}
         </div>
       </section>
 
@@ -101,9 +76,6 @@ export default function AdminLoginPage() {
             <h2 className="font-display text-2xl font-bold tracking-tight" style={{ color: "var(--text-1)" }}>
               Admin sign in
             </h2>
-            <p className="mt-1.5 text-sm" style={{ color: "var(--text-2)" }}>
-              Platform operator credentials only (not a merchant account).
-            </p>
           </div>
 
           <Formik

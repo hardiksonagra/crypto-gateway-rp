@@ -215,7 +215,8 @@ export default function PaymentPage() {
   );
 
   /** Show when `deposit_scan_expires_at` is a usable instant (admin Wallet scan TTL window). */
-  const showTimer = displayExpiresAt != null && parseExpiryMs(displayExpiresAt) != null;
+  const showTimer =
+    displayExpiresAt != null && parseExpiryMs(displayExpiresAt) != null;
   const timerDone = showTimer && remainSec !== null && remainSec <= 0;
 
   const onCopy = useCallback(async () => {
@@ -339,11 +340,7 @@ export default function PaymentPage() {
             <p className="text-[10px] font-semibold tracking-wide text-white/40 uppercase">
               Time remaining
             </p>
-            {scanTtlMin != null ? (
-              <p className="mt-0.5 text-[10px] text-white/35">
-                Deposit scan TTL: {scanTtlMin} min (wallet may stay active longer for late sends)
-              </p>
-            ) : null}
+
             {timerDone ? (
               <p className="mt-1 text-sm text-amber-100/90">
                 {redirectUrl
@@ -378,11 +375,13 @@ export default function PaymentPage() {
           </div>
         </div>
 
-        {String(session?.gateway_environment ?? "").toLowerCase() === "sandbox" ? (
+        {String(session?.gateway_environment ?? "").toLowerCase() ===
+        "sandbox" ? (
           <p className="mt-6 rounded-xl border border-sky-400/25 bg-sky-500/10 px-3 py-2 text-center text-[11px] leading-relaxed text-sky-100/90">
-            Sandbox checkout: automatic on-chain deposit scanning may not run for this link unless
-            your operator runs workers against sandbox data. Use merchant test tools or a live checkout
-            to verify production scanning.
+            Sandbox checkout: automatic on-chain deposit scanning may not run
+            for this link unless your operator runs workers against sandbox
+            data. Use merchant test tools or a live checkout to verify
+            production scanning.
           </p>
         ) : null}
 

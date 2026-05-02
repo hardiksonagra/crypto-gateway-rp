@@ -116,11 +116,6 @@ export default function RpSettlements() {
   return (
     <div>
       <h1 className="font-display text-2xl font-semibold text-white">Settlements</h1>
-      <p className="mt-2 text-sm text-white/50">
-        Pick a merchant you manage. Estimates use <span className="text-white/70">MDR only</span> (no platform
-        settlement fee on partner merchants). You can record a payout with a proof attachment the same way as the
-        admin console; data follows your portal environment and that merchant&apos;s gateway flags.
-      </p>
 
       <div className="mt-6 max-w-xl">
         <label className="mb-1 block text-xs font-medium text-white/60" htmlFor="rp-settle-merchant">

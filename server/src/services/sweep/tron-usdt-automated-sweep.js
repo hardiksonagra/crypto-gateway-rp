@@ -1,17 +1,17 @@
 /** Post-deposit treasury routing: `getMerchantAutoSwapPlan` in `server/src/lib/merchant-auto-swap-settings.js`. */
 import { Chain, MerchantGatewayEnv } from "@prisma/client";
 import { utils as tronUtils } from "tronweb";
-import { env } from "../../config/env.js";
 import { getMerchantWalletMnemonic } from "../../lib/merchant-mnemonic.js";
-import { re } from "../../config/runtime-env.js";
 import { ACTIVE } from "../../lib/active-row.js";
 import { logger } from "../../lib/logger.js";
 import { prisma } from "../../lib/prisma.js";
+import { resolveMerchantTronUsdtSweepFromSettings } from "../../lib/merchant-auto-swap-settings.js";
+import { getMerchantTrxSweepFunderPrivateKeyHex } from "../../lib/merchant-trx-funder.js";
 import {
-  getMerchantAutoSwapPlan,
-  merchantMinDecimalUsdtToAtomic6,
-  USDT_TRC20_RAIL_KEY,
-} from "../../lib/merchant-auto-swap-settings.js";
+  sendTrxNativeTopUpFromPrivateKey,
+  TRX_TOPUP_SETTLE_MS,
+  TRX_TOPUP_SEND_BUFFER_SUN,
+} from "./tron-trx-topup.js";
 import { acquireOutboundRpcSlot } from "../../lib/network-rpc-rate-limit.js";
 import { deriveTronPrivateKeyHex } from "../wallet/tron-wallet.js";
 import {
@@ -21,15 +21,6 @@ import {
   readTronUsdtBalanceAtomicForWallet,
   sweepTronUsdtTransferFullBalanceFromDepositWallet,
 } from "./tron-usdt-sweep.js";
-
-/** After native TRX top-up, wait before re-reading balance / sweeping. */
-const TOPUP_SETTLE_MS = 12_000;
-
-/** Small cushion on top-up size only (fee estimate vs actual inbound rounding). */
-const TOPUP_SEND_BUFFER_SUN = 150_000n;
-
-/** Keep this much sun on funder after each outbound (approx. one more fee). */
-const FUNDER_RESERVE_SUN = 3_000_000n;
 
 function tronAddrEq(a, b) {
   try {
@@ -41,98 +32,6 @@ function tronAddrEq(a, b) {
 
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
-}
-
-/**
- * Send native TRX from `SWEEP_TRX_FUNDER_PRIVATE_KEY` wallet to a deposit address.
- *
- * @param {string} toAddress base58
- * @param {bigint} amountSun
- */
-async function sendTrxTopUpFromFunder(toAddress, amountSun) {
-  const pk = env.sweepTrxFunderPrivateKey?.trim();
-  if (!pk) {
-    return { ok: false, error: "NO_FUNDER_KEY" };
-  }
-
-  const tw = createTronWebFromPrivateKeyHex(pk);
-  const from = tw.defaultAddress.base58;
-
-  const expectAddr = re.sweepTrxFunderAddress?.trim();
-  if (expectAddr && !tronAddrEq(from, expectAddr)) {
-    logger.error("tron_auto_sweep_funder_address_mismatch", {
-      event: "tron_auto_sweep_funder_address_mismatch",
-      at: new Date().toISOString(),
-      derived_funder_address: from,
-      env_sweep_trx_funder_address: expectAddr,
-    });
-    return { ok: false, error: "FUNDER_ADDRESS_MISMATCH" };
-  }
-
-  await acquireOutboundRpcSlot("TRON");
-  const bal = BigInt(await tw.trx.getBalance(from));
-  if (bal < amountSun + FUNDER_RESERVE_SUN) {
-    logger.warn("tron_auto_sweep_trx_topup_funder_short", {
-      event: "tron_auto_sweep_trx_topup_funder_short",
-      at: new Date().toISOString(),
-      funder_address: from,
-      funder_trx_sun: bal.toString(),
-      needed_trx_sun: amountSun.toString(),
-      reserve_sun: FUNDER_RESERVE_SUN.toString(),
-    });
-    return {
-      ok: false,
-      error: "FUNDER_INSUFFICIENT_TRX",
-      funder_address: from,
-      detail: `have ${bal} sun, need ${amountSun + FUNDER_RESERVE_SUN}`,
-    };
-  }
-
-  await acquireOutboundRpcSlot("TRON");
-  const built = await tw.transactionBuilder.sendTrx(
-    toAddress,
-    Number(amountSun),
-    from,
-  );
-  const signed = await tw.trx.sign(built);
-  const receipt = await tw.trx.sendRawTransaction(signed);
-  const ok = receipt?.result === true;
-  const txid =
-    (typeof receipt?.txid === "string" && receipt.txid) ||
-    /** @type {{ txID?: string }} */ (signed)?.txID ||
-    null;
-
-  if (!ok || !txid) {
-    logger.error("tron_auto_sweep_trx_topup_broadcast_fail", {
-      event: "tron_auto_sweep_trx_topup_broadcast_fail",
-      at: new Date().toISOString(),
-      to_address: toAddress,
-      trx_sun: amountSun.toString(),
-      funder_address: from,
-      receipt: JSON.stringify(receipt ?? {}).slice(0, 500),
-    });
-    return {
-      ok: false,
-      error: "TRX_TOPUP_BROADCAST_FAILED",
-      detail: JSON.stringify(receipt ?? {}),
-    };
-  }
-
-  logger.info("tron_auto_sweep_trx_topup", {
-    event: "tron_auto_sweep_trx_topup",
-    at: new Date().toISOString(),
-    deposit_address: toAddress,
-    funder_address: from,
-    trx_sun_sent: amountSun.toString(),
-    trx_topup_tx_hash: txid,
-  });
-
-  return {
-    ok: true,
-    tx_hash: txid,
-    funder_address: from,
-    trx_sun: amountSun.toString(),
-  };
 }
 
 /**
@@ -204,6 +103,8 @@ export async function sweepTronUsdtOneWithAutoTopUp(
     return { status: "skipped", reason: "zero_usdt" };
   }
 
+  const merchantTrxFunderPk = await getMerchantTrxSweepFunderPrivateKeyHex(wallet.merchantId);
+
   const mnemonicPhrase = await getMerchantWalletMnemonic(wallet.merchantId);
   const pkHex = deriveTronPrivateKeyHex(wallet.derivationIndex, mnemonicPhrase);
   const depositTw = createTronWebFromPrivateKeyHex(pkHex);
@@ -221,13 +122,14 @@ export async function sweepTronUsdtOneWithAutoTopUp(
 
   if (trxSun < neededTrxSun) {
     const gap = neededTrxSun - trxSun;
-    const sendSun = gap + TOPUP_SEND_BUFFER_SUN;
+    const sendSun = gap + TRX_TOPUP_SEND_BUFFER_SUN;
 
-    if (!env.sweepTrxFunderPrivateKey?.trim()) {
-      logger.warn("tron_auto_sweep_need_trx_no_funder", {
-        event: "tron_auto_sweep_need_trx_no_funder",
+    if (!String(merchantTrxFunderPk ?? "").trim()) {
+      logger.warn("tron_auto_sweep_need_trx_no_merchant_funder", {
+        event: "tron_auto_sweep_need_trx_no_merchant_funder",
         at: new Date().toISOString(),
         wallet_id: wallet.id,
+        merchant_id: wallet.merchantId,
         deposit_address: wallet.address,
         trx_sun_have: trxSun.toString(),
         trx_sun_need_estimated: neededTrxSun.toString(),
@@ -235,12 +137,17 @@ export async function sweepTronUsdtOneWithAutoTopUp(
       });
       return {
         status: "failed",
-        error: "INSUFFICIENT_TRX_NO_FUNDER",
-        detail: `have ${trxSun} sun, need ~${neededTrxSun} sun (estimated), set SWEEP_TRX_FUNDER_PRIVATE_KEY`,
+        error: "MERCHANT_TRX_FUNDER_KEY_REQUIRED",
+        detail:
+          "Deposit wallet needs more TRX for fees. Save your TRX funder private key under Gateway & webhooks (platform env is not used).",
       };
     }
 
-    const top = await sendTrxTopUpFromFunder(wallet.address, sendSun);
+    const top = await sendTrxNativeTopUpFromPrivateKey(
+      wallet.address,
+      sendSun,
+      merchantTrxFunderPk,
+    );
     if (!top.ok) {
       logger.error("tron_auto_sweep_trx_topup_failed", {
         event: "tron_auto_sweep_trx_topup_failed",
@@ -253,7 +160,7 @@ export async function sweepTronUsdtOneWithAutoTopUp(
       return { status: "failed", error: top.error, detail: top.detail };
     }
 
-    await sleep(TOPUP_SETTLE_MS);
+    await sleep(TRX_TOPUP_SETTLE_MS);
 
     await acquireOutboundRpcSlot("TRON");
     trxSun = BigInt(await depositTw.trx.getBalance(wallet.address));
@@ -320,63 +227,33 @@ export async function sweepTronUsdtOneWithAutoTopUp(
 }
 
 /**
- * Resolves sweep destination + USDT minimum for one merchant (live TRC20 cron).
- *
  * @param {number} merchantId
  * @returns {Promise<
- *   | { ok: true, master: string, minAtomic: bigint, minExclusiveAbove: boolean, mode: "merchant_auto_swap" | "platform" }
- *   | { ok: false, reason: string }
+ *   | { ok: true, master: string, minAtomic: bigint, minExclusiveAbove: boolean, mode: "merchant_settings" }
+ *   | { ok: false, reason: string, message?: string }
  * >}
  */
 async function resolveTronUsdtSweepTargetForMerchant(merchantId) {
-  const plan = await getMerchantAutoSwapPlan(merchantId);
-  if (plan.enabled) {
-    const dest = plan.destinations.find((d) => d.rail_key === USDT_TRC20_RAIL_KEY);
-    if (!dest?.treasury_address?.trim()) {
-      return {
-        ok: false,
-        reason: "merchant_auto_swap_missing_usdt_trc20_destination",
-      };
-    }
-    let minAtomic = 0n;
-    const minDec = plan.minAmountsByRail?.[USDT_TRC20_RAIL_KEY];
-    if (minDec != null && String(minDec).trim() !== "") {
-      const parsed = merchantMinDecimalUsdtToAtomic6(minDec);
-      if (parsed === null) {
-        return { ok: false, reason: "merchant_auto_swap_invalid_min_amount" };
-      }
-      minAtomic = parsed;
-    }
-    return {
-      ok: true,
-      master: dest.treasury_address.trim(),
-      minAtomic,
-      minExclusiveAbove: true,
-      mode: "merchant_auto_swap",
-    };
-  }
-  const master = re.sweepMasterTron?.trim() ?? "";
-  if (!master) {
-    return { ok: false, reason: "SWEEP_MASTER_TRON_NOT_SET" };
+  const r = await resolveMerchantTronUsdtSweepFromSettings(merchantId);
+  if (!r.ok) {
+    return { ok: false, reason: r.reason, message: r.message };
   }
   return {
     ok: true,
-    master,
-    minAtomic: re.sweepTronUsdtMinAtomic,
-    minExclusiveAbove: false,
-    mode: "platform",
+    master: r.master,
+    minAtomic: r.minAtomic,
+    minExclusiveAbove: r.minExclusiveAbove,
+    mode: "merchant_settings",
   };
 }
 
 /**
- * Live TRON USDT·TRC20 wallets, oldest first — TRX top-up (if configured) then sweep:
- * merchant **auto-swap** treasury + per-rail minimum when enabled; otherwise platform `SWEEP_MASTER_TRON` + `SWEEP_TRON_USDT_MIN_ATOMIC`.
+ * Live TRON USDT·TRC20 wallets — TRX top-up from merchant-configured funder only, then sweep to merchant treasury.
  *
  * @returns {Promise<{ round_started_at: string, master: string, wallet_count: number, results: object[] }>}
  */
 export async function runAutomatedTronUsdtSweepRound() {
   const started = new Date().toISOString();
-  const platformMaster = re.sweepMasterTron?.trim() ?? "";
 
   let contractAddr;
   try {
@@ -390,7 +267,7 @@ export async function runAutomatedTronUsdtSweepRound() {
     });
     return {
       round_started_at: started,
-      master: platformMaster,
+      master: "",
       wallet_count: 0,
       results: [],
     };
@@ -418,11 +295,8 @@ export async function runAutomatedTronUsdtSweepRound() {
   logger.info("tron_auto_sweep_round_start", {
     event: "tron_auto_sweep_round_start",
     at: started,
-    platform_master_configured: Boolean(platformMaster),
     wallet_count: wallets.length,
-    platform_min_usdt_atomic: re.sweepTronUsdtMinAtomic.toString(),
-    trx_fee_model: "dynamic_estimate_energy_bandwidth",
-    funder_configured: Boolean(env.sweepTrxFunderPrivateKey?.trim()),
+    trx_fee_model: "dynamic_estimate_energy_bandwidth; merchant_trx_funder_only",
     merchants_resolved: merchantIds.length,
   });
 
@@ -437,6 +311,7 @@ export async function runAutomatedTronUsdtSweepRound() {
         address: w.address,
         status: "skipped",
         reason: cfg && !cfg.ok ? cfg.reason : "unknown_sweep_config",
+        ...(cfg && !cfg.ok && cfg.message ? { message: cfg.message } : {}),
       });
       continue;
     }
@@ -464,7 +339,6 @@ export async function runAutomatedTronUsdtSweepRound() {
     event: "tron_auto_sweep_round_complete",
     at: new Date().toISOString(),
     round_started_at: started,
-    platform_master_configured: Boolean(platformMaster),
     wallet_count: wallets.length,
     swept,
     skipped,
@@ -473,7 +347,7 @@ export async function runAutomatedTronUsdtSweepRound() {
 
   return {
     round_started_at: started,
-    master: platformMaster,
+    master: "",
     wallet_count: wallets.length,
     results,
   };

@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
 import { Formik, Form, Field, ErrorMessage, useFormikContext } from "formik";
 import { api } from "../../api";
 import { buildMerchantGatewayAndAutoSwapSchema } from "../../admin/merchantSchemas";
@@ -134,6 +133,9 @@ function buildMerchantSettingsInitial(u) {
       typeof u.auto_swap_trx_fee_source_address === "string"
         ? u.auto_swap_trx_fee_source_address
         : "",
+    trx_sweep_funder_has_merchant_key: Boolean(u.trx_sweep_funder_has_merchant_key),
+    trx_sweep_funder_private_key: "",
+    trx_sweep_funder_clear: false,
   };
 }
 
@@ -212,17 +214,6 @@ export default function MerchantSettings() {
       <h1 className="font-display text-2xl font-semibold text-white">
         Gateway &amp; webhooks
       </h1>
-      <p className="mt-2 text-sm text-white/55">
-        Integrators: full <span className="font-mono">/api/v1/gateway/*</span>{" "}
-        reference (endpoints, payloads, webhooks) lives under{" "}
-        <Link
-          to="/docs"
-          className="text-sky-300/90 underline decoration-white/20 underline-offset-2 hover:decoration-sky-300/60"
-        >
-          Doc
-        </Link>{" "}
-        in the sidebar.
-      </p>
 
       {gatewayModes ? (
         <div className="mt-6 rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3 text-sm text-white/70">
@@ -241,10 +232,6 @@ export default function MerchantSettings() {
             ) : (
               <span className="text-rose-200/90">disabled</span>
             )}
-          </p>
-          <p className="mt-2 text-xs text-white/45">
-            Admins change these on Edit merchant. Live gateway controls production API and portal data. Sandbox data is
-            separate in the portal (Dashboard / Users / Transactions).
           </p>
         </div>
       ) : null}
@@ -268,19 +255,26 @@ export default function MerchantSettings() {
               const m = String(row.min_amount_decimal ?? "").trim();
               if (m !== "") min_amounts_by_rail[row.rail_key] = m;
             }
+            /** @type {Record<string, unknown>} */
+            const patch = {
+              callback_url: values.callback_url?.trim() || null,
+              default_chains: values.default_chains,
+              supported_deposit_rails: values.supported_deposit_rails,
+              auto_swap_enabled: Boolean(values.auto_swap_enabled),
+              auto_swap_settings: {
+                version: 2,
+                destinations,
+                min_amounts_by_rail,
+              },
+            };
+            if (values.trx_sweep_funder_clear) {
+              patch.trx_sweep_funder_private_key = null;
+            } else if (String(values.trx_sweep_funder_private_key ?? "").trim()) {
+              patch.trx_sweep_funder_private_key = String(values.trx_sweep_funder_private_key).trim();
+            }
             await api("/api/v1/merchant/settings", {
               method: "PATCH",
-              json: {
-                callback_url: values.callback_url?.trim() || null,
-                default_chains: values.default_chains,
-                supported_deposit_rails: values.supported_deposit_rails,
-                auto_swap_enabled: Boolean(values.auto_swap_enabled),
-                auto_swap_settings: {
-                  version: 2,
-                  destinations,
-                  min_amounts_by_rail,
-                },
-              },
+              json: patch,
             });
             const fresh = await api("/api/v1/auth/me");
             setBoot(buildMerchantSettingsInitial(fresh));
@@ -452,22 +446,68 @@ export default function MerchantSettings() {
               {(values.supported_deposit_rails || []).some((rk) =>
                 String(rk).toUpperCase().includes("TRC20"),
               ) ? (
-                <div className="mt-5 rounded-lg border border-amber-400/25 bg-amber-500/[0.06] px-4 py-3">
+                <div className="mt-5 space-y-3 rounded-lg border border-amber-400/25 bg-amber-500/[0.06] px-4 py-3 lg:col-span-2">
                   <p className="text-xs font-medium text-amber-100/90">TRX for TRON fees (auto top-up)</p>
-                  <p className="mt-1 text-xs leading-relaxed text-white/55">
-                    USDT·TRC20 transfers still burn <strong className="text-white/75">TRX</strong> from the{" "}
-                    <strong className="text-white/75">deposit wallet</strong>. If it is short on TRX, the platform can
-                    send native TRX from the address below (when configured). This is independent of your treasury
-                    lines.
+                  <p className="text-xs leading-relaxed text-white/55">
+                    When a scheduled swap or Send USDT needs more <strong className="text-white/75">TRX</strong> on a deposit
+                    wallet, native TRX is sent <strong className="text-white/75">only</strong> from the TRON private key you
+                    save below — the platform does not supply TRX from server environment keys.
                   </p>
-                  <p className="mt-2 text-[10px] font-medium uppercase tracking-wide text-white/40">
-                    TRX source (platform)
-                  </p>
-                  <p className="mt-1 break-all font-mono text-xs text-white/85">
-                    {boot.trx_fee_topup_source_address?.trim()
-                      ? boot.trx_fee_topup_source_address.trim()
-                      : "— Not configured — deposit wallets need enough TRX for fees, or ask the operator to set SWEEP_TRX_FUNDER_*."}
-                  </p>
+                  <div>
+                    <p className="text-[10px] font-medium uppercase tracking-wide text-white/40">Effective TRX sender</p>
+                    <p className="mt-1 break-all font-mono text-xs text-white/85">
+                      {boot.trx_fee_topup_source_address?.trim() ? (
+                        <>
+                          <span className="text-emerald-200/90">TRX funder · </span>
+                          {boot.trx_fee_topup_source_address.trim()}
+                        </>
+                      ) : (
+                        <span className="text-white/45">
+                          — Not configured — save your TRON private key below so swaps can top up deposit wallets with TRX for
+                          fees.
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                  <div className="border-t border-amber-400/20 pt-3">
+                    <label className="text-xs text-white/50" htmlFor="trx_sweep_funder_private_key">
+                      Your TRON private key (64 hex, optional)
+                    </label>
+                    <Field
+                      id="trx_sweep_funder_private_key"
+                      name="trx_sweep_funder_private_key"
+                      type="password"
+                      autoComplete="off"
+                      className="mt-1 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 font-mono text-xs text-white/90"
+                      placeholder={
+                        boot.trx_sweep_funder_has_merchant_key
+                          ? "Leave blank to keep saved key · paste new hex to replace"
+                          : "Paste 64-character hex (optional 0x)"
+                      }
+                    />
+                    <ErrorMessage
+                      name="trx_sweep_funder_private_key"
+                      component="p"
+                      className="mt-1 text-xs text-rose-400"
+                    />
+                    {boot.trx_sweep_funder_has_merchant_key ? (
+                      <div className="mt-3 flex flex-wrap items-center gap-2">
+                        <Field name="trx_sweep_funder_clear">
+                          {({ field, form }) => (
+                            <label className="flex cursor-pointer items-center gap-2 text-xs text-white/55">
+                              <input
+                                type="checkbox"
+                                checked={Boolean(field.value)}
+                                onChange={(e) => form.setFieldValue("trx_sweep_funder_clear", e.target.checked)}
+                                className="rounded border-white/20 bg-black/40"
+                              />
+                              Remove saved TRX funder key
+                            </label>
+                          )}
+                        </Field>
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
               ) : null}
 

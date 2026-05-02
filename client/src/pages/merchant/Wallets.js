@@ -19,6 +19,7 @@ import {
 import { merchantWalletsFilterSchema } from "../../admin/merchantSchemas";
 import WalletDepositActivityModal from "../../components/WalletDepositActivityModal";
 import { BrandLoader } from "../../components/BrandLoader.js";
+import { renderMerchantPortalBlockers } from "../../components/MerchantPortalPageGates.js";
 import {
   formatLocalDate,
   formatLocalDateTime,
@@ -45,12 +46,14 @@ export default function MerchantWallets() {
     liveGatewayEnabled,
     sandboxGatewayEnabled,
     flagsLoading,
+    needsPortalSwitch,
+    merchantApiReady,
+    portalListAccess,
+    portalListDeniedMessage,
+    wrongPortalRole,
+    authMeIsError,
+    authMeError,
   } = useMerchantPortalEnvironment();
-
-  const envQueryEnabled =
-    !flagsLoading &&
-    ((environment === "live" && liveGatewayEnabled) ||
-      (environment === "sandbox" && sandboxGatewayEnabled));
 
   const res = useQuery({
     queryKey: [
@@ -68,7 +71,7 @@ export default function MerchantWallets() {
       if (applied.q.trim()) p.set("q", applied.q.trim());
       return api(`/api/v1/merchant/wallets?${p}`);
     },
-    enabled: envQueryEnabled,
+    enabled: merchantApiReady,
   });
 
   const total = res.data?.total ?? 0;
@@ -103,41 +106,22 @@ export default function MerchantWallets() {
     setPage(1);
   }
 
-  if (flagsLoading) {
-    return (
-      <BrandLoader
-        variant="page"
-        title=""
-        subtitle="Loading wallets…"
-        aria-label="Loading wallets"
-      />
-    );
-  }
-
-  if (!liveGatewayEnabled && !sandboxGatewayEnabled) {
-    return (
-      <div>
-        <h1 className="font-display text-2xl font-semibold text-white">
-          Wallets
-        </h1>
-        <p className="mt-4 text-sm text-rose-200/90">
-          Neither live nor sandbox gateway is enabled for your account. Contact
-          support.
-        </p>
-      </div>
-    );
-  }
-
-  if (!envQueryEnabled) {
-    return (
-      <BrandLoader
-        variant="page"
-        title=""
-        subtitle="Preparing wallets…"
-        aria-label="Preparing wallets list"
-      />
-    );
-  }
+  const portalGate = renderMerchantPortalBlockers({
+    pageTitle: "Wallets",
+    loaderSubtitle: "Loading wallets…",
+    flagsLoading,
+    authMeIsError,
+    authMeError,
+    liveGatewayEnabled,
+    sandboxGatewayEnabled,
+    needsPortalSwitch,
+    environment,
+    merchantApiReady,
+    portalListAccess,
+    portalListDeniedMessage,
+    wrongPortalRole,
+  });
+  if (portalGate) return portalGate;
 
   return (
     <div>
@@ -146,25 +130,6 @@ export default function MerchantWallets() {
           <h1 className="font-display text-2xl font-semibold text-white">
             Wallets
           </h1>
-          {environment === "live" && scanTtlMin > 0 ? (
-            <p className="mt-2 max-w-3xl text-xs leading-relaxed text-white/40">
-              New live wallets are scanned for deposits for{" "}
-              <span className="font-mono text-white/55">{scanTtlMin}</span>{" "}
-              minutes. The same address is still returned from the API after
-              that; if a payer sends late, use{" "}
-              <span className="text-white/50">Restart scan window</span> to
-              watch again for another{" "}
-              <span className="font-mono text-white/55">{scanTtlMin}</span>{" "}
-              minutes (no new address).
-            </p>
-          ) : null}
-          <p className="mt-2 max-w-3xl text-xs leading-relaxed text-white/40">
-            <span className="text-white/55">Payers / success / tx rows</span>{" "}
-            are from on-chain deposits we recorded.
-            <span className="text-white/55"> Activity</span> shows each deposit
-            time, external user, and amount. Pure API assignments without a
-            deposit are not in that history.
-          </p>
         </div>
         <ListFilterToolbar
           onOpenDrawer={() => setDrawerOpen(true)}

@@ -5,6 +5,7 @@ import { api } from "../../api";
 import { useMerchantPortalEnvironment } from "../../hooks/useMerchantPortalEnvironment.js";
 import ListPaginationBar, { DEFAULT_LIST_PAGE_SIZE } from "../../components/ListPaginationBar";
 import { BrandLoader } from "../../components/BrandLoader.js";
+import { renderMerchantPortalBlockers } from "../../components/MerchantPortalPageGates.js";
 import {
   ListActiveFiltersChips,
   ListFilterDrawer,
@@ -41,12 +42,14 @@ export default function MerchantUsers() {
     liveGatewayEnabled,
     sandboxGatewayEnabled,
     flagsLoading,
+    needsPortalSwitch,
+    merchantApiReady,
+    portalListAccess,
+    portalListDeniedMessage,
+    wrongPortalRole,
+    authMeIsError,
+    authMeError,
   } = useMerchantPortalEnvironment();
-
-  const envQueryEnabled =
-    !flagsLoading &&
-    ((environment === "live" && liveGatewayEnabled) ||
-      (environment === "sandbox" && sandboxGatewayEnabled));
 
   const res = useQuery({
     queryKey: ["m-users", page, applied.pageSize, applied.q, portalEnvironmentKey],
@@ -58,7 +61,7 @@ export default function MerchantUsers() {
       if (applied.q.trim()) p.set("q", applied.q.trim());
       return api(`/api/v1/merchant/users?${p}`);
     },
-    enabled: envQueryEnabled,
+    enabled: merchantApiReady,
   });
 
   const total = res.data?.total ?? 0;
@@ -81,50 +84,28 @@ export default function MerchantUsers() {
     setPage(1);
   }
 
-  if (flagsLoading) {
-    return (
-      <BrandLoader
-        variant="page"
-        title=""
-        subtitle="Loading users…"
-        aria-label="Loading users"
-      />
-    );
-  }
-
-  if (!liveGatewayEnabled && !sandboxGatewayEnabled) {
-    return (
-      <div>
-        <h1 className="font-display text-2xl font-semibold text-white">Users</h1>
-        <p className="mt-4 text-sm text-rose-200/90">
-          Neither live nor sandbox gateway is enabled for your account. Contact support.
-        </p>
-      </div>
-    );
-  }
-
-  if (!envQueryEnabled) {
-    return (
-      <BrandLoader
-        variant="page"
-        title=""
-        subtitle="Preparing users…"
-        aria-label="Preparing users list"
-      />
-    );
-  }
+  const portalGate = renderMerchantPortalBlockers({
+    pageTitle: "Users",
+    loaderSubtitle: "Loading users…",
+    flagsLoading,
+    authMeIsError,
+    authMeError,
+    liveGatewayEnabled,
+    sandboxGatewayEnabled,
+    needsPortalSwitch,
+    environment,
+    merchantApiReady,
+    portalListAccess,
+    portalListDeniedMessage,
+    wrongPortalRole,
+  });
+  if (portalGate) return portalGate;
 
   return (
     <div>
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
           <h1 className="font-display text-2xl font-semibold text-white">Users</h1>
-          <p className="mt-2 max-w-3xl text-xs leading-relaxed text-white/40">
-            <span className="text-white/55">Active</span> = wallets currently reserved.{" "}
-            <span className="text-white/55">Assign #</span> = gateway gave an address (click for time &amp; wallet).{" "}
-            <span className="text-white/55">Tx #</span> = recorded deposits (click for amount per tx). New logging only
-            after deploy.
-          </p>
         </div>
         <ListFilterToolbar
           onOpenDrawer={() => setDrawerOpen(true)}

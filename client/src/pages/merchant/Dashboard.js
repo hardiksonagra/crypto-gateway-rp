@@ -4,6 +4,7 @@ import { api } from "../../api";
 import { PendingSettlementBucketCard } from "../../components/PendingSettlementBucketCard.js";
 import { BrandLoader } from "../../components/BrandLoader.js";
 import AdminDashboardCharts from "../admin/AdminDashboardCharts.js";
+import { renderMerchantPortalBlockers } from "../../components/MerchantPortalPageGates.js";
 import { useMerchantPortalEnvironment } from "../../hooks/useMerchantPortalEnvironment.js";
 import { useTheme } from "../../hooks/useTheme.js";
 import { formatTokenAmount } from "../../lib/formatTokenAmount.js";
@@ -44,6 +45,15 @@ export default function MerchantDashboard() {
     liveGatewayEnabled,
     sandboxGatewayEnabled,
     flagsLoading,
+    merchantEmail,
+    merchantDisplayName,
+    needsPortalSwitch,
+    merchantApiReady,
+    portalListAccess,
+    portalListDeniedMessage,
+    wrongPortalRole,
+    authMeIsError,
+    authMeError,
   } = useMerchantPortalEnvironment();
   const { theme } = useTheme();
   const isDark = theme === "dark";
@@ -53,59 +63,32 @@ export default function MerchantDashboard() {
       ? Intl.DateTimeFormat().resolvedOptions().timeZone
       : "UTC";
 
-  const envQueryEnabled =
-    !flagsLoading &&
-    ((environment === "live" && liveGatewayEnabled) ||
-      (environment === "sandbox" && sandboxGatewayEnabled));
-
   const { data, isPending, isError, error } = useQuery({
     queryKey: ["m-dash", portalEnvironmentKey, dashTz],
     queryFn: () =>
       api(`/api/v1/merchant/dashboard?tz=${encodeURIComponent(dashTz)}`),
-    enabled: envQueryEnabled,
+    enabled: merchantApiReady,
   });
 
-  const meQ = useQuery({
-    queryKey: ["auth-me"],
-    queryFn: () => api("/api/v1/auth/me"),
-    enabled: envQueryEnabled,
-    staleTime: 60_000,
+  const portalGate = renderMerchantPortalBlockers({
+    pageTitle: "Dashboard",
+    loaderSubtitle: "Loading dashboard…",
+    flagsLoading,
+    authMeIsError,
+    authMeError,
+    liveGatewayEnabled,
+    sandboxGatewayEnabled,
+    needsPortalSwitch,
+    environment,
+    merchantApiReady,
+    portalListAccess,
+    portalListDeniedMessage,
+    wrongPortalRole,
   });
+  if (portalGate) return portalGate;
 
-  if (flagsLoading) {
-    return (
-      <BrandLoader
-        variant="page"
-        title=""
-        subtitle="Loading dashboard…"
-        aria-label="Loading dashboard"
-      />
-    );
-  }
-
-  if (!liveGatewayEnabled && !sandboxGatewayEnabled) {
-    return (
-      <div>
-        <h1 className="font-display text-2xl font-semibold text-white">Dashboard</h1>
-        <p className="mt-4 text-sm text-rose-200/90">
-          Neither live nor sandbox gateway is enabled for your account. Contact support.
-        </p>
-      </div>
-    );
-  }
-
-  if (!envQueryEnabled) {
-    return (
-      <BrandLoader
-        variant="page"
-        title=""
-        subtitle="Preparing dashboard…"
-        aria-label="Preparing dashboard"
-      />
-    );
-  }
-
-  if (isPending) {
+  /** v5: disabled queries stay `isPending`; only show loader when fetch is actually enabled */
+  if (merchantApiReady && isPending) {
     return (
       <BrandLoader
         variant="page"
@@ -117,10 +100,27 @@ export default function MerchantDashboard() {
   }
 
   if (isError) {
+    const st = error && typeof error === "object" && "status" in error ? Number(error.status) : NaN;
+    const code =
+      error && typeof error === "object" && "errorCode" in error
+        ? String(/** @type {{ errorCode?: unknown }} */ (error).errorCode ?? "")
+        : "";
+    const detail =
+      error && typeof error === "object" && "message" in error
+        ? String(/** @type {{ message?: unknown }} */ (error).message ?? "").trim()
+        : "";
+    const msg =
+      st === 403 && code === "forbidden"
+        ? "This area needs a merchant session. Sign out and sign in with Merchant sign in."
+        : st === 403 && detail
+          ? detail
+          : st === 403
+            ? "Access was denied. Please sign out and sign in again."
+            : String(error?.message ?? error ?? "Request failed");
     return (
       <div>
         <h1 className="font-display text-2xl font-semibold text-white">Dashboard</h1>
-        <p className="mt-4 text-sm text-rose-200/90">{String(error)}</p>
+        <p className="mt-4 text-sm text-rose-200/90">{msg}</p>
       </div>
     );
   }
@@ -141,14 +141,9 @@ export default function MerchantDashboard() {
         />
         <div className="relative flex flex-wrap items-start justify-between gap-4">
           <div>
-            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-white/35">Overview</p>
-            <h1 className="font-display mt-1 text-3xl font-bold tracking-tight text-white sm:text-4xl">
+            <h1 className="font-display text-3xl font-bold tracking-tight text-white sm:text-4xl">
               Dashboard
             </h1>
-            <p className="mt-2 max-w-xl text-sm leading-relaxed text-white/45">
-              Snapshot of users, volume, estimated next settlements, and balances in your current portal
-              mode.
-            </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <span
@@ -171,7 +166,6 @@ export default function MerchantDashboard() {
           <div className={rail} aria-hidden />
           <p className="text-[10px] font-bold uppercase tracking-widest text-white/38">End users</p>
           <p className="mt-2 font-mono text-3xl font-semibold tabular-nums text-white">{data.stats.end_users}</p>
-          <p className="mt-2 text-xs text-white/40">In this environment</p>
         </article>
         <article className={`${cardShell} pl-6`}>
           <div className={rail} aria-hidden />
@@ -179,18 +173,12 @@ export default function MerchantDashboard() {
           <p className="mt-2 font-mono text-3xl font-semibold tabular-nums text-white">
             {data.stats.transactions}
           </p>
-          <p className="mt-2 text-xs text-white/40">All time in this environment</p>
         </article>
       </div>
 
       {data.charts ? (
         <section className="mt-10" aria-label="Transaction charts">
           <h2 className="text-sm font-semibold tracking-wide text-white/40 uppercase">Activity charts</h2>
-          <p className="mt-2 max-w-3xl text-xs leading-relaxed text-white/42">
-            Daily volume by status (last 14 days, timezone{" "}
-            <span className="font-mono text-white/55">{data.charts.viewer_timezone}</span>), success rate, status
-            mix, and deposits by chain — all in {envLabel.toLowerCase()}.
-          </p>
           <div className="mt-5">
             <AdminDashboardCharts
               daily={data.charts.transactions_daily_by_status}
@@ -205,19 +193,6 @@ export default function MerchantDashboard() {
 
       <section className="mt-12">
         <h2 className="text-sm font-semibold tracking-wide text-white/40 uppercase">Next settlement (estimate)</h2>
-        <p className="mt-2 max-w-3xl text-xs leading-relaxed text-white/42">
-          Based on successful deposits not yet included in a settlement and your settlement hold (if any).
-          MDR is taken from gross; settlement fee from the remainder after MDR. The operator records the
-          actual payout.
-          {data.fee_rates?.settlement_period_days > 0 ? (
-            <>
-              {" "}
-              Hold: deposits newer than{" "}
-              <span className="font-medium text-white/60">{data.fee_rates.settlement_period_days}</span> day(s)
-              are not in this batch.
-            </>
-          ) : null}
-        </p>
         {pending.length === 0 ? (
           <p className="mt-4 text-sm text-white/45">Nothing queued for settlement in this environment.</p>
         ) : (
@@ -227,8 +202,8 @@ export default function MerchantDashboard() {
                 key={`${b.chain}-${b.token_symbol}-${b.token_decimals}`}
                 variant="merchant"
                 b={b}
-                merchantEmail={meQ.data?.email}
-                merchantDisplayName={meQ.data?.displayName ?? null}
+                merchantEmail={merchantEmail}
+                merchantDisplayName={merchantDisplayName}
               />
             ))}
           </div>
@@ -237,9 +212,6 @@ export default function MerchantDashboard() {
 
       <section className="mt-12">
         <h2 className="text-sm font-semibold tracking-wide text-white/40 uppercase">Available balance</h2>
-        <p className="mt-2 max-w-3xl text-xs text-white/42">
-          Portal balance per asset after recorded settlements (what remains available in the gateway).
-        </p>
         {data.balances.length === 0 ? (
           <p className="mt-4 text-sm text-white/45">No positive balance in this environment.</p>
         ) : (
@@ -265,7 +237,6 @@ export default function MerchantDashboard() {
                   <p className="font-mono text-xl font-semibold tabular-nums text-white">
                     {formatTokenAmount(b.balance_raw, b.token_decimals)}
                   </p>
-                  <p className="mt-0.5 font-mono text-[10px] text-white/35">raw {b.balance_raw}</p>
                 </div>
               </article>
             ))}

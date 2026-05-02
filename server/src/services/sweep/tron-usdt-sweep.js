@@ -3,7 +3,8 @@ import { TronWeb } from "tronweb";
 import { utils as tronUtils } from "tronweb";
 import { getTrc20Contracts } from "../../config/env.js";
 import { getMerchantWalletMnemonic } from "../../lib/merchant-mnemonic.js";
-import { re } from "../../config/runtime-env.js";
+import { resolveMerchantTronUsdtSweepFromSettings } from "../../lib/merchant-auto-swap-settings.js";
+import { getMerchantTrxSweepFunderPrivateKeyHex } from "../../lib/merchant-trx-funder.js";
 import { parseWalletDbId } from "../../lib/parse-wallet-db-id.js";
 import { ACTIVE } from "../../lib/active-row.js";
 import { prisma } from "../../lib/prisma.js";
@@ -14,6 +15,11 @@ import {
   getTronProgApiKeyHeaders,
 } from "../../lib/tron-node-client.js";
 import { deriveTronPrivateKeyHex } from "../wallet/tron-wallet.js";
+import {
+  sendTrxNativeTopUpFromPrivateKey,
+  TRX_TOPUP_SETTLE_MS,
+  TRX_TOPUP_SEND_BUFFER_SUN,
+} from "./tron-trx-topup.js";
 
 /** Minimal ERC20 ABI for balance + transfer (TRC20). TronWeb ≥6 expects `stateMutability` on each function. */
 const TRC20_ABI = [
@@ -221,8 +227,6 @@ function rawBalanceToBigInt(raw) {
  * @returns {Promise<{ configured: boolean, master_tron_address: string | null, wallets: object[] }>}
  */
 export async function listTronUsdtSweepTargets() {
-  const master = re.sweepMasterTron?.trim() ?? "";
-
   const wallets = await prisma.wallet.findMany({
     where: {
       /** Underlying L1 for USDT·TRC20 is always enum `TRON` (not the `network` label). */
@@ -239,8 +243,8 @@ export async function listTronUsdtSweepTargets() {
   });
 
   return {
-    configured: Boolean(master),
-    master_tron_address: master || null,
+    configured: true,
+    master_tron_address: null,
     wallets: wallets.map((w) => ({
       id: w.id,
       address: w.address,
@@ -257,7 +261,7 @@ export async function listTronUsdtSweepTargets() {
 
 /**
  * @param {string | number} walletId
- * @param {{ to_address?: string }} [opts] When `to_address` is set, send full USDT balance there (admin tool). Otherwise send to `SWEEP_MASTER_TRON`.
+ * @param {{ to_address?: string }} [opts] When `to_address` is set, send full USDT balance there. Otherwise send to the merchant’s USDT·TRC20 treasury from Gateway settings (no env master).
  * @returns {Promise<{ ok: true, skipped?: boolean, reason?: string, tx_hash?: string, amount_atomic?: string, from_address?: string, to_address?: string } | { ok: false, error: string, detail?: string }>}
  */
 export async function sweepTronUsdtOne(walletId, opts = {}) {
@@ -268,16 +272,6 @@ export async function sweepTronUsdtOne(walletId, opts = {}) {
 
   const toOverride =
     typeof opts.to_address === "string" ? opts.to_address.trim() : "";
-  const master = re.sweepMasterTron?.trim() ?? "";
-  const recipient = toOverride || master;
-  if (!recipient) {
-    return {
-      ok: false,
-      error: "NO_RECIPIENT",
-      detail:
-        "Set SWEEP_MASTER_TRON for default consolidate, or pass to_address for a one-off send.",
-    };
-  }
 
   if (toOverride) {
     try {
@@ -310,6 +304,21 @@ export async function sweepTronUsdtOne(walletId, opts = {}) {
 
   if (!wallet) {
     return { ok: false, error: "WALLET_NOT_FOUND" };
+  }
+
+  let recipient;
+  if (toOverride) {
+    recipient = toOverride;
+  } else {
+    const dest = await resolveMerchantTronUsdtSweepFromSettings(wallet.merchantId);
+    if (!dest.ok) {
+      return {
+        ok: false,
+        error: dest.reason,
+        detail: dest.message,
+      };
+    }
+    recipient = dest.master;
   }
 
   if (tronAddrEq(wallet.address, recipient)) {
@@ -478,7 +487,7 @@ export async function sweepTronUsdtTransferFullBalanceFromDepositWallet(
     };
   }
 
-  const neededTrxSun = await estimateTrxSunRequiredForTrc20Transfer(
+  let neededTrxSun = await estimateTrxSunRequiredForTrc20Transfer(
     tw,
     wallet.address,
     contractAddr,
@@ -487,12 +496,45 @@ export async function sweepTronUsdtTransferFullBalanceFromDepositWallet(
   );
 
   await acquireOutboundRpcSlot("TRON");
-  const trxSun = BigInt(await tw.trx.getBalance(wallet.address));
+  let trxSun = BigInt(await tw.trx.getBalance(wallet.address));
+
+  for (let attempt = 0; trxSun < neededTrxSun && attempt < 4; attempt += 1) {
+    const merchantPk = await getMerchantTrxSweepFunderPrivateKeyHex(wallet.merchantId);
+    if (!merchantPk) {
+      return {
+        ok: false,
+        error: "MERCHANT_TRX_FUNDER_KEY_REQUIRED",
+        detail:
+          "This deposit wallet needs more TRX for network fees. Add your TRX funder private key under Gateway & webhooks → TRX for TRON fees (platform env is not used).",
+      };
+    }
+    const gap = neededTrxSun - trxSun;
+    const sendSun = gap + TRX_TOPUP_SEND_BUFFER_SUN;
+    const top = await sendTrxNativeTopUpFromPrivateKey(wallet.address, sendSun, merchantPk);
+    if (!top.ok) {
+      return {
+        ok: false,
+        error: top.error,
+        detail: top.detail ?? "TRX top-up failed",
+      };
+    }
+    await new Promise((r) => setTimeout(r, TRX_TOPUP_SETTLE_MS));
+    await acquireOutboundRpcSlot("TRON");
+    trxSun = BigInt(await tw.trx.getBalance(wallet.address));
+    neededTrxSun = await estimateTrxSunRequiredForTrc20Transfer(
+      tw,
+      wallet.address,
+      contractAddr,
+      recipient,
+      amount,
+    );
+  }
+
   if (trxSun < neededTrxSun) {
     return {
       ok: false,
       error: "INSUFFICIENT_TRX_FOR_FEE",
-      detail: `Need ~${neededTrxSun} sun (estimated for fees); have ${trxSun}`,
+      detail: `Need ~${neededTrxSun} sun (estimated for fees); have ${trxSun} after top-up attempts`,
     };
   }
 

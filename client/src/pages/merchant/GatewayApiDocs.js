@@ -8,7 +8,6 @@
  * documented here — use `deposit-address` response fields only.
  */
 import { useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
 import { api } from "../../api";
 import {
   ALL_DEPOSIT_RAIL_OPTIONS,
@@ -377,68 +376,12 @@ export default function GatewayApiDocs() {
         <h1 className="font-display text-2xl font-semibold text-white">
           Gateway API docs
         </h1>
-        <p className="mt-2 text-xs text-white/40">
-          Example base URL for this environment:{" "}
-          <span className="font-mono text-white/60">{API_EXAMPLE_BASE}</span>
-          {SANDBOX_DOC_BASE ? (
-            <>
-              {" "}
-              · Sandbox doc URL (simulate-deposit copies):{" "}
-              <span className="font-mono text-white/60">
-                {SANDBOX_DOC_BASE}
-              </span>
-            </>
-          ) : null}
-        </p>
-        <p className="mt-2 text-sm text-white/55">
-          Live vs sandbox follows your merchant portal profile (Settings). You
-          do <span className="font-medium text-white/70">not</span> need{" "}
-          <span className="font-mono">gateway_environment</span> unless you
-          override (one shared key, other env than Settings). Your gateway
-          secret is only on the{" "}
-          <Link
-            to="/api-key"
-            className="text-sky-300/90 underline decoration-white/20 underline-offset-2 hover:decoration-sky-300/60"
-          >
-            API key
-          </Link>{" "}
-          page.
-        </p>
-        <p className="mt-2 text-xs leading-relaxed text-white/45">
-          <span className="font-medium text-white/55">Identifiers:</span>{" "}
-          <span className="font-mono">POST …/deposit-address</span> always returns
-          string <span className="font-mono">transaction_id</span> and duplicate{" "}
-          <span className="font-mono">reference_id</span> (your optional id or a
-          gateway-generated reference). That string is stored on the checkout
-          row and appears as <span className="font-mono">transaction_id</span> /{" "}
-          <span className="font-mono">reference_id</span> on{" "}
-          <span className="font-mono">GET …/gateway/transactions?transaction_id=…</span>{" "}
-          (single JSON object). Payment webhooks use numeric{" "}
-          <span className="font-mono">transaction_id</span>{" "}
-          for the internal DB row and string{" "}
-          <span className="font-mono">reference_id</span> /{" "}
-          <span className="font-mono">merchant_transaction_id</span> for this
-          reference.{" "}
-          <span className="font-mono">POST …/sandbox/simulate-deposit</span>{" "}
-          returns numeric <span className="font-mono">transaction_id</span>{" "}
-          (internal row id), like the webhook field of the same name — not the
-          deposit-address reference string.
-        </p>
-        <p className="mt-3 text-xs font-medium text-white/45">
-          Build <span className="font-mono">X-Token</span> (choose language)
-        </p>
-        <p className="mt-2 text-xs text-white/45">
-          <span className="font-medium text-white/55">PHP:</span> use{" "}
-          <span className="font-mono">
-            JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
-          </span>{" "}
-          on every <span className="font-mono">json_encode</span> in your
-          canonical serializer and when encoding the POST body — otherwise
-          strings with URLs (e.g.{" "}
-          <span className="font-mono">redirect_url</span>) will not match the
-          server’s canonical JSON.
-        </p>
-        <XTokenMultiLangCodeBlock />
+        <h2 className="mt-6 text-sm font-semibold tracking-wide text-white/50 uppercase">
+          Request token (X-Token)
+        </h2>
+        <div className="mt-4">
+          <XTokenMultiLangCodeBlock />
+        </div>
       </div>
 
       <section className="glass w-full rounded-2xl p-6 lg:p-8">

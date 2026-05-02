@@ -108,17 +108,6 @@ export default function DepositExplorerKeys() {
         <h1 className="text-xl font-semibold text-white sm:text-2xl">
           Deposit explorer API keys
         </h1>
-        <p className="mt-2 max-w-3xl text-sm text-white/55">
-          Multi-key pool for third-party explorer APIs used by deposit workers — they use{" "}
-          <span className="text-white/75">only</span> active keys on the selected rail (per-key daily and
-          per-second limits, UTC day). Tabs and rails are defined on the server so new currencies can be
-          added without changing this page. Explorer API keys are <span className="text-white/75">not</span>{" "}
-          in System settings; optional <span className="font-mono text-white/70">ETHERSCAN_API_KEY</span> /{" "}
-          <span className="font-mono text-white/70">TRONSCAN_API_KEY</span> in <span className="font-mono text-white/70">.env</span>{" "}
-          can still be used as a fallback for admin “Refresh balances” when a rail has no pool key.
-          Successful deposit-scan HTTP responses that pass provider JSON checks increment the day counter.
-          Restart deposit workers after large changes.
-        </p>
       </div>
 
       <div className="mb-4 flex flex-wrap items-center gap-2">

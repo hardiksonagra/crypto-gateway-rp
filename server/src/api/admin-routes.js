@@ -2343,12 +2343,6 @@ router.post("/api/v1/admin/tron-sweep/one", async (req, res) => {
 router.post("/api/v1/admin/tron-sweep/all", async (req, res) => {
   try {
     const data = await sweepTronUsdtAll();
-    if (data.configured === false) {
-      return res.status(400).json({
-        error: "SWEEP_MASTER_TRON_NOT_SET",
-        message: "Set SWEEP_MASTER_TRON in server environment to your main TRC20 receive address.",
-      });
-    }
     res.json(data);
   } catch (e) {
     logger.error("admin tron-sweep all failed", { err: String(e) });
@@ -2432,13 +2426,6 @@ router.post("/api/v1/admin/evm-usdt-sweep/all", async (req, res) => {
   }
   try {
     const data = await sweepEvmUsdtAll(chain);
-    if (data.configured === false) {
-      return res.status(400).json({
-        error: "SWEEP_MASTER_USDT_ETH_NOT_SET",
-        message:
-          "Set SWEEP_MASTER_USDT_ETH in server environment to your main USDT ERC20 receive address.",
-      });
-    }
     res.json(data);
   } catch (e) {
     logger.error("admin evm-usdt-sweep all failed", { err: String(e) });

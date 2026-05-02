@@ -12,6 +12,12 @@ import {
  * @param {...string} allowed Optional role allow-list (`ADMIN` / `MERCHANT`) from the JWT.
  */
 export function requireAuth(...allowed) {
+  const allowedRoles = allowed.filter((r) => typeof r === "string" && r.length > 0);
+  if (allowed.length > 0 && allowedRoles.length !== allowed.length) {
+    throw new Error(
+      "requireAuth: invalid allow-list (use PORTAL_ROLE_* string constants)",
+    );
+  }
   return async (req, res, next) => {
     const h = req.headers.authorization;
     const raw =
@@ -29,7 +35,8 @@ export function requireAuth(...allowed) {
       return;
     }
 
-    const role = payload.role;
+    const role =
+      typeof payload.role === "string" ? payload.role.trim() : String(payload.role ?? "");
     if (
       role !== PORTAL_ROLE_ADMIN &&
       role !== PORTAL_ROLE_MERCHANT &&
@@ -86,11 +93,11 @@ export function requireAuth(...allowed) {
       });
       return;
     }
-    if (allowed.length > 0 && !allowed.includes(role)) {
+    if (allowedRoles.length > 0 && !allowedRoles.includes(role)) {
       res.status(403).json({ error: "forbidden" });
       return;
     }
-    req.auth = payload;
+    req.auth = { sub: payload.sub, role };
     next();
   };
 }

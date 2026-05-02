@@ -49,7 +49,6 @@ const navGroups = [
     label: "OPERATIONS",
     items: [
       { to: "/control/settlements", label: "Settlements", Icon: IconSettlements },
-      { to: "/control/sweep", label: "Sweep", Icon: IconWallet },
       { to: "/control/activity", label: "Activity log", Icon: IconActivity },
     ],
   },

@@ -20,6 +20,7 @@ import { formatTokenAmount } from "../../lib/formatTokenAmount.js";
 import { formatLocalDateTime } from "../../lib/formatLocalDateTime.js";
 import { StatusBadge } from "../../components/StatusBadge.js";
 import { BrandLoader } from "../../components/BrandLoader.js";
+import { renderMerchantPortalBlockers } from "../../components/MerchantPortalPageGates.js";
 
 const DEFAULT_PAGE_SIZE = DEFAULT_LIST_PAGE_SIZE;
 const ST = ["created", "pending", "success", "failed", "underpaid"];
@@ -44,12 +45,14 @@ export default function MerchantTransactions() {
     liveGatewayEnabled,
     sandboxGatewayEnabled,
     flagsLoading,
+    needsPortalSwitch,
+    merchantApiReady,
+    portalListAccess,
+    portalListDeniedMessage,
+    wrongPortalRole,
+    authMeIsError,
+    authMeError,
   } = useMerchantPortalEnvironment();
-
-  const envQueryEnabled =
-    !flagsLoading &&
-    ((environment === "live" && liveGatewayEnabled) ||
-      (environment === "sandbox" && sandboxGatewayEnabled));
 
   const res = useQuery({
     queryKey: [
@@ -75,7 +78,7 @@ export default function MerchantTransactions() {
       if (applied.transaction_id.trim()) p.set("transaction_id", applied.transaction_id.trim());
       return api(`/api/v1/merchant/transactions?${p}`);
     },
-    enabled: envQueryEnabled,
+    enabled: merchantApiReady,
   });
 
   const redeliverMutation = useMutation({
@@ -130,38 +133,22 @@ export default function MerchantTransactions() {
     setPage(1);
   }
 
-  if (flagsLoading) {
-    return (
-      <BrandLoader
-        variant="page"
-        title=""
-        subtitle="Loading transactions…"
-        aria-label="Loading transactions"
-      />
-    );
-  }
-
-  if (!liveGatewayEnabled && !sandboxGatewayEnabled) {
-    return (
-      <div>
-        <h1 className="font-display text-2xl font-semibold text-white">Transactions</h1>
-        <p className="mt-4 text-sm text-rose-200/90">
-          Neither live nor sandbox gateway is enabled for your account. Contact support.
-        </p>
-      </div>
-    );
-  }
-
-  if (!envQueryEnabled) {
-    return (
-      <BrandLoader
-        variant="page"
-        title=""
-        subtitle="Preparing transactions…"
-        aria-label="Preparing transactions list"
-      />
-    );
-  }
+  const portalGate = renderMerchantPortalBlockers({
+    pageTitle: "Transactions",
+    loaderSubtitle: "Loading transactions…",
+    flagsLoading,
+    authMeIsError,
+    authMeError,
+    liveGatewayEnabled,
+    sandboxGatewayEnabled,
+    needsPortalSwitch,
+    environment,
+    merchantApiReady,
+    portalListAccess,
+    portalListDeniedMessage,
+    wrongPortalRole,
+  });
+  if (portalGate) return portalGate;
 
   const redeliverErr =
     redeliverMutation.isError && detailTx?.id === redeliverMutation.variables

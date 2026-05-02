@@ -99,10 +99,6 @@ export default function ResellerPartners() {
   return (
     <div className="w-full max-w-none">
       <h1 className="font-display text-2xl font-semibold text-white">Reseller partners (RP)</h1>
-      <p className="mt-1 max-w-2xl text-sm text-white/50">
-        Create RP accounts for <span className="text-white/70">/rp</span> login. They manage only merchants linked to them; soft-delete revokes access.
-        Default <span className="text-white/70">MDR %</span> applies to new merchants they create (no platform settlement fee on those merchants).
-      </p>
 
       <div className="glass mt-8 w-full rounded-2xl p-6 lg:col-span-2 lg:p-8">
         <h2 className="text-sm font-semibold text-white/80">Create RP</h2>

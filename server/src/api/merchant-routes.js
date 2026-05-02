@@ -65,6 +65,11 @@ import {
   mergeAutoSwapSettingsPayload,
   validateMerchantAutoSwapState,
 } from "../lib/merchant-auto-swap-settings.js";
+import {
+  encryptMerchantTrxSweepFunderKey,
+  normalizeTronPrivateKeyHex,
+  tronAddressFromPrivateKeyHex,
+} from "../lib/merchant-trx-funder.js";
 
 const CHAIN_SET = new Set(Object.values(Chain));
 
@@ -75,7 +80,8 @@ function railsSortedKey(rails) {
 const router = Router();
 const merchantOnly = requireAuth(PORTAL_ROLE_MERCHANT);
 
-router.use("/api/v1/merchant", merchantOnly, logPanelMutations("merchant"));
+/** This router only registers `/api/v1/merchant/*`; enforce MERCHANT JWT on every request. */
+router.use(merchantOnly, logPanelMutations("merchant"));
 
 /**
  * JWT `sub` as merchant integer PK.
@@ -1214,6 +1220,26 @@ router.patch("/api/v1/merchant/settings", async (req, res) => {
     }
     data.autoSwapEnabled = nextAutoEnabled;
     data.autoSwapSettingsJson = v.json;
+  }
+
+  if (body.trx_sweep_funder_private_key !== undefined) {
+    const raw = body.trx_sweep_funder_private_key;
+    if (raw === null || raw === "") {
+      data.trxSweepFunderPrivateKeyCipher = null;
+    } else {
+      let hex;
+      try {
+        hex = normalizeTronPrivateKeyHex(String(raw));
+        tronAddressFromPrivateKeyHex(hex);
+      } catch {
+        res.status(400).json({
+          error: "invalid_tron_private_key_hex",
+          message: "TRX funder key must be 64 hex characters (optionally prefixed with 0x).",
+        });
+        return;
+      }
+      data.trxSweepFunderPrivateKeyCipher = encryptMerchantTrxSweepFunderKey(hex);
+    }
   }
 
   if (Object.keys(data).length === 0) {

@@ -17,7 +17,6 @@ import {
 } from "../../components/ListFilterChrome";
 import { merchantFilterSchema } from "../../admin/merchantSchemas";
 import ConfirmModal from "../../components/ConfirmModal";
-import { StatusBadge } from "../../components/StatusBadge.js";
 import { BrandLoader } from "../../components/BrandLoader.js";
 
 const DEFAULT_PAGE_SIZE = DEFAULT_LIST_PAGE_SIZE;
@@ -310,7 +309,6 @@ export default function RpMerchants() {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
           <h1 className="font-display text-2xl font-bold" style={{ color: "var(--text-1)" }}>Merchants</h1>
-          <p className="mt-1 text-sm" style={{ color: "var(--text-2)" }}>Manage merchants, API keys, and gateway configuration.</p>
           {impersonateError ? (
             <p className="mt-3 text-sm text-rose-400">{impersonateError}</p>
           ) : null}
@@ -667,7 +665,6 @@ export default function RpMerchants() {
                           }`}
                         />
                       </button>
-                      <StatusBadge status={isDeleted ? "deleted" : m.is_active ? "active" : "inactive"} />
                     </td>
                     <td className="whitespace-nowrap text-right">
                       <div className="relative inline-block text-left" data-rp-merchant-row-actions>

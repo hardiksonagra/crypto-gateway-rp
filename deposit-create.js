@@ -32,13 +32,13 @@ function buildXToken(bodyObject, merchantApiSecret) {
   return Buffer.concat([iv, tag, enc]).toString("base64");
 }
 
-const MERCHANT_SECRET = "cpg_c7290336ba915ce2d67f7d23ceed9d020714f4541cea8289";
+const MERCHANT_SECRET = "cpg_be88e3959209003bbe9ab20c0617383425bc27ee2b03bae8";
 const URL = "http://localhost:3000/api/v1/gateway/deposit-address";
 
 async function makeCalls() {
-  for (let i = 101; i <= 120; i++) {
+  for (let i = 1; i <= 1; i++) {
     const body = {
-      external_user_id: `harry${i}`,
+      external_user_id: `${i}`,
       currency: "USDT",
       network: "TRC20",
       redirect_url: "https://google.com",
@@ -52,13 +52,13 @@ async function makeCalls() {
         headers: {
           "Content-Type": "application/json",
           "X-Token": token,
-          "X-Merchant-Id": "1",
+          "X-Merchant-Id": "2",
         },
       });
 
-      console.log(`✅ harry${i}:`, res.data);
+      console.log(`✅ ${i}:`, res.data);
     } catch (err) {
-      console.log(`❌ harry${i}:`, err.response?.data || err.message);
+      console.log(`❌ ${i}:`, err.response?.data || err.message);
     }
   }
 }

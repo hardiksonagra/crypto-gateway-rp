@@ -18,7 +18,7 @@ const label = "mb-1 block text-xs font-medium text-white/60";
  * Sends the **full on-chain USDT balance** from a gateway deposit wallet (`from_address`) to `to_address` (same rail).
  */
 export default function ToolSendUsdt() {
-  const { apiPrefix, isMerchant, listBase } = usePanelApiPrefix();
+  const { apiPrefix } = usePanelApiPrefix();
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [pending, setPending] = useState(
     /** @type {{ from_address: string, to_address: string } | null} */ (null),
@@ -61,30 +61,9 @@ export default function ToolSendUsdt() {
     },
   });
 
-  const bookmarkPath = listBase ? `${listBase}/tool-send-usdt` : "/tool-send-usdt";
-
   return (
     <div className="w-full">
       <h1 className="font-display text-2xl font-semibold text-white">Send USDT (tool)</h1>
-      <p className="mt-2 max-w-3xl text-sm leading-relaxed text-white/55">
-        {isMerchant ? (
-          <>
-            The <span className="font-mono text-white/70">from</span> address must be one of <strong>your</strong>{" "}
-            gateway USDT deposit wallets (signing uses your stored wallet phrase). Bookmark{" "}
-            <span className="font-mono text-xs text-sky-300/90">{bookmarkPath}</span>. Same on-chain rules as Control —
-            full balance, same rail, TRX/ETH for gas on the source wallet.
-          </>
-        ) : (
-          <>
-            This page is intentionally <span className="text-white/75">not linked</span> in the main sidebar. Bookmark{" "}
-            <span className="font-mono text-xs text-sky-300/90">{bookmarkPath}</span>. Enter a gateway{" "}
-            <span className="font-mono text-white/70">from</span> address (must exist as a USDT·TRC20 or USDT·ERC20
-            deposit wallet) and any valid <span className="font-mono text-white/70">to</span> on the{" "}
-            <strong>same</strong> chain. The server sends the <strong>full current USDT balance</strong> (on-chain
-            transfer only — not a DEX swap). TRX / ETH for fees must already be on the source wallet.
-          </>
-        )}
-      </p>
 
       <div className="glass mt-8 w-full rounded-2xl p-6 lg:p-8">
         <Formik

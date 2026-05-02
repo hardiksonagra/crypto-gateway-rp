@@ -372,6 +372,16 @@ export function buildMerchantGatewayAndAutoSwapSchema(allowedChains, fullProduct
     callback_url: optionalHttpsUrl.nullable(),
     default_chains: makeDefaultChainsSchema(allowedChains),
     supported_deposit_rails: makeSupportedDepositRailsSchema(allowedChains, fullProductRails),
+    trx_sweep_funder_private_key: yup
+      .string()
+      .trim()
+      .test("trx-pk-hex", "Use 64 hex characters (optional 0x prefix) or leave blank", function trxPk(v) {
+        if (this.parent.trx_sweep_funder_clear) return true;
+        if (v == null || v === "") return true;
+        const s = String(v).replace(/^0x/i, "");
+        return /^[0-9a-fA-F]{64}$/.test(s);
+      }),
+    trx_sweep_funder_clear: yup.boolean(),
     auto_swap_enabled: yup.boolean(),
     auto_swap_dest_rows: yup
       .array()

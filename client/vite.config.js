@@ -12,10 +12,14 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, monorepoRoot, "");
   const apiPort = env.PORT?.trim() || "3000";
   const target = `http://127.0.0.1:${apiPort}`;
-  const viteApiOrigin = (
-    env.VITE_API_ORIGIN?.trim().replace(/\/+$/, "") ||
-    (mode === "development" ? `http://localhost:${apiPort}` : "")
-  ).trim();
+  /**
+   * Empty = browser uses same origin as the page (`/api/...`).
+   * In dev, Vite proxies `/api` → `PORT` (see `server` below), so do **not** default to
+   * `http://localhost:${PORT}` — that bypasses the proxy and breaks when port 3000 serves
+   * something other than the gateway API (e.g. static preview). Set `VITE_API_ORIGIN` in
+   * `.env` only when the API is on another absolute URL.
+   */
+  const viteApiOrigin = (env.VITE_API_ORIGIN?.trim().replace(/\/+$/, "") || "").trim();
 
   return {
     define: {

@@ -90,12 +90,6 @@ export default function AdminSettlements() {
           <h1 className="font-display text-2xl font-semibold text-white">
             Settlements
           </h1>
-          <p className="mt-1 text-sm text-white/50">
-            Live gateway only. Enter the merchant&apos;s{" "}
-            <span className="text-white/70">login email</span>, then load.
-            Pending batches use successful live deposits not yet linked to a
-            settlement and past the settlement hold (if any).
-          </p>
         </div>
       </div>
 

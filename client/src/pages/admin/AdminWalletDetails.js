@@ -99,12 +99,6 @@ export default function AdminWalletDetails() {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
           <h1 className="font-display text-2xl font-semibold text-white">Wallet details</h1>
-          <p className="mt-1 max-w-3xl text-sm text-white/50 text-pretty">
-            <span className="text-white/65">Successful deposits</span> shows the{" "}
-            <span className="text-white/75">total amount</span> from successful deposit transactions recorded for that
-            merchant&apos;s wallet (plus how many such deposits). Open <span className="text-white/75">Activity</span>{" "}
-            for each payment. On-chain balance refresh is on <span className="text-white/75">All wallets</span>.
-          </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <ListFilterToolbar

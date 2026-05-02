@@ -283,56 +283,6 @@ export default function SystemSettings() {
       >
         System settings
       </h1>
-      <p className="mt-1 text-sm" style={{ color: "var(--text-2)" }}>
-        Configure gateway behavior. Database overrides take effect immediately
-        without restart.
-      </p>
-      <p className="mt-2 max-w-3xl text-sm text-white/55 text-pretty">
-        Saving writes every field below to the database (even when a value
-        matches <span className="font-mono text-white/80">.env</span>).
-        Bootstrap secrets (database URL, mnemonic, JWT secret, encryption key,
-        TRX funder private key) stay in{" "}
-        <span className="font-mono text-white/80">.env</span> only. The running
-        API reloads overrides on save;         restart PM2{" "}
-        <span className="font-mono text-white/80">
-          crypto-gateway-worker-erc20
-        </span>{" "}
-        /{" "}
-        <span className="font-mono text-white/80">
-          crypto-gateway-worker-trc20
-        </span> /{" "}
-        <span className="font-mono text-white/80">
-          crypto-gateway-cron-maintenance
-        </span>{" "}
-        /{" "}
-        <span className="font-mono text-white/80">
-          crypto-gateway-cron-deposit-full-scan
-        </span>{" "}
-        /{" "}
-        <span className="font-mono text-white/80">
-          crypto-gateway-cron-tron-sweep
-        </span>{" "}
-        if you change ERC20/TRC20 scanner poll intervals (seconds),{" "}
-        <span className="font-mono text-white/80">
-          CHECKOUT_EXPIRY_CRON_MINUTES
-        </span>
-        ,{" "}
-        <span className="font-mono text-white/80">
-          WALLET_POOL_HOLD_RELEASE_CRON_MINUTES
-        </span>
-        , or other cron-only behavior (cron schedules are fixed at process start).
-      </p>
-      <p className="mt-2 max-w-3xl text-sm text-white/55 text-pretty">
-        Unpaid checkout expiry (
-        <span className="font-mono text-white/80">
-          CHECKOUT_CREATED_EXPIRY_HOURS
-        </span>
-        ) lives under{" "}
-        <span className="text-white/70">Checkout · abandoned fixed-amount</span>
-        . Saving applies to the API immediately; the maintenance cron reloads
-        settings on each stale-checkout run, so you do not need to restart
-        processes just to change the hours threshold.
-      </p>
 
       <div className="glass mt-8 w-full rounded-2xl p-6 lg:p-8">
         <Formik

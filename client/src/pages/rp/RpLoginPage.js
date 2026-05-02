@@ -61,35 +61,6 @@ export default function RpLoginPage() {
               style={{ color: "var(--text-1)" }}>
             Reseller portal.
           </h1>
-          <p className="mt-5 max-w-sm text-sm leading-relaxed" style={{ color: "var(--text-2)" }}>
-            Create merchants and manage the accounts linked to your partner organization. Platform operators use Control.
-          </p>
-
-          <div className="mt-8 flex flex-wrap gap-2">
-            {["Your merchants", "Users & wallets", "Transactions", "Settlements"].map((f) => (
-              <span
-                key={f}
-                className="rounded-full px-3 py-1 text-xs font-medium"
-                style={{ background: "var(--link-active-bg)", color: "var(--link-active-color)", border: "1px solid var(--link-active-border)" }}
-              >
-                {f}
-              </span>
-            ))}
-          </div>
-        </div>
-
-        <div className="relative mt-10 flex flex-wrap gap-6 pt-8 text-xs lg:mt-0"
-             style={{ borderTop: "1px solid var(--border)" }}>
-          {[
-            ["Surface", "/rp"],
-            ["Merchant app", "/login"],
-            ["Control", "/control/login"],
-          ].map(([label, val]) => (
-            <div key={label}>
-              <p className="font-mono text-[10px] uppercase tracking-wider" style={{ color: "var(--text-3)" }}>{label}</p>
-              <p className="mt-1 font-mono text-[11px]" style={{ color: "var(--text-2)" }}>{val}</p>
-            </div>
-          ))}
         </div>
       </section>
 
@@ -102,9 +73,6 @@ export default function RpLoginPage() {
             <h2 className="font-display text-2xl font-bold tracking-tight" style={{ color: "var(--text-1)" }}>
               Partner sign in
             </h2>
-            <p className="mt-1.5 text-sm" style={{ color: "var(--text-2)" }}>
-              Reseller credentials only — not a merchant login.
-            </p>
           </div>
 
           <Formik

@@ -7,6 +7,7 @@ import { PendingSettlementBucketCard } from "../../components/PendingSettlementB
 import { formatTokenAmount } from "../../lib/formatTokenAmount.js";
 import { formatLocalDateTime } from "../../lib/formatLocalDateTime.js";
 import { BrandLoader } from "../../components/BrandLoader.js";
+import { renderMerchantPortalBlockers } from "../../components/MerchantPortalPageGates.js";
 
 const DEFAULT_PAGE_SIZE = DEFAULT_LIST_PAGE_SIZE;
 
@@ -17,12 +18,16 @@ export default function MerchantSettlements() {
     liveGatewayEnabled,
     sandboxGatewayEnabled,
     flagsLoading,
+    merchantEmail,
+    merchantDisplayName,
+    needsPortalSwitch,
+    merchantApiReady,
+    portalListAccess,
+    portalListDeniedMessage,
+    wrongPortalRole,
+    authMeIsError,
+    authMeError,
   } = useMerchantPortalEnvironment();
-
-  const envQueryEnabled =
-    !flagsLoading &&
-    ((environment === "live" && liveGatewayEnabled) ||
-      (environment === "sandbox" && sandboxGatewayEnabled));
 
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
@@ -31,14 +36,7 @@ export default function MerchantSettlements() {
   const pendingQ = useQuery({
     queryKey: ["m-settlements-pending", portalEnvironmentKey],
     queryFn: () => api("/api/v1/merchant/settlements/pending-preview"),
-    enabled: envQueryEnabled,
-  });
-
-  const meQ = useQuery({
-    queryKey: ["auth-me"],
-    queryFn: () => api("/api/v1/auth/me"),
-    enabled: envQueryEnabled,
-    staleTime: 60_000,
+    enabled: merchantApiReady,
   });
 
   const q = useQuery({
@@ -50,7 +48,7 @@ export default function MerchantSettlements() {
       });
       return api(`/api/v1/merchant/settlements?${p}`);
     },
-    enabled: envQueryEnabled,
+    enabled: merchantApiReady,
   });
 
   const total = q.data?.total ?? 0;
@@ -69,53 +67,30 @@ export default function MerchantSettlements() {
     }
   }
 
-  if (flagsLoading) {
-    return (
-      <BrandLoader
-        variant="page"
-        title=""
-        subtitle="Loading settlements…"
-        aria-label="Loading settlements"
-      />
-    );
-  }
-
-  if (!liveGatewayEnabled && !sandboxGatewayEnabled) {
-    return (
-      <div>
-        <h1 className="font-display text-2xl font-semibold text-white">Settlements</h1>
-        <p className="mt-4 text-sm text-rose-200/90">
-          Neither live nor sandbox gateway is enabled for your account. Contact support.
-        </p>
-      </div>
-    );
-  }
-
-  if (!envQueryEnabled) {
-    return (
-      <BrandLoader
-        variant="page"
-        title=""
-        subtitle="Preparing settlements…"
-        aria-label="Preparing settlements"
-      />
-    );
-  }
+  const portalGate = renderMerchantPortalBlockers({
+    pageTitle: "Settlements",
+    loaderSubtitle: "Loading settlements…",
+    flagsLoading,
+    authMeIsError,
+    authMeError,
+    liveGatewayEnabled,
+    sandboxGatewayEnabled,
+    needsPortalSwitch,
+    environment,
+    merchantApiReady,
+    portalListAccess,
+    portalListDeniedMessage,
+    wrongPortalRole,
+  });
+  if (portalGate) return portalGate;
 
   return (
     <div>
       <h1 className="font-display text-2xl font-semibold text-white">Settlements</h1>
-      <p className="mt-2 text-sm text-white/50">
-        Estimated next batch and payouts already recorded for this environment. View only.
-      </p>
 
       <h2 className="mt-8 text-sm font-semibold tracking-wide text-white/40 uppercase">
         Next settlement (estimate)
       </h2>
-      <p className="mt-1 text-xs text-white/40">
-        Same breakdown as the operator console: MDR on gross, settlement fee on amount after MDR, then
-        estimated net. Your minimum is in token units; settlement is recorded by an admin when eligible.
-      </p>
       {pendingQ.isLoading ? (
         <div className="mt-2">
           <BrandLoader
@@ -136,8 +111,8 @@ export default function MerchantSettlements() {
               key={`${b.chain}-${b.token_symbol}-${b.token_decimals}`}
               variant="merchant"
               b={b}
-              merchantEmail={meQ.data?.email}
-              merchantDisplayName={meQ.data?.displayName ?? null}
+              merchantEmail={merchantEmail}
+              merchantDisplayName={merchantDisplayName}
             />
           ))}
         </div>

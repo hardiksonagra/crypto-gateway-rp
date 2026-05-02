@@ -1,5 +1,4 @@
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
 import { api } from "../../api";
 import { usePanelApiPrefix } from "../../hooks/usePanelApiPrefix.js";
 import { useMerchantPortalEnvironment } from "../../hooks/useMerchantPortalEnvironment.js";
@@ -101,25 +100,6 @@ const HUB_LINKS = [
         aria-hidden
       >
         <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
-      </svg>
-    ),
-  },
-  {
-    to: "/control/sweep",
-    label: "Sweep",
-    desc: "Treasury moves",
-    icon: (
-      <svg
-        width="22"
-        height="22"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        aria-hidden
-      >
-        <circle cx="12" cy="12" r="10" />
-        <path d="M12 6v6l4 2" />
       </svg>
     ),
   },
@@ -472,73 +452,11 @@ function normalizeDailySeries(daily, timeZone) {
   );
 }
 
-/** Local calendar date YYYY-MM-DD (browser timezone). */
-function ymdLocal(d = new Date()) {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
-
-/** @param {string} ymd @param {number} deltaDays */
-function addCalendarDaysYmd(ymd, deltaDays) {
-  const [y, mo, d] = ymd.split("-").map(Number);
-  const dt = new Date(y, mo - 1, d + deltaDays);
-  return ymdLocal(dt);
-}
-
-/**
- * @param {boolean} metricsAll
- * @param {string} from
- * @param {string} to
- */
-function resolveDashRangePreset(metricsAll, from, to) {
-  if (metricsAll) return "all";
-  const t = ymdLocal();
-  if (from === t && to === t) return "today";
-  if (from === addCalendarDaysYmd(t, -6) && to === t) return "7d";
-  if (from === addCalendarDaysYmd(t, -29) && to === t) return "30d";
-  return "custom";
-}
-
-/** @param {boolean} isDark */
-function dashDateInputClass(isDark) {
-  return `min-h-[2.5rem] w-full rounded-lg border px-3 py-2 text-sm font-medium tabular-nums outline-none transition focus:ring-2 focus:ring-offset-0 disabled:cursor-not-allowed disabled:opacity-40 ${
-    isDark
-      ? "border-white/[0.12] bg-black/40 text-white/95 focus:border-sky-400/45 focus:ring-sky-500/25 [color-scheme:dark]"
-      : "border-slate-200/90 bg-white text-slate-900 shadow-sm focus:border-sky-300 focus:ring-sky-400/30 [color-scheme:light]"
-  }`;
-}
-
-/**
- * @param {boolean} isDark
- * @param {boolean} active
- */
-function dashRangePillClass(isDark, active) {
-  const base =
-    "rounded-lg px-3 py-2 text-xs font-semibold tracking-wide transition disabled:cursor-not-allowed disabled:opacity-40";
-  if (active) {
-    return `${base} ${
-      isDark
-        ? "bg-sky-500/30 text-sky-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.12)] ring-1 ring-sky-400/25"
-        : "bg-white text-slate-900 shadow-sm ring-1 ring-slate-200/90"
-    }`;
-  }
-  return `${base} ${
-    isDark
-      ? "text-white/55 hover:bg-white/[0.07] hover:text-white/90"
-      : "text-slate-600 hover:bg-white hover:text-slate-900"
-  }`;
-}
-
 export default function AdminDashboard() {
   const { apiPrefix, isRp } = usePanelApiPrefix();
   const { portalEnvironmentKey, environment } = useMerchantPortalEnvironment();
   const { theme } = useTheme();
   const isDark = theme === "dark";
-  const [metricsAll, setMetricsAll] = useState(false);
-  const [dateFrom, setDateFrom] = useState(() => ymdLocal());
-  const [dateTo, setDateTo] = useState(() => ymdLocal());
 
   const dashTz =
     typeof Intl !== "undefined"
@@ -546,31 +464,10 @@ export default function AdminDashboard() {
       : "UTC";
 
   const { data, isLoading } = useQuery({
-    queryKey: [
-      isRp ? "rp-dash" : "admin-dash",
-      portalEnvironmentKey,
-      dashTz,
-      metricsAll,
-      dateFrom,
-      dateTo,
-    ],
+    queryKey: [isRp ? "rp-dash" : "admin-dash", portalEnvironmentKey, dashTz],
     queryFn: () => {
       const p = new URLSearchParams({ tz: dashTz });
-      if (metricsAll) {
-        p.set("metrics_preset", "all");
-      } else {
-        const from =
-          dateFrom && /^\d{4}-\d{2}-\d{2}$/.test(dateFrom)
-            ? dateFrom
-            : ymdLocal();
-        const to =
-          dateTo && /^\d{4}-\d{2}-\d{2}$/.test(dateTo) ? dateTo : ymdLocal();
-        const lo = from <= to ? from : to;
-        const hi = from <= to ? to : from;
-        p.set("metrics_preset", "today");
-        p.set("metrics_from", lo);
-        p.set("metrics_to", hi);
-      }
+      p.set("metrics_preset", "all");
       return api(`${apiPrefix}/dashboard?${p}`);
     },
   });
@@ -605,8 +502,6 @@ export default function AdminDashboard() {
   const byStatus = data.transactions_by_status ?? [];
   const byChain = data.transactions_by_chain ?? [];
 
-  const rangePreset = resolveDashRangePreset(metricsAll, dateFrom, dateTo);
-
   return (
     <div className="w-full max-w-none space-y-10 pb-8">
       {/* KPI grid */}
@@ -619,171 +514,6 @@ export default function AdminDashboard() {
           >
             Live metrics
           </h2>
-          <p className="mt-1 max-w-3xl text-sm leading-relaxed text-pretty" style={{ color: "var(--text-2)" }}>
-            {isRp ? (
-              <>
-                Counts include only merchants linked to your partner account. Lists follow your portal
-                environment (
-                <span className="font-medium" style={{ color: "var(--text-1)" }}>
-                  {envLabel}
-                </span>
-                ). Transaction totals respect the date range (local calendar days).
-              </>
-            ) : (
-              <>
-                Merchants are global; wallet and user counts follow your portal environment (
-                <span className="font-medium" style={{ color: "var(--text-1)" }}>
-                  {envLabel}
-                </span>
-                ). Transaction totals respect the date range (local calendar days).
-              </>
-            )}
-          </p>
-        </div>
-
-        <div className="glass rounded-2xl p-5 sm:p-6">
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between lg:gap-8">
-            <div className="min-w-0 flex-1 space-y-3">
-              <div>
-                <p
-                  className="text-[10px] font-bold uppercase tracking-[0.2em]"
-                  style={{ color: "var(--text-3)" }}
-                >
-                  Date range
-                </p>
-                <div className="mt-2 flex flex-wrap items-center gap-2">
-                  <span
-                    className={`inline-flex items-center rounded-lg border px-3 py-1.5 font-mono text-xs font-semibold tabular-nums ${
-                      isDark
-                        ? "border-white/12 bg-white/[0.06] text-white/90"
-                        : "border-slate-200/90 bg-white text-slate-800 shadow-sm"
-                    }`}
-                  >
-                    {data.metrics_range_label}
-                  </span>
-                  <span className="text-[11px]" style={{ color: "var(--text-3)" }}>
-                    {dashTz}
-                  </span>
-                </div>
-              </div>
-
-              <div
-                className={`rounded-xl border p-1 ${isDark ? "border-white/10 bg-black/25" : "border-slate-200/80 bg-slate-100/60"}`}
-                role="group"
-                aria-label="Quick range presets"
-              >
-                <div className="grid grid-cols-2 gap-1 sm:inline-flex sm:flex-wrap sm:gap-1">
-                  <button
-                    type="button"
-                    disabled={metricsAll}
-                    onClick={() => {
-                      setMetricsAll(false);
-                      const t = ymdLocal();
-                      setDateFrom(t);
-                      setDateTo(t);
-                    }}
-                    className={dashRangePillClass(isDark, rangePreset === "today")}
-                  >
-                    Today
-                  </button>
-                  <button
-                    type="button"
-                    disabled={metricsAll}
-                    onClick={() => {
-                      setMetricsAll(false);
-                      const t = ymdLocal();
-                      setDateFrom(addCalendarDaysYmd(t, -6));
-                      setDateTo(t);
-                    }}
-                    className={dashRangePillClass(isDark, rangePreset === "7d")}
-                  >
-                    Last 7 days
-                  </button>
-                  <button
-                    type="button"
-                    disabled={metricsAll}
-                    onClick={() => {
-                      setMetricsAll(false);
-                      const t = ymdLocal();
-                      setDateFrom(addCalendarDaysYmd(t, -29));
-                      setDateTo(t);
-                    }}
-                    className={dashRangePillClass(isDark, rangePreset === "30d")}
-                  >
-                    Last 30 days
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setMetricsAll(true)}
-                    className={dashRangePillClass(isDark, rangePreset === "all")}
-                  >
-                    All time
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <div className="w-full shrink-0 space-y-3 lg:max-w-md">
-              <p
-                className="text-[10px] font-bold uppercase tracking-[0.2em]"
-                style={{ color: "var(--text-3)" }}
-              >
-                Custom range
-              </p>
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-                <div className="min-w-0 flex-1 space-y-1.5">
-                  <label htmlFor="admin-dash-metrics-from" className="text-xs font-medium" style={{ color: "var(--text-2)" }}>
-                    From
-                  </label>
-                  <input
-                    id="admin-dash-metrics-from"
-                    type="date"
-                    value={dateFrom}
-                    max={dateTo}
-                    disabled={metricsAll}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      setMetricsAll(false);
-                      setDateFrom(v);
-                      if (v && dateTo && v > dateTo) setDateTo(v);
-                    }}
-                    className={dashDateInputClass(isDark)}
-                  />
-                </div>
-                <span
-                  className="hidden pb-2 text-center text-sm font-medium sm:block sm:w-8 sm:shrink-0"
-                  style={{ color: "var(--text-3)" }}
-                  aria-hidden
-                >
-                  →
-                </span>
-                <div className="min-w-0 flex-1 space-y-1.5">
-                  <label htmlFor="admin-dash-metrics-to" className="text-xs font-medium" style={{ color: "var(--text-2)" }}>
-                    To
-                  </label>
-                  <input
-                    id="admin-dash-metrics-to"
-                    type="date"
-                    value={dateTo}
-                    min={dateFrom}
-                    disabled={metricsAll}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      setMetricsAll(false);
-                      setDateTo(v);
-                      if (v && dateFrom && v < dateFrom) setDateFrom(v);
-                    }}
-                    className={dashDateInputClass(isDark)}
-                  />
-                </div>
-              </div>
-              {rangePreset === "custom" && !metricsAll ? (
-                <p className="text-[11px] leading-snug" style={{ color: "var(--text-3)" }}>
-                  Custom selection — totals update automatically when dates change.
-                </p>
-              ) : null}
-            </div>
-          </div>
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 lg:gap-5 xl:grid-cols-6">
@@ -817,10 +547,6 @@ export default function AdminDashboard() {
         >
           Trends & breakdown
         </h2>
-        <p className="mt-1 text-sm" style={{ color: "var(--text-2)" }}>
-          Stacked columns, donut, solid gauge, and horizontal bars — powered by
-          Highcharts.
-        </p>
         <div className="glass mt-5 rounded-2xl p-4 sm:p-5">
           <AdminDashboardCharts
             daily={daily}

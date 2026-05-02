@@ -108,19 +108,6 @@ export default function AdminWallets() {
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
           <h1 className="font-display text-2xl font-semibold text-white">All wallets</h1>
-          <p className="mt-1 max-w-2xl text-sm text-white/50 text-pretty">
-            <span className="text-white/65">Live</span> deposit wallets only (sandbox hidden). One row per on-chain
-            address and rail; duplicate gateway rows for the same address are merged.
-            {!isRp ? (
-              <>
-                {" "}
-                Click <span className="text-white/75">Refresh balances</span> to re-read on-chain balances for{" "}
-                <span className="text-white/75">all</span> wallet rows (including sandbox) and update cached values here.
-              </>
-            ) : (
-              <> Only wallets for merchants linked to your partner account are listed.</>
-            )}
-          </p>
         </div>
         {!isRp ? (
         <button

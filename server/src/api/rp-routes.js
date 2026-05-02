@@ -77,7 +77,12 @@ import { adminRescanTronDepositForTransaction } from "../services/admin-tron-dep
 const router = Router();
 const rpOnly = requireAuth(PORTAL_ROLE_RP);
 
-router.use(rpOnly);
+/**
+ * Scope RP auth to `/api/v1/rp/*` only. A bare `router.use(rpOnly)` runs on every request
+ * that reaches this router — including `/api/v1/merchant/*` — so MERCHANT JWTs hit 403
+ * `forbidden` before `merchantRouter` runs (same mount order as `admin` → `rp` → `merchant`).
+ */
+router.use("/api/v1/rp", rpOnly);
 
 const CHAINS = new Set(Object.values(Chain));
 

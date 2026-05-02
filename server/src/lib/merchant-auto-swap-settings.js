@@ -7,6 +7,82 @@ import { prisma } from "./prisma.js";
 /** @type {Record<string, "TRON" | "EVM">} */
 /** Canonical key for USDT·TRC20 (auto-sweep cron + portal rows). */
 export const USDT_TRC20_RAIL_KEY = depositRailKey("USDT", "TRC20");
+/** Canonical key for USDT·ERC20 (EVM consolidate + portal rows). */
+export const USDT_ERC20_RAIL_KEY = depositRailKey("USDT", "ERC20");
+
+/**
+ * @param {string} railKey
+ */
+function railLabelForMessage(railKey) {
+  const p = String(railKey ?? "").split("|");
+  return p.length >= 2 ? `${p[0]}·${p[1]}` : String(railKey);
+}
+
+/**
+ * Treasury + optional USDT min (6 dp) for one deposit rail — merchant Gateway settings only (no env masters).
+ *
+ * @param {number} merchantId
+ * @param {string} railKey e.g. {@link USDT_TRC20_RAIL_KEY}, {@link USDT_ERC20_RAIL_KEY}
+ * @returns {Promise<
+ *   | { ok: false, reason: string, message: string }
+ *   | { ok: true, master: string, minAtomic: bigint, minExclusiveAbove: true, rail_key: string }
+ * >}
+ */
+export async function resolveMerchantRailSweepFromSettings(merchantId, railKey) {
+  const rk = String(railKey ?? "").trim();
+  const label = railLabelForMessage(rk);
+  const plan = await getMerchantAutoSwapPlan(merchantId);
+  if (!plan.enabled) {
+    return {
+      ok: false,
+      reason: "merchant_auto_swap_required",
+      message: `Enable automatic swap and configure ${label} treasury under Gateway & webhooks. Platform env master addresses are not used.`,
+    };
+  }
+  const dest = plan.destinations.find((d) => d.rail_key === rk);
+  if (!dest?.treasury_address?.trim()) {
+    return {
+      ok: false,
+      reason: "merchant_treasury_missing",
+      message: `Set a ${label} treasury (swap destination) in Gateway & webhooks.`,
+    };
+  }
+  const v = validateTreasuryAddressForRail(rk, dest.treasury_address);
+  if (!v.ok) {
+    return {
+      ok: false,
+      reason: v.error,
+      message: `Treasury address for ${label} is not valid for that network.`,
+    };
+  }
+  let minAtomic = 0n;
+  const minDec = plan.minAmountsByRail?.[rk];
+  if (minDec != null && String(minDec).trim() !== "") {
+    const parsed = merchantMinDecimalUsdtToAtomic6(minDec);
+    if (parsed === null) {
+      return {
+        ok: false,
+        reason: "merchant_auto_swap_invalid_min_amount",
+        message: `Minimum amount for ${label} is invalid.`,
+      };
+    }
+    minAtomic = parsed;
+  }
+  return {
+    ok: true,
+    master: v.normalized,
+    minAtomic,
+    minExclusiveAbove: true,
+    rail_key: rk,
+  };
+}
+
+/**
+ * @deprecated Use {@link resolveMerchantRailSweepFromSettings} with {@link USDT_TRC20_RAIL_KEY}.
+ */
+export async function resolveMerchantTronUsdtSweepFromSettings(merchantId) {
+  return resolveMerchantRailSweepFromSettings(merchantId, USDT_TRC20_RAIL_KEY);
+}
 
 const RAIL_ADDRESS_FAMILY = Object.fromEntries(
   GATEWAY_RAILS.map((r) => {
@@ -331,3 +407,4 @@ export async function getMerchantAutoSwapPlan(merchantId) {
         : {},
   };
 }
+

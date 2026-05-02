@@ -21,7 +21,6 @@ import AdminDepositExplorerKeys from "./pages/admin/DepositExplorerKeys";
 import AdminSupportedChains from "./pages/admin/SupportedChains";
 import DecodeGatewayData from "./pages/admin/DecodeGatewayData";
 import ToolSendUsdt from "./pages/admin/ToolSendUsdt";
-import AdminUnifiedSweep from "./pages/admin/UnifiedSweep";
 import AdminSettlements from "./pages/admin/Settlements";
 import ResellerPartners from "./pages/admin/ResellerPartners";
 import MerchantDashboard from "./pages/merchant/Dashboard";
@@ -105,10 +104,10 @@ export default function App() {
         <Route path="withdrawals" element={<Navigate to="/control" replace />} />
         <Route path="settlements/new" element={<Navigate to="/control/settlements" replace />} />
         <Route path="settlements" element={<AdminSettlements />} />
-        <Route path="sweep" element={<AdminUnifiedSweep />} />
-        <Route path="tron-sweep" element={<Navigate to="/control/sweep" replace />} />
-        <Route path="evm-usdt-sweep" element={<Navigate to="/control/sweep" replace />} />
-        <Route path="solana-sweep" element={<Navigate to="/control/sweep" replace />} />
+        <Route path="sweep" element={<Navigate to="/control" replace />} />
+        <Route path="tron-sweep" element={<Navigate to="/control" replace />} />
+        <Route path="evm-usdt-sweep" element={<Navigate to="/control" replace />} />
+        <Route path="solana-sweep" element={<Navigate to="/control" replace />} />
         <Route path="activity" element={<AdminActivityLog />} />
         <Route path="supported-chains" element={<AdminSupportedChains />} />
         <Route path="settings" element={<AdminSystemSettings />} />
