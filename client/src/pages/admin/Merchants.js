@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { createPortal } from "react-dom";
 import { useEffect, useLayoutEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { api, getToken, setImpersonationAdminToken, setToken } from "../../api";
+import { api, clearImpersonationAdminToken, clearImpersonationRpToken, getToken, setToken } from "../../api";
 import ListPaginationBar, {
   DEFAULT_LIST_PAGE_SIZE,
   LIST_PAGE_SIZE_OPTIONS,
@@ -207,7 +207,8 @@ export default function AdminMerchants() {
       const adminTok = getToken();
       if (!adminTok) throw new Error("Not signed in");
       const r = await api(`/api/v1/admin/merchants/${id}/impersonate`, { method: "POST" });
-      setImpersonationAdminToken(adminTok);
+      clearImpersonationAdminToken();
+      clearImpersonationRpToken();
       setToken(r.token);
       nav("/", { replace: true });
     } catch (e) {

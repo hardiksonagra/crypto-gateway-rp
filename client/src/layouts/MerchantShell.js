@@ -4,8 +4,6 @@ import {
   api,
   clearImpersonationAdminToken,
   clearImpersonationRpToken,
-  getImpersonationAdminToken,
-  getImpersonationRpToken,
   getToken,
   isAuthSessionFailure,
   isTransientApiFailure,
@@ -94,10 +92,6 @@ export default function MerchantShell() {
   const [email, setEmail] = useState(null);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const userMenuRef = useRef(null);
-  /** `"admin"` | `"rp"` when signed in as merchant from a staff or partner session */
-  const [impersonationParent, setImpersonationParent] = useState(() =>
-    getImpersonationRpToken() ? "rp" : getImpersonationAdminToken() ? "admin" : null,
-  );
   const { collapsed, toggleCollapsed, mobileOpen, setMobileOpen, closeMobile } =
     useSidebarLayout("merchant");
   const {
@@ -132,9 +126,6 @@ export default function MerchantShell() {
           return;
         }
         setEmail(u.email);
-        setImpersonationParent(
-          getImpersonationRpToken() ? "rp" : getImpersonationAdminToken() ? "admin" : null,
-        );
       } catch (e) {
         if (cancelled) return;
         if (isTransientApiFailure(e)) {
@@ -179,23 +170,6 @@ export default function MerchantShell() {
     clearImpersonationRpToken();
     setToken(null);
     navigate("/login");
-  }
-
-  function backToParentPanel() {
-    const rpTok = getImpersonationRpToken();
-    if (rpTok) {
-      clearImpersonationRpToken();
-      setToken(rpTok);
-      setImpersonationParent(null);
-      navigate("/rp", { replace: true });
-      return;
-    }
-    const adminTok = getImpersonationAdminToken();
-    if (!adminTok) return;
-    clearImpersonationAdminToken();
-    setToken(adminTok);
-    setImpersonationParent(null);
-    navigate("/control", { replace: true });
   }
 
   const avatarInitial = email ? email[0].toUpperCase() : "M";
@@ -432,44 +406,6 @@ export default function MerchantShell() {
           </header>
 
           <main className="flex min-h-0 flex-1 flex-col overflow-auto p-5 sm:p-8 lg:p-10">
-            {impersonationParent ? (
-              <div
-                className={`mb-6 flex flex-wrap items-center justify-between gap-3 rounded-xl border px-4 py-3 text-sm ${
-                  isDark
-                    ? "border-amber-400/25 bg-amber-500/10 text-amber-100/95"
-                    : "border-amber-300 bg-amber-50 text-amber-950"
-                }`}
-              >
-                <p className="min-w-0 text-pretty">
-                  You are signed in to the{" "}
-                  <span className={`font-medium ${isDark ? "text-white" : "text-amber-950"}`}>
-                    merchant
-                  </span>{" "}
-                  portal from{" "}
-                  {impersonationParent === "rp" ? (
-                    <span className={`font-medium ${isDark ? "text-white" : "text-amber-950"}`}>
-                      a partner (RP) session
-                    </span>
-                  ) : (
-                    <span className={`font-medium ${isDark ? "text-white" : "text-amber-950"}`}>
-                      an admin session
-                    </span>
-                  )}
-                  .
-                </p>
-                <button
-                  type="button"
-                  onClick={backToParentPanel}
-                  className={`shrink-0 rounded-lg border px-3 py-1.5 text-xs font-semibold tracking-wide uppercase transition ${
-                    isDark
-                      ? "border-amber-300/35 bg-white/10 text-white hover:bg-white/15"
-                      : "border-amber-400 bg-amber-100 text-amber-950 hover:bg-amber-200"
-                  }`}
-                >
-                  {impersonationParent === "rp" ? "Back to partner" : "Back to admin"}
-                </button>
-              </div>
-            ) : null}
             {!portalEnvFlagsLoading &&
             portalEnvironment === "sandbox" &&
             sandboxGatewayEnabled ? (

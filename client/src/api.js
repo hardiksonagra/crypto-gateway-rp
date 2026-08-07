@@ -1,7 +1,7 @@
 const TOKEN_KEY = "cpg_token";
-/** Saved while an admin uses “Log in as merchant”; restored on “Back to admin”. */
+/** Saved while an admin uses “Log in as RP”; restored on “Back to admin”. */
 const IMPERSONATION_ADMIN_TOKEN_KEY = "cpg_impersonation_admin_token";
-/** Saved while an RP uses “Log in as merchant”; restored on “Back to partner”. */
+/** Legacy key; cleared on merchant impersonation / logout (no merchant “back” UI). */
 const IMPERSONATION_RP_TOKEN_KEY = "cpg_impersonation_rp_token";
 
 const API_BASE = String(import.meta.env.VITE_API_ORIGIN ?? "").replace(/\/$/, "");
