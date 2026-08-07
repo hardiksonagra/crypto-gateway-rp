@@ -6,6 +6,9 @@ export const ALL_DEPOSIT_RAIL_OPTIONS = [
   { key: "USDT|ERC20", label: "USDT — ERC20 (Ethereum)", chain: "ETH" },
 ];
 
+/** Gateway payout rails (USDT only); matches server `MERCHANT_PAYOUT_RAIL_KEYS`. */
+export const MERCHANT_PAYOUT_RAIL_KEYS = ["USDT|TRC20", "USDT|ERC20"];
+
 /** Client-only default; real value comes from API (`gateway_tron_usdt_only` / Admin System settings). */
 export const GATEWAY_TRON_USDT_ONLY = false;
 

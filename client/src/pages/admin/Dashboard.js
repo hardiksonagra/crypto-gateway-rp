@@ -68,7 +68,7 @@ const HUB_LINKS = [
     ),
   },
   {
-    to: "/control/transactions",
+    to: "/control/pay-ins",
     label: "Transactions",
     desc: "Deposits & status",
     icon: (
@@ -86,8 +86,28 @@ const HUB_LINKS = [
     ),
   },
   {
-    to: "/control/settlements",
-    label: "Settlements",
+    to: "/control/pay-outs",
+    label: "Payout",
+    desc: "Withdrawals & status",
+    icon: (
+      <svg
+        width="22"
+        height="22"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden
+      >
+        <path d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3" />
+      </svg>
+    ),
+  },
+  {
+    to: "/control/pay-in-settlements",
+    label: "Transactions settlements",
     desc: "Batches & proofs",
     icon: (
       <svg
@@ -100,6 +120,26 @@ const HUB_LINKS = [
         aria-hidden
       >
         <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+      </svg>
+    ),
+  },
+  {
+    to: "/control/pay-out-settlements",
+    label: "Payout settlements",
+    desc: "Pending payout preview",
+    icon: (
+      <svg
+        width="22"
+        height="22"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        aria-hidden
+      >
+        <path d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3" />
       </svg>
     ),
   },

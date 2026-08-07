@@ -107,7 +107,7 @@ export async function runEvmDepositTick() {
 
 const TRON_DEPOSIT_CRON = "trc20";
 
-/** USDT·TRC20 (TRON) deposit scan + shared post-tick hooks (sweep no-op stub + payment webhook retries: success, underpaid, failed). */
+/** USDT·TRC20 (TRON) deposit scan + shared post-tick hooks (sweep no-op stub + webhook retries: payment success/underpaid/failed + payout terminal). */
 export async function runTronDepositTick() {
   return withDepositScanLogCron(TRON_DEPOSIT_CRON, async () => {
     const tickWallStart = Date.now();

@@ -59,29 +59,35 @@ export async function computeMerchantBalances(
     });
   }
 
-  if (environment === MerchantGatewayEnv.live) {
-    const outRows = await prisma.$queryRaw`
-      SELECT
-        w.chain::text AS chain,
-        w.token_symbol AS "tokenSymbol",
-        SUM(w.amount::numeric)::text AS "sumAmount"
-      FROM "withdrawals" w
-      WHERE w.merchant_id = ${merchantId}
-        AND w.deleted_at IS NULL
-        AND w.status = 'completed'::"WithdrawalStatus"
-      GROUP BY w.chain, w.token_symbol
-    `;
+  const outRows = await prisma.$queryRaw`
+    SELECT
+      w.chain::text AS chain,
+      w.token_symbol AS "tokenSymbol",
+      w.token_decimals AS "tokenDecimals",
+      SUM(COALESCE(NULLIF(TRIM(w.gross_amount), ''), w.amount)::numeric)::text AS "sumAmount"
+    FROM "withdrawals" w
+    WHERE w.merchant_id = ${merchantId}
+      AND w.deleted_at IS NULL
+      AND w.status = 'completed'::"WithdrawalStatus"
+      AND w.environment = ${environment}::"MerchantGatewayEnv"
+    GROUP BY w.chain, w.token_symbol, w.token_decimals
+  `;
 
-    for (const r of /** @type {{ chain: string, tokenSymbol: string, sumAmount: string }[]} */ (
-      outRows
-    )) {
-      const n = bigIntFromPgNumericText(r.sumAmount);
-      for (const v of map.values()) {
-        if (v.chain === r.chain && v.token_symbol === r.tokenSymbol) {
-          v.bal -= n;
-          break;
-        }
-      }
+  for (const r of /** @type {{ chain: string, tokenSymbol: string, tokenDecimals: number, sumAmount: string }[]} */ (
+    outRows
+  )) {
+    const n = bigIntFromPgNumericText(r.sumAmount);
+    const k = `${r.chain}:${r.tokenSymbol}:${r.tokenDecimals}`;
+    const prev = map.get(k);
+    if (prev) {
+      prev.bal -= n;
+    } else {
+      map.set(k, {
+        chain: r.chain,
+        token_symbol: r.tokenSymbol,
+        token_decimals: r.tokenDecimals,
+        bal: -n,
+      });
     }
   }
 
@@ -146,12 +152,17 @@ export async function merchantBalanceForAsset(merchantOpaqueId, chain, tokenSymb
         AND t.token_symbol = ${tokenSymbol}
     `,
     prisma.$queryRaw`
-      SELECT COALESCE(SUM(amount::numeric), 0)::text AS s
-      FROM "withdrawals"
-      WHERE merchant_id = ${merchantId}
-        AND status = 'completed'::"WithdrawalStatus"
-        AND chain = ${chain}::"Chain"
-        AND token_symbol = ${tokenSymbol}
+      SELECT COALESCE(
+        SUM(COALESCE(NULLIF(TRIM(w.gross_amount), ''), w.amount)::numeric),
+        0
+      )::text AS s
+      FROM "withdrawals" w
+      WHERE w.merchant_id = ${merchantId}
+        AND w.deleted_at IS NULL
+        AND w.status = 'completed'::"WithdrawalStatus"
+        AND w.environment = ${MerchantGatewayEnv.live}::"MerchantGatewayEnv"
+        AND w.chain = ${chain}::"Chain"
+        AND w.token_symbol = ${tokenSymbol}
     `,
     prisma.$queryRaw`
       SELECT COALESCE(SUM(net_amount::numeric), 0)::text AS s

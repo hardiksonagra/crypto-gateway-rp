@@ -93,8 +93,8 @@ const mdrPercentField = feePercentField.test(
 );
 
 const settlementRatePercentField = feePercentField.test(
-  "fee-sum-settlement",
-  "MDR + settlement cannot exceed 100%",
+  "fee-sum-settlement-deposit",
+  "Deposit MDR + settlement cannot exceed 100%",
   function settlementSum(v) {
     const m = Number(this.parent.mdr_percent) || 0;
     return m + (Number(v) || 0) <= 100;
@@ -174,6 +174,7 @@ export function buildMerchantCreateSchema(allowedChains, opts = {}) {
     supported_deposit_rails: makeSupportedDepositRailsSchema(allowedChains, true),
     callback_url: optionalHttpsUrl,
     mdr_percent: rpPartner ? feePercentField : mdrPercentField,
+    payout_mdr_percent: feePercentField,
     settlement_rate_percent: rpPartner
       ? yup
           .number()
@@ -209,6 +210,7 @@ export function buildMerchantEditSchema(allowedChains) {
       .min(8, "Password must be at least 8 characters"),
     regenerate_api_key: yup.boolean().required(),
     mdr_percent: mdrPercentField,
+    payout_mdr_percent: feePercentField,
     settlement_rate_percent: settlementRatePercentField,
     min_settlement_amount: minSettlementAmountField,
     settlement_period_days: settlementPeriodDaysField,
@@ -402,6 +404,50 @@ export function buildMerchantGatewayAndAutoSwapSchema(allowedChains, fullProduct
         return true;
       }),
     auto_swap_min_rows: yup.array().of(autoSwapMinRowSchema),
+    payout_rails_policy_rows: yup
+      .array()
+      .of(
+        yup.object({
+          rail_key: yup.string().required(),
+          min_human: yup
+            .string()
+            .trim()
+            .test("payout-rail-min-dec", "Use a non-negative amount or 0", (v) => {
+              if (v == null || v === "") return true;
+              const n = Number(v);
+              return Number.isFinite(n) && n >= 0;
+            }),
+          max_human: yup
+            .string()
+            .trim()
+            .test("payout-rail-max-dec", "Use a non-negative amount or 0", (v) => {
+              if (v == null || v === "") return true;
+              const n = Number(v);
+              return Number.isFinite(n) && n >= 0;
+            }),
+          treasury_address: yup.string().trim(),
+        }),
+      )
+      .test("payout-rail-max-vs-min", function payoutRailMaxVsMin(rows) {
+        if (!Array.isArray(rows)) return true;
+        for (const row of rows) {
+          if (!row || typeof row !== "object") continue;
+          const maxStr = String(row.max_human ?? "").trim();
+          const minStr = String(row.min_human ?? "").trim();
+          if (!maxStr || maxStr === "0" || /^0\.0*$/.test(maxStr)) continue;
+          if (!minStr || minStr === "0" || /^0\.0*$/.test(minStr)) continue;
+          const minN = Number(minStr);
+          const maxN = Number(maxStr);
+          if (!Number.isFinite(minN) || !Number.isFinite(maxN)) continue;
+          if (maxN < minN) {
+            const rk = String(row.rail_key ?? "rail");
+            return this.createError({
+              message: `Maximum must be ≥ minimum for ${rk.split("|").join(" · ")} (unless max is 0).`,
+            });
+          }
+        }
+        return true;
+      }),
   });
 }
 

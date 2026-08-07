@@ -7,6 +7,7 @@ import DepositRailsMultiSelectField from "../../components/DepositRailsMultiSele
 import { BrandLoader } from "../../components/BrandLoader.js";
 import {
   ALL_DEPOSIT_RAIL_OPTIONS,
+  MERCHANT_PAYOUT_RAIL_KEYS,
   depositRailsForChains,
   MERCHANT_PRODUCT_CHAIN_CODES,
   railKeyFromParts,
@@ -124,8 +125,38 @@ function buildAutoSwapMinRowsFromAuth(supportedRails, autoSettings) {
  */
 function buildMerchantSettingsInitial(u) {
   const g = buildGatewaySettingsBoot(u);
+  const prp =
+    u.payout_rails_policy && typeof u.payout_rails_policy === "object" && !Array.isArray(u.payout_rails_policy)
+      ? u.payout_rails_policy
+      : {};
+  const legacyMin = String(u.payout_min_amount_human ?? "0").trim() || "0";
+  const legacyMax = String(u.payout_max_amount_human ?? "0").trim() || "0";
+  const pt =
+    u.payout_treasury_addresses &&
+    typeof u.payout_treasury_addresses === "object" &&
+    !Array.isArray(u.payout_treasury_addresses)
+      ? u.payout_treasury_addresses
+      : {};
+  const payout_rails_policy_rows = MERCHANT_PAYOUT_RAIL_KEYS.map((rk) => {
+    const row = prp[rk] && typeof prp[rk] === "object" ? prp[rk] : {};
+    const minH = row.min_human != null ? String(row.min_human).trim() : "";
+    const maxH = row.max_human != null ? String(row.max_human).trim() : "";
+    const tre =
+      row.treasury_address != null
+        ? String(row.treasury_address).trim()
+        : rk === "USDT|TRC20"
+          ? String(pt.TRON ?? "").trim()
+          : String(pt.ETH ?? "").trim();
+    return {
+      rail_key: rk,
+      min_human: minH !== "" ? minH : legacyMin,
+      max_human: maxH !== "" ? maxH : legacyMax,
+      treasury_address: tre,
+    };
+  });
   return {
     ...g,
+    payout_rails_policy_rows,
     auto_swap_enabled: Boolean(u.auto_swap_enabled),
     auto_swap_dest_rows: buildAutoSwapDestRowsFromAuth(g.supported_deposit_rails, u.auto_swap_settings),
     auto_swap_min_rows: buildAutoSwapMinRowsFromAuth(g.supported_deposit_rails, u.auto_swap_settings),
@@ -272,6 +303,17 @@ export default function MerchantSettings() {
             } else if (String(values.trx_sweep_funder_private_key ?? "").trim()) {
               patch.trx_sweep_funder_private_key = String(values.trx_sweep_funder_private_key).trim();
             }
+            /** @type {Record<string, { min_human: string, max_human: string, treasury_address: string }>} */
+            const payout_rails_policy = {};
+            for (const row of values.payout_rails_policy_rows || []) {
+              if (!row || typeof row !== "object" || !row.rail_key) continue;
+              payout_rails_policy[row.rail_key] = {
+                min_human: String(row.min_human ?? "").trim(),
+                max_human: String(row.max_human ?? "").trim(),
+                treasury_address: String(row.treasury_address ?? "").trim(),
+              };
+            }
+            patch.payout_rails_policy = payout_rails_policy;
             await api("/api/v1/merchant/settings", {
               method: "PATCH",
               json: patch,
@@ -291,7 +333,11 @@ export default function MerchantSettings() {
             <AutoSwapRailsSync />
             <div className="lg:col-span-2">
               <label className="text-xs text-white/50" htmlFor="callback_url">
-                Webhook URL (X-Webhook-Event: payment, status in JSON)
+                Webhook URL · deposits only (
+                <span className="font-mono text-white/65">X-Webhook-Event: payment</span>
+                ; branch on JSON <span className="font-mono text-white/65">status</span>). Payout status:{" "}
+                <span className="font-mono text-white/65">GET …/gateway/payout</span> with{" "}
+                <span className="font-mono text-white/65">client_reference_id</span>.
               </label>
               <Field
                 id="callback_url"
@@ -357,6 +403,88 @@ export default function MerchantSettings() {
                 name="supported_deposit_rails"
                 component="p"
                 className="mt-1 text-xs text-rose-400"
+              />
+            </div>
+
+            <div className="lg:col-span-2 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-5">
+              <h2 className="text-sm font-semibold text-white/90">Payout defaults (per currency / network)</h2>
+              <p className="mt-2 text-xs leading-relaxed text-white/50">
+                Optional per-request gross limits (USDT) for portal and gateway payout APIs,{" "}
+                <strong className="text-white/70">per rail</strong>. Use{" "}
+                <span className="font-mono text-white/70">0</span> for minimum to rely on settlement rules only;{" "}
+                <span className="font-mono text-white/70">0</span> for maximum means no cap. Treasury addresses are an
+                operations hint (where sends originate); format is validated when non-empty.
+              </p>
+              <div className="mt-5 space-y-5">
+                {(values.payout_rails_policy_rows || []).map((row, idx) => (
+                  <div
+                    key={row.rail_key}
+                    className="grid grid-cols-1 gap-4 rounded-lg border border-white/10 bg-black/20 p-4 lg:grid-cols-2"
+                  >
+                    <div className="lg:col-span-2">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-200/90">
+                        {railLabel(row.rail_key)}
+                      </p>
+                      <p className="font-mono text-[10px] text-white/35">{row.rail_key}</p>
+                    </div>
+                    <div>
+                      <label className="text-xs text-white/50" htmlFor={`payout-min-${row.rail_key}`}>
+                        Minimum gross payout (USDT)
+                      </label>
+                      <Field
+                        id={`payout-min-${row.rail_key}`}
+                        name={`payout_rails_policy_rows.${idx}.min_human`}
+                        type="text"
+                        className="mt-1 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm"
+                        placeholder="0"
+                      />
+                      <ErrorMessage
+                        name={`payout_rails_policy_rows.${idx}.min_human`}
+                        component="p"
+                        className="mt-1 text-xs text-rose-400"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs text-white/50" htmlFor={`payout-max-${row.rail_key}`}>
+                        Maximum gross payout (USDT)
+                      </label>
+                      <Field
+                        id={`payout-max-${row.rail_key}`}
+                        name={`payout_rails_policy_rows.${idx}.max_human`}
+                        type="text"
+                        className="mt-1 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm"
+                        placeholder="0"
+                      />
+                      <ErrorMessage
+                        name={`payout_rails_policy_rows.${idx}.max_human`}
+                        component="p"
+                        className="mt-1 text-xs text-rose-400"
+                      />
+                    </div>
+                    <div className="lg:col-span-2">
+                      <label className="text-xs text-white/50" htmlFor={`payout-treasury-${row.rail_key}`}>
+                        Payout treasury address (optional)
+                      </label>
+                      <Field
+                        id={`payout-treasury-${row.rail_key}`}
+                        name={`payout_rails_policy_rows.${idx}.treasury_address`}
+                        type="text"
+                        className="mt-1 w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 font-mono text-sm"
+                        placeholder={row.rail_key.includes("TRC20") ? "T…" : "0x…"}
+                      />
+                      <ErrorMessage
+                        name={`payout_rails_policy_rows.${idx}.treasury_address`}
+                        component="p"
+                        className="mt-1 text-xs text-rose-400"
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <ErrorMessage
+                name="payout_rails_policy_rows"
+                component="p"
+                className="mt-3 text-xs text-rose-400"
               />
             </div>
 

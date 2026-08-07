@@ -73,6 +73,16 @@ import { generateApiKey, hashApiKey } from "../lib/api-key.js";
 import { encryptMerchantApiKey } from "../lib/merchant-api-key-cipher.js";
 import { redeliverPaymentSuccessWebhookAdmin } from "../services/callback-service.js";
 import { adminRescanTronDepositForTransaction } from "../services/admin-tron-deposit-rescan.js";
+import {
+  countMerchantLedgerUnion,
+  fetchMerchantLedgerUnionPage,
+  parseLedgerKindQuery,
+} from "../lib/merchant-ledger-merge.js";
+import {
+  formatAdminRpDepositTransactionJson,
+  hydrateAdminRpLedger,
+} from "../lib/panel-ledger-hydrate.js";
+import { buildPendingPayoutPreviewBuckets } from "../services/merchant-payout-preview.js";
 
 const router = Router();
 const rpOnly = requireAuth(PORTAL_ROLE_RP);
@@ -447,6 +457,7 @@ router.get("/api/v1/rp/merchants", async (req, res) => {
         portalEnvironment: true,
         createdAt: true,
         mdrPercent: true,
+        payoutMdrPercent: true,
         settlementRatePercent: true,
         minSettlementAmount: true,
         settlementPeriodDays: true,
@@ -509,6 +520,7 @@ router.get("/api/v1/rp/merchants", async (req, res) => {
       portal_environment: m.portalEnvironment,
       created_at: m.createdAt,
       mdr_percent: Number(m.mdrPercent),
+      payout_mdr_percent: Number(m.payoutMdrPercent),
       settlement_rate_percent: Number(m.settlementRatePercent),
       min_settlement_amount: m.minSettlementAmount,
       settlement_period_days: m.settlementPeriodDays,
@@ -553,6 +565,7 @@ router.get("/api/v1/rp/merchants/:id", async (req, res) => {
       portalEnvironment: true,
       createdAt: true,
       mdrPercent: true,
+      payoutMdrPercent: true,
       settlementRatePercent: true,
       minSettlementAmount: true,
       settlementPeriodDays: true,
@@ -598,6 +611,7 @@ router.get("/api/v1/rp/merchants/:id", async (req, res) => {
     portal_environment: row.portalEnvironment,
     created_at: row.createdAt,
     mdr_percent: Number(row.mdrPercent),
+    payout_mdr_percent: Number(row.payoutMdrPercent),
     settlement_rate_percent: Number(row.settlementRatePercent),
     min_settlement_amount: row.minSettlementAmount,
     settlement_period_days: row.settlementPeriodDays,
@@ -723,7 +737,6 @@ router.patch("/api/v1/rp/merchants/:id", async (req, res) => {
     data.passwordHash = await bcrypt.hash(body.password.trim(), 10);
   }
 
-  let nextMdr = Number(existing.mdrPercent);
   if (body.mdr_percent !== undefined) {
     const p = parseFeePercent(body.mdr_percent);
     if (p === null || !isValidFeePercent(p)) {
@@ -733,8 +746,18 @@ router.patch("/api/v1/rp/merchants/:id", async (req, res) => {
       });
       return;
     }
-    nextMdr = p;
     data.mdrPercent = p;
+  }
+  if (body.payout_mdr_percent !== undefined) {
+    const p = parseFeePercent(body.payout_mdr_percent);
+    if (p === null || !isValidFeePercent(p)) {
+      res.status(400).json({
+        error: "invalid_payout_mdr_percent",
+        message: "Payout MDR must be a number from 0 to 100.",
+      });
+      return;
+    }
+    data.payoutMdrPercent = p;
   }
   /** RP-linked merchants: no platform settlement fee (MDR-only settlements). */
   data.settlementRatePercent = 0;
@@ -793,6 +816,7 @@ router.patch("/api/v1/rp/merchants/:id", async (req, res) => {
       liveGatewayEnabled: true,
       sandboxGatewayEnabled: true,
       mdrPercent: true,
+      payoutMdrPercent: true,
       settlementRatePercent: true,
       minSettlementAmount: true,
       settlementPeriodDays: true,
@@ -818,6 +842,7 @@ router.patch("/api/v1/rp/merchants/:id", async (req, res) => {
     live_gateway_enabled: row.liveGatewayEnabled,
     sandbox_gateway_enabled: row.sandboxGatewayEnabled,
     mdr_percent: Number(row.mdrPercent),
+    payout_mdr_percent: Number(row.payoutMdrPercent),
     settlement_rate_percent: Number(row.settlementRatePercent),
     min_settlement_amount: row.minSettlementAmount,
     settlement_period_days: row.settlementPeriodDays,
@@ -996,7 +1021,14 @@ router.get("/api/v1/rp/transactions", async (req, res) => {
   const { skip, take, page, pageSize } = parsePageQuery(req.query);
   const listEnv = await rpListViewerEnvironment(rpId);
   if (mids.length === 0) {
-    res.json({ page, pageSize, total: 0, viewer_environment: listEnv, transactions: [] });
+    res.json({
+      page,
+      pageSize,
+      total: 0,
+      viewer_environment: listEnv,
+      transactions: [],
+      ledger: [],
+    });
     return;
   }
   const merchantId =
@@ -1015,18 +1047,74 @@ router.get("/api/v1/rp/transactions", async (req, res) => {
       ? req.query.transaction_id.trim()
       : "";
 
+  const ledgerKind = parseLedgerKindQuery(req.query.ledger_kind);
+
   const txListMerch = merchantId ? merchantWhereFromRouteParam(merchantId) : null;
   if (merchantId && !txListMerch) {
     res.json({ page, pageSize, total: 0, viewer_environment: listEnv, transactions: [] });
     return;
   }
+  /** @type {number[]} */
+  let rpLedgerMids = mids;
   if (merchantId && txListMerch) {
     const owned = await prisma.merchant.findFirst({
       where: { ...txListMerch, resellerPartnerId: rpId, ...ACTIVE },
       select: { id: true },
     });
     if (!owned) {
-      res.json({ page, pageSize, total: 0, viewer_environment: listEnv, transactions: [] });
+      res.json({
+        page,
+        pageSize,
+        total: 0,
+        viewer_environment: listEnv,
+        transactions: [],
+        ledger: [],
+      });
+      return;
+    }
+    rpLedgerMids = [owned.id];
+  }
+
+  const depositOnly =
+    Boolean(qExtUser.trim()) || Boolean(qTxRef.trim()) || Boolean(qAddr.trim());
+  const useDepositOnlyPrismaPath = ledgerKind !== "payout" && depositOnly;
+
+  if (!useDepositOnlyPrismaPath && rpLedgerMids.length > 0) {
+    const unionParams = {
+      merchantIds: rpLedgerMids,
+      environment: listEnv,
+      skip,
+      take,
+      chain,
+      chainOk: !!(chain && CHAINS.has(chain)),
+      token,
+      statusUi: status,
+      qUser: "",
+      qTxRef: "",
+      qAddr: "",
+      ledgerKind,
+    };
+    const totalM = await countMerchantLedgerUnion(prisma, unionParams);
+    if (totalM !== null) {
+      const unionRows = await fetchMerchantLedgerUnionPage(prisma, unionParams);
+      const { ledger } = await hydrateAdminRpLedger(
+        prisma,
+        unionRows,
+        rpLedgerMids,
+        listEnv,
+      );
+      const transactions = ledger
+        .filter((x) => x.kind === "deposit")
+        .map((x) => x.deposit);
+      res.json({
+        page,
+        pageSize,
+        total: totalM,
+        viewer_environment: listEnv,
+        ledger_kind: ledgerKind,
+        ledger,
+        transactions,
+      });
       return;
     }
   }
@@ -1222,60 +1310,23 @@ router.get("/api/v1/rp/transactions", async (req, res) => {
   const expectedByKey =
     await loadExpectedAtomicByWalletSessionForTransactions(rows);
 
+  const transactions = rows.map((t) =>
+    formatAdminRpDepositTransactionJson(t, expectedByKey),
+  );
+  const ledger = transactions.map((d) => ({
+    kind: "deposit",
+    created_at: d.created_at,
+    deposit: d,
+  }));
+
   res.json({
     page,
     pageSize,
     total,
     viewer_environment: listEnv,
-    transactions: rows.map((t) => {
-      const endUser = t.payerUser ?? t.wallet.assignedUser;
-      const merch = t.wallet.merchant;
-      const rpId = merch.resellerPartnerId ?? null;
-      const rpEmail = merch.resellerPartner?.email ?? null;
-      const rpDisplay = merch.resellerPartner?.displayName ?? null;
-      const merchantOut = {
-        id: merch.id,
-        email: merch.email,
-        display_name: merch.displayName ?? null,
-        reseller_partner_id: rpId,
-        reseller_partner_email: rpEmail,
-        reseller_partner_display_name: rpDisplay,
-      };
-      return {
-        id: t.id,
-        transaction_id: t.referenceTransactionId ?? null,
-        tx_hash: t.txHash,
-        chain: t.chain,
-        status: t.status,
-        token_symbol: t.tokenSymbol,
-        token_decimals: t.tokenDecimals,
-        amount: t.amount,
-        amount_decimal: formatAtomicAmountString(t.amount, t.tokenDecimals),
-        ...requestedAmountFieldsForTransaction(t, expectedByKey),
-        ...expectedReceivedAmountQuadForTransaction(t, expectedByKey),
-        confirmations: t.confirmations,
-        from_address: t.fromAddress,
-        to_address: t.toAddress,
-        wallet_id: t.walletId,
-        wallet_address: t.wallet.address,
-        currency: t.wallet.currency,
-        network: t.wallet.network,
-        block_number: t.blockNumber?.toString() ?? null,
-        log_index: t.logIndex,
-        callback_delivered_at: t.callbackDeliveredAt,
-        end_user_id: endUser?.id ?? null,
-        external_user_id: endUser?.externalUserId ?? null,
-        gateway_environment: t.wallet.environment,
-        merchant: merchantOut,
-        merchant_id: merchantOut.id,
-        merchant_email: merchantOut.email,
-        reseller_partner_id: rpId,
-        reseller_partner_email: rpEmail,
-        reseller_partner_display_name: rpDisplay,
-        created_at: t.createdAt,
-        updated_at: t.updatedAt,
-      };
-    }),
+    ledger_kind: "deposit",
+    ledger,
+    transactions,
   });
 });
 
@@ -1585,6 +1636,7 @@ router.post("/api/v1/rp/merchants", async (req, res) => {
       supported_deposit_rails: row.supportedDepositRails ?? [],
       callback_url: row.callbackUrl,
       mdr_percent: Number(row.mdrPercent),
+      payout_mdr_percent: Number(row.payoutMdrPercent),
       settlement_rate_percent: Number(row.settlementRatePercent),
       min_settlement_amount: row.minSettlementAmount,
       settlement_period_days: row.settlementPeriodDays,
@@ -1638,6 +1690,7 @@ router.get("/api/v1/rp/settlements/pending-preview", async (req, res) => {
     select: {
       id: true,
       mdrPercent: true,
+      payoutMdrPercent: true,
       settlementRatePercent: true,
       minSettlementAmount: true,
       settlementPeriodDays: true,
@@ -1664,9 +1717,70 @@ router.get("/api/v1/rp/settlements/pending-preview", async (req, res) => {
     reseller_partner_display_name: merchRates.resellerPartner?.displayName ?? null,
     fee_rates: {
       mdr_percent: Number(merchRates.mdrPercent),
+      payout_mdr_percent: Number(merchRates.payoutMdrPercent),
       settlement_rate_percent: Number(merchRates.settlementRatePercent),
       min_settlement_amount: merchRates.minSettlementAmount,
       settlement_period_days: Number(merchRates.settlementPeriodDays ?? 0),
+    },
+    buckets,
+  });
+});
+
+router.get("/api/v1/rp/settlements/payout-preview", async (req, res) => {
+  const rpId = parseInt(String(req.auth?.sub ?? ""), 10);
+  if (!Number.isInteger(rpId) || rpId < 1) {
+    res.status(401).json({ error: "unauthorized" });
+    return;
+  }
+  const midRaw = req.query.merchant_id ?? req.query.merchantId;
+  const mid =
+    typeof midRaw === "string"
+      ? parseInt(midRaw.trim(), 10)
+      : typeof midRaw === "number"
+        ? midRaw
+        : NaN;
+  if (!Number.isInteger(mid) || mid < 1) {
+    res.status(400).json({
+      error: "merchant_id_required",
+      message: "Pass merchant_id for one of your merchants.",
+    });
+    return;
+  }
+  if (!(await rpOwnsMerchant(rpId, mid))) {
+    res.status(403).json({ error: "forbidden" });
+    return;
+  }
+  const gate = await resolveMerchantPortalForLists(mid);
+  if (!gate.ok) {
+    res.status(gate.status).json({
+      error: gate.error,
+      ...(gate.message ? { message: gate.message } : {}),
+    });
+    return;
+  }
+  const { environment } = gate;
+  const merchRates = await prisma.merchant.findFirst({
+    where: { id: mid, ...ACTIVE },
+    select: {
+      payoutMdrPercent: true,
+      email: true,
+      displayName: true,
+    },
+  });
+  if (!merchRates) {
+    res.status(404).json({ error: "not_found" });
+    return;
+  }
+  const buckets = await buildPendingPayoutPreviewBuckets(mid, environment, {
+    payoutMdrPercent: merchRates.payoutMdrPercent,
+  });
+  res.json({
+    environment,
+    merchant_id: mid,
+    merchant_email: merchRates.email,
+    merchant_display_name: merchRates.displayName,
+    fee_rates: {
+      payout_mdr_percent: Number(merchRates.payoutMdrPercent),
     },
     buckets,
   });

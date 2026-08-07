@@ -152,10 +152,10 @@ export default function MerchantDashboard() {
               {envLabel}
             </span>
             <Link
-              to="/settlements"
+              to="/pay-in-settlements"
               className="rounded-full border border-white/15 bg-white/[0.06] px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-white/75 transition hover:border-indigo-400/40 hover:bg-indigo-500/10 hover:text-white"
             >
-              Settlements →
+              Transactions settlements →
             </Link>
           </div>
         </div>

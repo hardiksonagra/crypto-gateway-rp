@@ -3,7 +3,8 @@
  * Kept in sync with server gateway-routes, callback-service, optional fixed
  * `amount` / underpaid flow, unified gateway key behaviour,
  * `transaction_id` / `reference_id` on deposit-address responses,
- * `GET /gateway/transactions`, webhook amount shapes, and `DOC`-backed examples.
+ * `GET /gateway/transactions`, `POST /gateway/payout`, `GET /gateway/payout` (poll), payment webhook shapes,
+ * and `DOC`-backed examples.
  * Hosted checkout (`payment_link` / `payment-session`) is intentionally not
  * documented here — use `deposit-address` response fields only.
  */
@@ -63,6 +64,9 @@ const DOC = {
   rowUnderpaid: 2301,
   rowSuccess: 2408,
   rowFailedExpiry: 2300,
+  /** Internal payout / withdrawal row id (gateway poll). */
+  payoutRowId: 501,
+  payoutClientRef: "PAYOUT-2026-0429-A1",
 };
 
 /** @returns {string} */
@@ -767,6 +771,99 @@ X-Token: <base64 from buildXToken on canonical JSON of body>
           <span className="font-mono">404 wallet_not_found</span> if the wallet
           is not yours or not in sandbox.
         </p>
+      </section>
+
+      <section className="glass w-full rounded-2xl p-6 lg:p-8">
+        <h2 className="text-lg font-semibold text-white">Create payout (USDT)</h2>
+        <EndpointRow
+          textToCopy={gatewayEndpointClipboardText("/api/v1/gateway/payout")}
+        >
+          <span className="text-emerald-300/90">POST</span> /api/v1/gateway/payout
+        </EndpointRow>
+        <p className="mt-3 text-sm text-white/55">
+          Same JSON gateway auth as <span className="font-mono">deposit-address</span>. Body:{" "}
+          <span className="font-mono">chain</span> (<span className="font-mono">TRON</span> or{" "}
+          <span className="font-mono">ETH</span>), <span className="font-mono">token_symbol</span>{" "}
+          (<span className="font-mono">USDT</span>), <span className="font-mono">to_address</span>,{" "}
+          <span className="font-mono">amount</span> (gross USDT, same decimal rules as deposits). Optional{" "}
+          <span className="font-mono">client_reference_id</span> (max 256 chars; unique per merchant and gateway
+          environment for idempotency).{" "}
+          <span className="font-mono">201</span> / <span className="font-mono">GET 200</span> bodies omit MDR and settlement
+          fee fields. <span className="font-mono">gross</span> equals <span className="font-mono">net</span> (full USDT to the
+          recipient). <span className="font-mono">network_fee_*</span> is native gas (TRX / ETH) once{" "}
+          <span className="font-mono">tx_hash</span> exists and the fee has been resolved — otherwise{" "}
+          <span className="font-mono">null</span>. <span className="font-mono">status</span>,{" "}
+          <span className="font-mono">source: gateway_api</span>.
+        </p>
+        <p className="mt-2 text-xs text-white/45">
+          The merchant must have the rail enabled; platform chain toggles apply. Merchant settings may enforce min/max
+          gross payout. Only one payout may be <span className="font-mono">pending</span> or{" "}
+          <span className="font-mono">processing</span> per merchant and environment (
+          <span className="font-mono">409 payout_already_pending</span>). Duplicate{" "}
+          <span className="font-mono">client_reference_id</span> returns{" "}
+          <span className="font-mono">409 client_reference_exists</span>.
+        </p>
+        <p className="mt-3 text-xs font-medium text-white/45">Example JSON body</p>
+        <Pre>{`POST /api/v1/gateway/payout
+Content-Type: application/json
+X-Merchant-Id: ${merchantIdForDocs(merchantNumericId)}
+X-Token: <base64 from buildXToken>
+
+{
+  "chain": "TRON",
+  "token_symbol": "USDT",
+  "to_address": "${DOC.tronWallet}",
+  "amount": "25.50",
+  "client_reference_id": "${DOC.payoutClientRef}"
+}`}</Pre>
+        <p className="mt-4 text-xs font-medium text-white/45">201 response (shape)</p>
+        <Pre>{`{
+  "id": ${DOC.payoutRowId},
+  "environment": "live",
+  "chain": "TRON",
+  "token_symbol": "USDT",
+  "token_decimals": 6,
+  "to_address": "${DOC.tronWallet}",
+  "amount": "25500000",
+  "gross_amount_atomic": "25500000",
+  "gross_amount_decimal": "25.5",
+  "net_amount_atomic": "25500000",
+  "net_amount_decimal": "25.5",
+  "status": "pending",
+  "tx_hash": null,
+  "network_fee_native_atomic": null,
+  "network_fee_native_symbol": null,
+  "network_fee_native_decimal": null,
+  "network_fee_fetched_at": null,
+  "failure_reason": null,
+  "client_reference_id": "${DOC.payoutClientRef}",
+  "source": "gateway_api",
+  "created_at": "${DOC.txCreatedAt}",
+  "updated_at": "${DOC.txUpdatedAt}"
+}`}</Pre>
+      </section>
+
+      <section className="glass w-full rounded-2xl p-6 lg:p-8">
+        <h2 className="text-lg font-semibold text-white">Get payout status</h2>
+        <EndpointRow
+          textToCopy={gatewayEndpointClipboardText("/api/v1/gateway/payout")}
+        >
+          <span className="text-sky-300/90">GET</span> /api/v1/gateway/payout
+        </EndpointRow>
+        <p className="mt-3 text-sm text-white/55">
+          Same header auth as <span className="font-mono">GET …/supported-currency</span>. Query:{" "}
+          <span className="font-mono">client_reference_id</span> only — must match what you sent on{" "}
+          <span className="font-mono">POST …/gateway/payout</span>. Numeric{" "}
+          <span className="font-mono">payout_id</span> is not supported (**{" "}
+          <span className="font-mono">400 payout_id_not_supported</span>**). Returns{" "}
+          <span className="font-mono">404 payout_not_found</span> if no row matches;{" "}
+          <span className="font-mono">400 client_reference_id_required</span> if the query is missing.
+          {" "}The webhook URL is not used for payouts.
+        </p>
+        <p className="mt-3 text-xs font-medium text-white/45">Example</p>
+        <Pre>{`GET /api/v1/gateway/payout?client_reference_id=${encodeURIComponent(DOC.payoutClientRef)}
+X-Merchant-Id: ${merchantIdForDocs(merchantNumericId)}
+X-Token: <base64 from buildXToken>`}</Pre>
       </section>
 
       <section className="glass w-full rounded-2xl p-6 lg:p-8">

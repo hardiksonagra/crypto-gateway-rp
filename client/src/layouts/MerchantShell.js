@@ -32,14 +32,17 @@ import {
   IconUsers,
   IconWallet,
   IconSettlements,
+  IconPayout,
 } from "./shellNavIcons.js";
 
 const primaryNav = [
   { to: "/", label: "Dashboard", end: true, Icon: IconDashboard },
   { to: "/users", label: "Users", Icon: IconUsers },
   { to: "/wallets", label: "Wallets", Icon: IconWallet },
-  { to: "/transactions", label: "Transactions", Icon: IconTransactions },
-  { to: "/settlements", label: "Settlements", Icon: IconSettlements },
+  { to: "/pay-ins", label: "Transactions", Icon: IconTransactions },
+  { to: "/pay-outs", label: "Payout", Icon: IconPayout },
+  { to: "/pay-in-settlements", label: "Transactions settlements", Icon: IconSettlements },
+  { to: "/pay-out-settlements", label: "Payout settlements", Icon: IconPayout },
 ];
 
 const settingsNav = [

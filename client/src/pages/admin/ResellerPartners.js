@@ -21,6 +21,12 @@ const createSchema = yup.object({
     .min(0, "Min 0")
     .max(100, "Max 100")
     .required(),
+  payout_mdr_percent: yup
+    .number()
+    .typeError("Payout MDR must be a number")
+    .min(0, "Min 0")
+    .max(100, "Max 100")
+    .required(),
 });
 
 const editSchema = yup.object({
@@ -30,6 +36,12 @@ const editSchema = yup.object({
   mdr_percent: yup
     .number()
     .typeError("MDR must be a number")
+    .min(0, "Min 0")
+    .max(100, "Max 100")
+    .required(),
+  payout_mdr_percent: yup
+    .number()
+    .typeError("Payout MDR must be a number")
     .min(0, "Min 0")
     .max(100, "Max 100")
     .required(),
@@ -103,7 +115,7 @@ export default function ResellerPartners() {
       <div className="glass mt-8 w-full rounded-2xl p-6 lg:col-span-2 lg:p-8">
         <h2 className="text-sm font-semibold text-white/80">Create RP</h2>
         <Formik
-          initialValues={{ email: "", password: "", display_name: "", mdr_percent: 0 }}
+          initialValues={{ email: "", password: "", display_name: "", mdr_percent: 0, payout_mdr_percent: 0 }}
           validationSchema={createSchema}
           validateOnBlur
           validateOnChange={false}
@@ -115,6 +127,7 @@ export default function ResellerPartners() {
                 password: values.password,
                 display_name: values.display_name?.trim() || undefined,
                 mdr_percent: Number(values.mdr_percent),
+                payout_mdr_percent: Number(values.payout_mdr_percent),
               });
               resetForm();
             } catch (e) {
@@ -139,7 +152,7 @@ export default function ResellerPartners() {
                 <Field id="rp-dn" name="display_name" type="text" className={input} />
               </div>
               <div>
-                <label className={label} htmlFor="rp-mdr">Default MDR %</label>
+                <label className={label} htmlFor="rp-mdr">Default deposit MDR %</label>
                 <Field
                   id="rp-mdr"
                   name="mdr_percent"
@@ -150,6 +163,24 @@ export default function ResellerPartners() {
                   className={input}
                 />
                 <ErrorMessage name="mdr_percent" component="p" className="mt-1 text-xs text-rose-400" />
+                <p className="mt-1 text-[10px] text-white/40">Default deposit (transaction) MDR when they create merchants.</p>
+              </div>
+              <div>
+                <label className={label} htmlFor="rp-payout-mdr">Default payout MDR %</label>
+                <Field
+                  id="rp-payout-mdr"
+                  name="payout_mdr_percent"
+                  type="number"
+                  step="0.01"
+                  min={0}
+                  max={100}
+                  className={input}
+                />
+                <ErrorMessage name="payout_mdr_percent" component="p" className="mt-1 text-xs text-rose-400" />
+                <p className="mt-1 text-[10px] text-white/40">
+                  Default reference % on payout volume for merchants they create (previews and ledger rows; on-chain sends
+                  remain full gross).
+                </p>
               </div>
               {status ? <p className="lg:col-span-2 text-sm text-rose-400">{status}</p> : null}
               <div className="lg:col-span-2">
@@ -171,13 +202,14 @@ export default function ResellerPartners() {
           <BrandLoader variant="section" className="mt-6" title="" subtitle="Loading…" />
         ) : (
           <div className="data-table-surface mt-4 overflow-x-auto">
-            <table className="data-table min-w-[780px]">
+            <table className="data-table min-w-[880px]">
               <thead>
                 <tr>
                   <th>ID</th>
                   <th>Email</th>
                   <th>Display</th>
-                  <th>MDR %</th>
+                  <th>Deposit MDR %</th>
+                  <th>Payout MDR %</th>
                   <th>Merchants</th>
                   <th>Active</th>
                   <th />
@@ -186,7 +218,7 @@ export default function ResellerPartners() {
               <tbody>
                 {rows.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="!py-10 text-center text-sm text-white/45">
+                    <td colSpan={8} className="!py-10 text-center text-sm text-white/45">
                       No reseller partners yet.
                     </td>
                   </tr>
@@ -197,6 +229,7 @@ export default function ResellerPartners() {
                       <td className="text-xs">{r.email}</td>
                       <td className="text-xs text-white/70">{r.display_name ?? "—"}</td>
                       <td className="font-mono text-xs text-white/80">{Number(r.mdr_percent ?? 0)}</td>
+                      <td className="font-mono text-xs text-white/80">{Number(r.payout_mdr_percent ?? r.mdr_percent ?? 0)}</td>
                       <td className="font-mono text-xs">{r.merchant_count ?? 0}</td>
                       <td className="text-xs">{r.is_active ? "Yes" : "No"}</td>
                       <td className="text-right whitespace-nowrap">
@@ -245,6 +278,7 @@ export default function ResellerPartners() {
                 password: "",
                 is_active: editing.is_active,
                 mdr_percent: Number(editing.mdr_percent ?? 0),
+                payout_mdr_percent: Number(editing.payout_mdr_percent ?? editing.mdr_percent ?? 0),
               }}
               validationSchema={editSchema}
               onSubmit={async (values, { setStatus }) => {
@@ -254,6 +288,7 @@ export default function ResellerPartners() {
                     display_name: values.display_name?.trim() || null,
                     is_active: values.is_active,
                     mdr_percent: Number(values.mdr_percent),
+                    payout_mdr_percent: Number(values.payout_mdr_percent),
                   };
                   if (values.password?.trim()) {
                     json.password = values.password.trim();
@@ -276,7 +311,7 @@ export default function ResellerPartners() {
                     <ErrorMessage name="password" component="p" className="mt-1 text-xs text-rose-400" />
                   </div>
                   <div>
-                    <label className={label}>Default MDR %</label>
+                    <label className={label}>Default deposit MDR %</label>
                     <Field
                       name="mdr_percent"
                       type="number"
@@ -287,7 +322,22 @@ export default function ResellerPartners() {
                     />
                     <ErrorMessage name="mdr_percent" component="p" className="mt-1 text-xs text-rose-400" />
                     <p className="mt-1 text-[10px] text-white/40">
-                      Used as the default for merchants this RP creates; does not retro-change existing merchants.
+                      Default deposit MDR for new merchants; does not retro-change existing merchants.
+                    </p>
+                  </div>
+                  <div>
+                    <label className={label}>Default payout MDR %</label>
+                    <Field
+                      name="payout_mdr_percent"
+                      type="number"
+                      step="0.01"
+                      min={0}
+                      max={100}
+                      className={input}
+                    />
+                    <ErrorMessage name="payout_mdr_percent" component="p" className="mt-1 text-xs text-rose-400" />
+                    <p className="mt-1 text-[10px] text-white/40">
+                      Default payout reference % for new merchants (preview / reporting; full gross sent on-chain).
                     </p>
                   </div>
                   <label className="flex items-center gap-2 text-sm text-white/80">

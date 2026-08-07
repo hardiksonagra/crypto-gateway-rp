@@ -1,9 +1,11 @@
 import { Formik, Form, Field, ErrorMessage } from "formik";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
+import { useLocation } from "react-router-dom";
 import { api } from "../../api";
 import { usePanelApiPrefix } from "../../hooks/usePanelApiPrefix.js";
 import TransactionDetailModal from "../../components/TransactionDetailModal.js";
+import PayoutDetailModal from "../../components/PayoutDetailModal.js";
 import { useMerchantPortalEnvironment } from "../../hooks/useMerchantPortalEnvironment.js";
 import ListPaginationBar, { DEFAULT_LIST_PAGE_SIZE } from "../../components/ListPaginationBar";
 import {
@@ -30,9 +32,11 @@ export default function AdminTransactions() {
   const { apiPrefix, isRp } = usePanelApiPrefix();
   const queryClient = useQueryClient();
   const { portalEnvironmentKey } = useMerchantPortalEnvironment();
+  const { pathname } = useLocation();
+  const ledgerTab = pathname.endsWith("/pay-outs") ? "payout" : "payin";
   const [page, setPage] = useState(1);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  const [detailTx, setDetailTx] = useState(null);
+  const [txModal, setTxModal] = useState(null);
   const [applied, setApplied] = useState({
     merchant_id: "",
     external_user_id: "",
@@ -44,9 +48,13 @@ export default function AdminTransactions() {
     pageSize: DEFAULT_PAGE_SIZE,
   });
 
+  const adminPayoutBlocked =
+    !isRp && ledgerTab === "payout" && !applied.merchant_id.trim();
+
   const res = useQuery({
     queryKey: [
       isRp ? "rp-txs" : "admin-txs",
+      ledgerTab,
       page,
       applied.pageSize,
       applied.merchant_id,
@@ -59,7 +67,11 @@ export default function AdminTransactions() {
       portalEnvironmentKey,
     ],
     queryFn: () => {
-      const p = new URLSearchParams({ page: String(page), pageSize: String(applied.pageSize) });
+      const p = new URLSearchParams({
+        page: String(page),
+        pageSize: String(applied.pageSize),
+        ledger_kind: ledgerTab === "payout" ? "payout" : "deposit",
+      });
       if (applied.merchant_id.trim()) p.set("merchant_id", applied.merchant_id.trim());
       if (applied.external_user_id.trim()) p.set("external_user_id", applied.external_user_id.trim());
       if (applied.transaction_id.trim()) p.set("transaction_id", applied.transaction_id.trim());
@@ -69,6 +81,7 @@ export default function AdminTransactions() {
       if (applied.address.trim()) p.set("address", applied.address.trim());
       return api(`${apiPrefix}/transactions?${p}`);
     },
+    enabled: !adminPayoutBlocked,
   });
 
   const redeliverMutation = useMutation({
@@ -80,13 +93,17 @@ export default function AdminTransactions() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["admin-txs"] });
       void queryClient.invalidateQueries({ queryKey: ["rp-txs"] });
-      setDetailTx((prev) =>
-        prev
+      setTxModal((prev) =>
+        prev?.kind === "deposit"
           ? {
               ...prev,
-              callback_delivered_at: prev.callback_delivered_at ?? new Date().toISOString(),
+              deposit: {
+                ...prev.deposit,
+                callback_delivered_at:
+                  prev.deposit.callback_delivered_at ?? new Date().toISOString(),
+              },
             }
-          : null,
+          : prev,
       );
     },
   });
@@ -102,14 +119,29 @@ export default function AdminTransactions() {
       void queryClient.invalidateQueries({ queryKey: ["rp-txs"] });
       const patch = data && typeof data === "object" ? data.transaction : null;
       if (patch && typeof patch === "object") {
-        setDetailTx((prev) => (prev ? { ...prev, ...patch } : null));
+        setTxModal((prev) =>
+          prev?.kind === "deposit" ? { ...prev, deposit: { ...prev.deposit, ...patch } } : prev,
+        );
       }
     },
   });
 
-  const total = res.data?.total ?? 0;
-  const rows = res.data?.transactions ?? [];
-  const showEmpty = !res.isLoading && rows.length === 0;
+  const total = adminPayoutBlocked ? 0 : (res.data?.total ?? 0);
+  const rawLedger =
+    Array.isArray(res.data?.ledger) && res.data.ledger.length > 0
+      ? res.data.ledger
+      : (res.data?.transactions ?? []).map((d) => ({
+          kind: "deposit",
+          created_at: d.created_at,
+          deposit: d,
+        }));
+  const ledgerEntries = adminPayoutBlocked
+    ? []
+    : ledgerTab === "payout"
+      ? rawLedger.filter((e) => e.kind === "payout")
+      : rawLedger.filter((e) => e.kind === "deposit");
+  const showEmpty =
+    adminPayoutBlocked || (!res.isLoading && ledgerEntries.length === 0);
 
   const hasActiveFilters = Boolean(
     applied.merchant_id.trim() ||
@@ -145,49 +177,62 @@ export default function AdminTransactions() {
   }
 
   const redeliverErr =
-    redeliverMutation.isError && detailTx?.id === redeliverMutation.variables
+    redeliverMutation.isError &&
+    txModal?.kind === "deposit" &&
+    txModal.deposit?.id === redeliverMutation.variables
       ? String(redeliverMutation.error?.message ?? "Request failed")
       : null;
 
   const rescanTronErr =
-    rescanTronMutation.isError && detailTx?.id === rescanTronMutation.variables
+    rescanTronMutation.isError &&
+    txModal?.kind === "deposit" &&
+    txModal.deposit?.id === rescanTronMutation.variables
       ? String(rescanTronMutation.error?.message ?? "Request failed")
       : null;
 
+  const depRow = txModal?.kind === "deposit" ? txModal.deposit : null;
   const rescanTronVisible =
-    Boolean(detailTx) &&
-    detailTx.chain === "TRON" &&
-    String(detailTx.currency ?? "").toUpperCase() === "USDT" &&
-    String(detailTx.network ?? "").toUpperCase() === "TRC20";
+    Boolean(depRow) &&
+    depRow.chain === "TRON" &&
+    String(depRow.currency ?? "").toUpperCase() === "USDT" &&
+    String(depRow.network ?? "").toUpperCase() === "TRC20";
 
   return (
     <div>
       <TransactionDetailModal
-        open={Boolean(detailTx)}
-        transaction={detailTx}
+        open={txModal?.kind === "deposit"}
+        transaction={depRow}
         onClose={() => {
           if (!redeliverMutation.isPending && !rescanTronMutation.isPending) {
-            setDetailTx(null);
+            setTxModal(null);
             redeliverMutation.reset();
             rescanTronMutation.reset();
           }
         }}
         onRedeliverCallback={() => {
-          if (detailTx) redeliverMutation.mutate(detailTx.id);
+          if (txModal?.kind === "deposit") redeliverMutation.mutate(txModal.deposit.id);
         }}
         redeliverLoading={redeliverMutation.isPending}
         redeliverError={redeliverErr}
         rescanTronDepositVisible={rescanTronVisible}
         onRescanTronDeposit={() => {
-          if (detailTx) rescanTronMutation.mutate(detailTx.id);
+          if (txModal?.kind === "deposit") rescanTronMutation.mutate(txModal.deposit.id);
         }}
         rescanTronDepositLoading={rescanTronMutation.isPending}
         rescanTronDepositError={rescanTronErr}
         operatorActions
       />
+      <PayoutDetailModal
+        open={txModal?.kind === "payout"}
+        payout={txModal?.kind === "payout" ? txModal.payout : null}
+        merchantEmail={txModal?.kind === "payout" ? txModal.merchant?.email ?? null : null}
+        onClose={() => setTxModal(null)}
+      />
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
-          <h1 className="font-display text-2xl font-bold" style={{ color: "var(--text-1)" }}>Transactions</h1>
+          <h1 className="font-display text-2xl font-bold" style={{ color: "var(--text-1)" }}>
+            {ledgerTab === "payout" ? "Payout" : "Transactions"}
+          </h1>
         </div>
         <ListFilterToolbar
           onOpenDrawer={() => setDrawerOpen(true)}
@@ -195,6 +240,12 @@ export default function AdminTransactions() {
           canReset={canReset}
         />
       </div>
+
+      {adminPayoutBlocked ? (
+        <p className="mt-4 text-sm text-amber-200/85">
+          Choose a merchant filter (email or numeric id) to view payout records in the admin panel.
+        </p>
+      ) : null}
 
       {hasFilterChips ? (
         <ListActiveFiltersChips>
@@ -490,102 +541,211 @@ export default function AdminTransactions() {
 
       <div className="mt-10 space-y-4">
         <div className="data-table-surface">
-          <table className="data-table min-w-[1260px]">
-            <thead>
-              <tr>
-                <th>Transaction ID</th>
-                <th>Reference ID</th>
-                <th>When</th>
-                <th>Merchant</th>
-                <th className="text-xs">RP</th>
-                <th>User</th>
-                <th>Chain</th>
-                <th>Token</th>
-                <th>Requested</th>
-                <th>Received</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {res.isLoading ? (
+          {ledgerTab === "payin" ? (
+            <table className="data-table min-w-[1260px]">
+              <thead>
                 <tr>
-                  <td colSpan={11} className="!py-8">
-                    <BrandLoader variant="inline" title="" subtitle="Loading…" />
-                  </td>
+                  <th>Transaction ID</th>
+                  <th>Reference ID</th>
+                  <th>When</th>
+                  <th>Merchant</th>
+                  <th className="text-xs">RP</th>
+                  <th>User</th>
+                  <th>Chain</th>
+                  <th>Token</th>
+                  <th>Requested</th>
+                  <th>Received</th>
+                  <th>Status</th>
                 </tr>
-              ) : null}
-              {showEmpty ? (
-                <tr>
-                  <td colSpan={11} className="!py-12 text-center text-sm text-white/45">
-                    No record found.
-                  </td>
-                </tr>
-              ) : null}
-              {!res.isLoading &&
-                rows.map((t) => (
-                  <tr key={t.id}>
-                    <td className="max-w-[200px]">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          redeliverMutation.reset();
-                          rescanTronMutation.reset();
-                          setDetailTx(t);
-                        }}
-                        className="max-w-full truncate text-left font-mono text-xs text-sky-300/95 underline decoration-sky-500/40 underline-offset-2 transition hover:text-sky-200 hover:decoration-sky-300/70"
-                        title={String(t.id)}
-                      >
-                        {(() => {
-                          const sid = String(t.id);
-                          return sid.length > 18 ? `${sid.slice(0, 10)}…${sid.slice(-6)}` : sid;
-                        })()}
-                      </button>
+              </thead>
+              <tbody>
+                {res.isLoading && !adminPayoutBlocked ? (
+                  <tr>
+                    <td colSpan={11} className="!py-8">
+                      <BrandLoader variant="inline" title="" subtitle="Loading…" />
                     </td>
-                    <td className="max-w-[140px] truncate font-mono text-[10px] text-white/55" title={t.transaction_id ?? ""}>
-                      {t.transaction_id ?? "—"}
-                    </td>
-                    <td className="text-xs text-white/45">{formatLocalDateTime(t.created_at)}</td>
-                    <td className="max-w-[130px] truncate text-xs" title={t.merchant?.email ?? ""}>
-                      {t.merchant?.email ?? "—"}
-                    </td>
-                    <td
-                      className="max-w-[120px] truncate text-[10px] text-white/75"
-                      title={resellerPartnerTitle(t)}
-                    >
-                      {resellerPartnerLabel(t)}
-                    </td>
-                    <td className="max-w-[120px] truncate font-mono text-xs">{t.external_user_id}</td>
-                    <td>{t.chain}</td>
-                    <td>{t.token_symbol}</td>
-                    <td className="font-mono text-xs">
-                      {t.requested_amount_decimal != null ? (
-                        <>
-                          <span className="text-white/90">
-                            {t.requested_amount_decimal} {t.token_symbol}
-                          </span>
-                          {t.requested_amount_atomic ? (
-                            <span className="mt-0.5 block text-[10px] text-white/35">
-                              raw {t.requested_amount_atomic}
-                            </span>
-                          ) : null}
-                        </>
-                      ) : (
-                        <span className="text-white/35">—</span>
-                      )}
-                    </td>
-                    <td className="font-mono text-xs">
-                      <span className="text-white/90">
-                        {formatTokenAmount(t.amount, t.token_decimals)}
-                      </span>
-                      <span className="mt-0.5 block text-[10px] text-white/35">
-                        raw {t.amount}
-                      </span>
-                    </td>
-                    <td><StatusBadge status={t.status} /></td>
                   </tr>
-                ))}
-            </tbody>
-          </table>
+                ) : null}
+                {showEmpty ? (
+                  <tr>
+                    <td colSpan={11} className="!py-12 text-center text-sm text-white/45">
+                      No transactions found.
+                    </td>
+                  </tr>
+                ) : null}
+                {!res.isLoading &&
+                  !adminPayoutBlocked &&
+                  ledgerEntries.map((entry) => {
+                    const t = entry.deposit;
+                    return (
+                      <tr key={`d-${t.id}`}>
+                        <td className="max-w-[200px]">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              redeliverMutation.reset();
+                              rescanTronMutation.reset();
+                              setTxModal({ kind: "deposit", deposit: t });
+                            }}
+                            className="max-w-full truncate text-left font-mono text-xs text-sky-300/95 underline decoration-sky-500/40 underline-offset-2 transition hover:text-sky-200 hover:decoration-sky-300/70"
+                            title={String(t.id)}
+                          >
+                            {(() => {
+                              const sid = String(t.id);
+                              return sid.length > 18 ? `${sid.slice(0, 10)}…${sid.slice(-6)}` : sid;
+                            })()}
+                          </button>
+                        </td>
+                        <td className="max-w-[140px] truncate font-mono text-[10px] text-white/55" title={t.transaction_id ?? ""}>
+                          {t.transaction_id ?? "—"}
+                        </td>
+                        <td className="text-xs text-white/45">{formatLocalDateTime(t.created_at)}</td>
+                        <td className="max-w-[130px] truncate text-xs" title={t.merchant?.email ?? ""}>
+                          {t.merchant?.email ?? "—"}
+                        </td>
+                        <td
+                          className="max-w-[120px] truncate text-[10px] text-white/75"
+                          title={resellerPartnerTitle(t)}
+                        >
+                          {resellerPartnerLabel(t)}
+                        </td>
+                        <td className="max-w-[120px] truncate font-mono text-xs">{t.external_user_id ?? "—"}</td>
+                        <td>{t.chain}</td>
+                        <td>{t.token_symbol}</td>
+                        <td className="font-mono text-xs">
+                          {t.requested_amount_decimal != null ? (
+                            <>
+                              <span className="text-white/90">
+                                {t.requested_amount_decimal} {t.token_symbol}
+                              </span>
+                              {t.requested_amount_atomic ? (
+                                <span className="mt-0.5 block text-[10px] text-white/35">
+                                  raw {t.requested_amount_atomic}
+                                </span>
+                              ) : null}
+                            </>
+                          ) : (
+                            <span className="text-white/35">—</span>
+                          )}
+                        </td>
+                        <td className="font-mono text-xs">
+                          <span className="text-white/90">
+                            {formatTokenAmount(t.amount, t.token_decimals)}
+                          </span>
+                          <span className="mt-0.5 block text-[10px] text-white/35">
+                            raw {t.amount}
+                          </span>
+                        </td>
+                        <td>
+                          <StatusBadge status={t.status} />
+                        </td>
+                      </tr>
+                    );
+                  })}
+              </tbody>
+            </table>
+          ) : (
+            <table className="data-table min-w-[1280px]">
+              <thead>
+                <tr>
+                  <th>Payout ID</th>
+                  <th>Client reference</th>
+                  <th>When</th>
+                  <th>Merchant</th>
+                  <th className="text-xs">RP</th>
+                  <th>Chain</th>
+                  <th>Token</th>
+                  <th>Gross</th>
+                  <th>Sent</th>
+                  <th>Network fee</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {res.isLoading && !adminPayoutBlocked ? (
+                  <tr>
+                    <td colSpan={11} className="!py-8">
+                      <BrandLoader variant="inline" title="" subtitle="Loading…" />
+                    </td>
+                  </tr>
+                ) : null}
+                {showEmpty ? (
+                  <tr>
+                    <td colSpan={11} className="!py-12 text-center text-sm text-white/45">
+                      {adminPayoutBlocked
+                        ? "Choose a merchant filter (email or id), then payout records load here."
+                        : "No payout records found."}
+                    </td>
+                  </tr>
+                ) : null}
+                {!res.isLoading &&
+                  !adminPayoutBlocked &&
+                  ledgerEntries.map((entry) => {
+                    const p = entry.payout;
+                    const merch = entry.merchant;
+                    const pid = String(p.id ?? "");
+                    return (
+                      <tr key={`p-${pid}`}>
+                        <td className="max-w-[200px]">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setTxModal({ kind: "payout", payout: p, merchant: merch })
+                            }
+                            className="max-w-full truncate text-left font-mono text-xs text-sky-300/95 underline decoration-sky-500/40 underline-offset-2 transition hover:text-sky-200 hover:decoration-sky-300/70"
+                            title={pid}
+                          >
+                            {pid.length > 18 ? `${pid.slice(0, 10)}…${pid.slice(-6)}` : pid}
+                          </button>
+                        </td>
+                        <td className="max-w-[140px] truncate font-mono text-[10px] text-white/55" title={p.client_reference_id ?? ""}>
+                          {p.client_reference_id ?? "—"}
+                        </td>
+                        <td className="text-xs text-white/45">{formatLocalDateTime(p.created_at)}</td>
+                        <td className="max-w-[130px] truncate text-xs" title={merch?.email ?? ""}>
+                          {merch?.email ?? "—"}
+                        </td>
+                        <td className="max-w-[120px] truncate text-[10px] text-white/75" title={resellerPartnerTitle(entry)}>
+                          {resellerPartnerLabel(entry)}
+                        </td>
+                        <td>{p.chain}</td>
+                        <td>{p.token_symbol}</td>
+                        <td className="font-mono text-xs">
+                          {p.gross_amount_decimal != null ? (
+                            <span className="text-white/90">
+                              {p.gross_amount_decimal} {p.token_symbol}
+                            </span>
+                          ) : (
+                            <span className="text-white/35">—</span>
+                          )}
+                        </td>
+                        <td className="font-mono text-xs">
+                          {p.net_amount_decimal != null ? (
+                            <span className="text-white/90">
+                              {p.net_amount_decimal} {p.token_symbol}
+                            </span>
+                          ) : (
+                            <span className="text-white/35">—</span>
+                          )}
+                        </td>
+                        <td className="font-mono text-xs text-amber-200/85">
+                          {p.network_fee_native_decimal != null && p.network_fee_native_symbol ? (
+                            <span title="Native gas / bandwidth burned by sender (TRX or ETH), not USDT">
+                              {String(p.network_fee_native_decimal)} {String(p.network_fee_native_symbol)}
+                            </span>
+                          ) : (
+                            <span className="text-white/35">—</span>
+                          )}
+                        </td>
+                        <td>
+                          <StatusBadge status={p.status} />
+                        </td>
+                      </tr>
+                    );
+                  })}
+              </tbody>
+            </table>
+          )}
         </div>
 
         <ListPaginationBar

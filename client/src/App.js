@@ -100,10 +100,14 @@ export default function App() {
         <Route path="users" element={<AdminUsers />} />
         <Route path="wallets" element={<AdminWallets />} />
         <Route path="wallet-details" element={<AdminWalletDetails />} />
-        <Route path="transactions" element={<AdminTransactions />} />
-        <Route path="withdrawals" element={<Navigate to="/control" replace />} />
-        <Route path="settlements/new" element={<Navigate to="/control/settlements" replace />} />
-        <Route path="settlements" element={<AdminSettlements />} />
+        <Route path="pay-ins" element={<AdminTransactions />} />
+        <Route path="pay-outs" element={<AdminTransactions />} />
+        <Route path="transactions" element={<Navigate to="/control/pay-ins" replace />} />
+        <Route path="withdrawals" element={<Navigate to="/control/pay-outs" replace />} />
+        <Route path="settlements/new" element={<Navigate to="/control/pay-in-settlements" replace />} />
+        <Route path="pay-in-settlements" element={<AdminSettlements />} />
+        <Route path="pay-out-settlements" element={<AdminSettlements />} />
+        <Route path="settlements" element={<Navigate to="/control/pay-in-settlements" replace />} />
         <Route path="sweep" element={<Navigate to="/control" replace />} />
         <Route path="tron-sweep" element={<Navigate to="/control" replace />} />
         <Route path="evm-usdt-sweep" element={<Navigate to="/control" replace />} />
@@ -134,8 +138,13 @@ export default function App() {
         <Route path="users" element={<AdminUsers />} />
         <Route path="wallets" element={<AdminWallets />} />
         <Route path="wallet-details" element={<AdminWalletDetails />} />
-        <Route path="transactions" element={<AdminTransactions />} />
-        <Route path="settlements" element={<RpSettlements />} />
+        <Route path="pay-ins" element={<AdminTransactions />} />
+        <Route path="pay-outs" element={<AdminTransactions />} />
+        <Route path="transactions" element={<Navigate to="/rp/pay-ins" replace />} />
+        <Route path="pay-in-settlements" element={<RpSettlements />} />
+        <Route path="pay-out-settlements" element={<RpSettlements />} />
+        <Route path="settlements" element={<Navigate to="/rp/pay-in-settlements" replace />} />
+        <Route path="payouts" element={<Navigate to="/rp/pay-outs" replace />} />
         <Route path="decode-gateway-data" element={<DecodeGatewayData />} />
       </Route>
       <Route path="/admin" element={<Navigate to="/control" replace />} />
@@ -146,9 +155,14 @@ export default function App() {
         <Route index element={<MerchantDashboard />} />
         <Route path="users" element={<MerchantUsers />} />
         <Route path="wallets" element={<MerchantWallets />} />
-        <Route path="transactions" element={<MerchantTransactions />} />
-        <Route path="withdraw" element={<Navigate to="/settlements" replace />} />
-        <Route path="settlements" element={<MerchantSettlements />} />
+        <Route path="pay-ins" element={<MerchantTransactions />} />
+        <Route path="pay-outs" element={<MerchantTransactions />} />
+        <Route path="transactions" element={<Navigate to="/pay-ins" replace />} />
+        <Route path="withdraw" element={<Navigate to="/pay-outs" replace />} />
+        <Route path="withdrawals" element={<Navigate to="/pay-outs" replace />} />
+        <Route path="pay-in-settlements" element={<MerchantSettlements />} />
+        <Route path="pay-out-settlements" element={<MerchantSettlements />} />
+        <Route path="settlements" element={<Navigate to="/pay-in-settlements" replace />} />
         <Route path="settings" element={<MerchantSettings />} />
         <Route path="api-key" element={<GatewayApiKey />} />
         <Route path="docs" element={<GatewayApiDocs />} />

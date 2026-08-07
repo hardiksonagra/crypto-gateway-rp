@@ -30,6 +30,7 @@ import {
   IconWallet,
   IconSettlements,
   IconHandshake,
+  IconPayout,
 } from "./shellNavIcons.js";
 
 const navGroups = [
@@ -42,13 +43,15 @@ const navGroups = [
       { to: "/control/users", label: "Users", Icon: IconUsers },
       { to: "/control/wallets", label: "All wallets", Icon: IconWallet },
       { to: "/control/wallet-details", label: "Wallet details", Icon: IconDoc },
-      { to: "/control/transactions", label: "Transactions", Icon: IconTransactions },
+      { to: "/control/pay-ins", label: "Transactions", Icon: IconTransactions },
+      { to: "/control/pay-outs", label: "Payout", Icon: IconPayout },
     ],
   },
   {
     label: "OPERATIONS",
     items: [
-      { to: "/control/settlements", label: "Settlements", Icon: IconSettlements },
+      { to: "/control/pay-in-settlements", label: "Transactions settlements", Icon: IconSettlements },
+      { to: "/control/pay-out-settlements", label: "Payout settlements", Icon: IconPayout },
       { to: "/control/activity", label: "Activity log", Icon: IconActivity },
     ],
   },

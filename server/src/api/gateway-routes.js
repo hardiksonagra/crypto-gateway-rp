@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { TxStatus } from "@prisma/client";
+import { Chain, TxStatus } from "@prisma/client";
 import {
   prismaClientKnowsTxStatusCreated,
   prismaClientKnowsTxStatusUnderpaid,
@@ -37,6 +37,13 @@ import {
   railNotEnabledForMerchantMessage,
   resolveDepositRail,
 } from "../config/payment-rails.js";
+import { createMerchantWithdrawalRequest } from "../services/merchant-withdrawal-request.js";
+import { withdrawalGatewayPayoutJson } from "../lib/merchant-withdrawal-response.js";
+import { fillMissingWithdrawalNetworkFees } from "../services/payout-withdrawal-network-fee.js";
+import {
+  effectivePayoutPolicyForRail,
+  payoutRailKeyForChain,
+} from "../lib/merchant-payout-rails-policy.js";
 import { isChainLiveForPlatform } from "../lib/chain-enable.js";
 import {
   redactGatewayBody,
@@ -1148,6 +1155,300 @@ router.post("/api/v1/gateway/sandbox/simulate-deposit", async (req, res) => {
         error: String(e).slice(0, 500),
       },
     });
+    res.status(500).json({ error: "internal error" });
+  }
+});
+
+router.post("/api/v1/gateway/payout", async (req, res) => {
+  try {
+    const body = req.body ?? {};
+    const auth = await authenticateGatewayJsonPost(req);
+    if (!auth.ok) {
+      auditGatewayApi(req, {
+        action: "gateway_payout",
+        merchantId: null,
+        actorType: "gateway_api_key",
+        summary: `payout POST ${auth.status} — ${auth.error}`,
+        metadata: { request_in: redactGatewayBody(body), http_status: auth.status },
+      });
+      res
+        .status(auth.status)
+        .json(
+          auth.message
+            ? { error: auth.error, message: auth.message }
+            : { error: auth.error },
+        );
+      return;
+    }
+    const { merchant, keyType } = auth;
+    const gate = assertMerchantGatewayKeyAllowed(merchant, keyType);
+    if (!gate.ok) {
+      auditGatewayApi(req, {
+        action: "gateway_payout",
+        merchantId: merchant.id,
+        actorType: "gateway_api_key",
+        summary: `payout POST 403 — ${gate.error}`,
+        metadata: { request_in: redactGatewayBody(body), http_status: 403 },
+      });
+      res.status(403).json({ error: gate.error, message: gate.message });
+      return;
+    }
+    const gwEnv = gatewayEnvironmentFromKeyType(keyType);
+
+    const chainRaw = String(body.chain ?? "")
+      .trim()
+      .toUpperCase();
+    let rail = null;
+    if (chainRaw === "TRON") {
+      rail = resolveDepositRail("USDT", "TRC20");
+    } else if (chainRaw === "ETH" || chainRaw === "ETHEREUM") {
+      rail = resolveDepositRail("USDT", "ERC20");
+    }
+    if (!rail) {
+      auditGatewayApi(req, {
+        action: "gateway_payout",
+        merchantId: merchant.id,
+        actorType: "gateway_api_key",
+        summary: "payout POST 400 — unsupported_chain",
+        metadata: { request_in: redactGatewayBody(body), http_status: 400 },
+      });
+      res.status(400).json({
+        error: "unsupported_chain",
+        message: "chain must be TRON (TRC20 USDT) or ETH (ERC20 USDT).",
+      });
+      return;
+    }
+    if (!merchantChainAllowsRail(merchant, rail)) {
+      auditGatewayApi(req, {
+        action: "gateway_payout",
+        merchantId: merchant.id,
+        actorType: "gateway_api_key",
+        summary: "payout POST 403 — rail_not_enabled_for_merchant",
+        metadata: {
+          request_in: redactGatewayBody(body),
+          http_status: 403,
+          chain: rail.chain,
+        },
+      });
+      res.status(403).json({
+        error: "rail_not_enabled_for_merchant",
+        message: railNotEnabledForMerchantMessage(merchant, rail),
+      });
+      return;
+    }
+    if (!isChainLiveForPlatform(re.chainEnabledRecord, rail.chain)) {
+      auditGatewayApi(req, {
+        action: "gateway_payout",
+        merchantId: merchant.id,
+        actorType: "gateway_api_key",
+        summary: "payout POST 403 — chain_disabled_for_platform",
+        metadata: {
+          request_in: redactGatewayBody(body),
+          http_status: 403,
+          chain: rail.chain,
+        },
+      });
+      res.status(403).json({
+        error: "chain_disabled_for_platform",
+        message: `Chain ${rail.chain} is disabled by the operator.`,
+      });
+      return;
+    }
+
+    const merch = await prisma.merchant.findFirst({
+      where: { id: merchant.id, ...ACTIVE },
+      select: {
+        mdrPercent: true,
+        payoutMdrPercent: true,
+        settlementRatePercent: true,
+        minSettlementAmount: true,
+        payoutMinAmountHuman: true,
+        payoutMaxAmountHuman: true,
+        payoutRailsPolicyJson: true,
+        payoutTreasuryAddressesJson: true,
+      },
+    });
+    if (!merch) {
+      res.status(404).json({ error: "merchant_not_found" });
+      return;
+    }
+
+    const payoutRailKey = payoutRailKeyForChain(rail.chain);
+    const effPayout =
+      payoutRailKey != null
+        ? effectivePayoutPolicyForRail(merch, payoutRailKey)
+        : {
+            min: merch.payoutMinAmountHuman ?? "0",
+            max: merch.payoutMaxAmountHuman ?? "0",
+            treasury: "",
+          };
+
+    const chainOut = rail.chain === Chain.TRON ? "TRON" : "ETH";
+    const result = await createMerchantWithdrawalRequest({
+      merchantId: merchant.id,
+      environment: gwEnv,
+      chainInput: chainOut,
+      tokenSymbolInput: body.token_symbol ?? body.tokenSymbol ?? "USDT",
+      toAddressRaw: body.to_address ?? body.toAddress,
+      amountRaw: body.amount,
+      rates: merch,
+      payoutPolicy: {
+        payoutMinAmountHuman: effPayout.min,
+        payoutMaxAmountHuman: effPayout.max,
+      },
+      clientReferenceId: body.client_reference_id ?? body.clientReferenceId,
+      source: "gateway_api",
+    });
+
+    if (!result.ok) {
+      auditGatewayApi(req, {
+        action: "gateway_payout",
+        merchantId: merchant.id,
+        actorType: "gateway_api_key",
+        summary: `payout POST ${result.status} — ${result.error}`,
+        metadata: {
+          request_in: redactGatewayBody(body),
+          http_status: result.status,
+        },
+      });
+      res.status(result.status).json({
+        error: result.error,
+        ...(result.message ? { message: result.message } : {}),
+      });
+      return;
+    }
+
+    auditGatewayApi(req, {
+      action: "gateway_payout",
+      merchantId: merchant.id,
+      actorType: "gateway_api_key",
+      summary: `payout POST 201 · id=${result.withdrawal.id}`,
+      metadata: {
+        request_in: redactGatewayBody(body),
+        response_out: { id: result.withdrawal.id, status: 201 },
+        occurred_at_iso: new Date().toISOString(),
+      },
+    });
+    res.status(201).json(withdrawalGatewayPayoutJson(result.withdrawal));
+  } catch (e) {
+    logger.error("gateway payout POST failed", { err: String(e) });
+    auditGatewayApi(req, {
+      action: "gateway_payout",
+      merchantId: null,
+      actorType: "gateway_api_key",
+      summary: "payout POST 500",
+      metadata: {
+        request_in: redactGatewayBody(req.body ?? {}),
+        http_status: 500,
+        error: String(e).slice(0, 500),
+      },
+    });
+    res.status(500).json(
+      env.nodeEnv === "development"
+        ? { error: "internal error", message: String(e).slice(0, 500) }
+        : { error: "internal error" },
+    );
+  }
+});
+
+router.get("/api/v1/gateway/payout", async (req, res) => {
+  try {
+    const auth = await authenticateGatewaySupportedCurrencyGet(req);
+    if (!auth.ok) {
+      auditGatewayApi(req, {
+        action: "gateway_payout_get",
+        merchantId: null,
+        actorType: "gateway_api_key",
+        summary: `payout GET ${auth.status} — ${auth.error}`,
+        metadata: { query: req.query ?? {}, http_status: auth.status },
+      });
+      res
+        .status(auth.status)
+        .json(
+          auth.message
+            ? { error: auth.error, message: auth.message }
+            : { error: auth.error },
+        );
+      return;
+    }
+    const { merchant, keyType } = auth;
+    const gate = assertMerchantGatewayKeyAllowed(merchant, keyType);
+    if (!gate.ok) {
+      auditGatewayApi(req, {
+        action: "gateway_payout_get",
+        merchantId: merchant.id,
+        actorType: "gateway_api_key",
+        summary: `payout GET 403 — ${gate.error}`,
+        metadata: { query: req.query ?? {}, http_status: 403 },
+      });
+      res.status(403).json({ error: gate.error, message: gate.message });
+      return;
+    }
+
+    const rawId = req.query?.payout_id ?? req.query?.id;
+    const rawIdFirst = Array.isArray(rawId) ? rawId[0] : rawId;
+    const idStr = typeof rawIdFirst === "string" ? rawIdFirst.trim() : "";
+    if (idStr) {
+      res.status(400).json({
+        error: "payout_id_not_supported",
+        message:
+          "Look up payouts with client_reference_id only. Send the same value you passed when creating the payout.",
+      });
+      return;
+    }
+
+    const rawRef =
+      req.query?.client_reference_id ?? req.query?.clientReferenceId;
+    const rawRefFirst = Array.isArray(rawRef) ? rawRef[0] : rawRef;
+    const cref =
+      typeof rawRefFirst === "string" ? rawRefFirst.trim().slice(0, 256) : "";
+
+    if (!cref) {
+      res.status(400).json({
+        error: "client_reference_id_required",
+        message:
+          "Pass query client_reference_id (the id you sent on POST /gateway/payout when creating the payout).",
+      });
+      return;
+    }
+
+    const gwEnv = gatewayEnvironmentFromKeyType(keyType);
+    const row = await prisma.withdrawal.findFirst({
+      where: {
+        merchantId: merchant.id,
+        environment: gwEnv,
+        clientReferenceId: cref,
+        ...ACTIVE,
+      },
+      orderBy: { id: "desc" },
+    });
+
+    if (!row) {
+      auditGatewayApi(req, {
+        action: "gateway_payout_get",
+        merchantId: merchant.id,
+        actorType: "gateway_api_key",
+        summary: "payout GET 404 — not_found",
+        metadata: { query: { client_reference_id: "[ref]" }, http_status: 404 },
+      });
+      res.status(404).json({ error: "payout_not_found" });
+      return;
+    }
+
+    auditGatewayApi(req, {
+      action: "gateway_payout_get",
+      merchantId: merchant.id,
+      actorType: "gateway_api_key",
+      summary: `payout GET 200 · id=${row.id}`,
+      metadata: {
+        query: { client_reference_id: "[ref]" },
+        http_status: 200,
+      },
+    });
+    await fillMissingWithdrawalNetworkFees([row]);
+    res.json(withdrawalGatewayPayoutJson(row));
+  } catch (e) {
+    logger.error("gateway payout GET failed", { err: String(e) });
     res.status(500).json({ error: "internal error" });
   }
 });

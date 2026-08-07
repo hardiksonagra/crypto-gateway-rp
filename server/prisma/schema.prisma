@@ -70,6 +70,8 @@ model ResellerPartner {
   displayName  String?   @map("display_name")
   /// Default MDR (percent 0–100) applied to new merchants this RP creates unless overridden.
   mdrPercent            Decimal   @default(0) @map("mdr_percent") @db.Decimal(7, 4)
+  /// Default payout MDR % for merchants this RP creates (RP billing reference on payout volume; not deducted on-chain).
+  payoutMdrPercent      Decimal   @default(0) @map("payout_mdr_percent") @db.Decimal(7, 4)
   isActive     Boolean   @default(true) @map("is_active")
   deletedAt    DateTime? @map("deleted_at")
   createdAt    DateTime  @default(now()) @map("created_at")
@@ -114,6 +116,8 @@ model Merchant {
   passwordResetExpiresAt    DateTime? @map("password_reset_expires_at")
   /// Merchant discount rate (fee on gross deposit volume), percent 0–100.
   mdrPercent            Decimal   @default(0) @map("mdr_percent") @db.Decimal(7, 4)
+  /// Payout MDR % — RP/admin billing reference on payout volume; independent of deposit MDR; does not reduce send amount.
+  payoutMdrPercent      Decimal   @default(0) @map("payout_mdr_percent") @db.Decimal(7, 4)
   /// Settlement fee (percent of same gross base as MDR for display and settlement forms).
   settlementRatePercent Decimal   @default(0) @map("settlement_rate_percent") @db.Decimal(7, 4)
   /// Minimum gross (atomic integer string) per settlement for this merchant; "0" = no minimum.
@@ -126,6 +130,14 @@ model Merchant {
   autoSwapSettingsJson Json    @default("{}") @map("auto_swap_settings_json")
   /// AES-GCM encrypted TRON private key (hex). When set, TRX top-ups for this merchant’s deposit wallets use this account before the platform `SWEEP_TRX_FUNDER_*` env wallet.
   trxSweepFunderPrivateKeyCipher String? @map("trx_sweep_funder_private_key_cipher")
+  /// Min gross payout (human USDT per request); "0" = use platform default only via settlement min on net.
+  payoutMinAmountHuman String @default("0") @map("payout_min_amount_human") @db.VarChar(128)
+  /// Max gross payout (human USDT); "0" = no cap.
+  payoutMaxAmountHuman String @default("0") @map("payout_max_amount_human") @db.VarChar(128)
+  /// JSON ops hint: e.g. `{ "TRON": "T…", "ETH": "0x…" }` treasury addresses payouts are sent from.
+  payoutTreasuryAddressesJson Json @default("{}") @map("payout_treasury_addresses_json")
+  /// JSON per payout rail (`USDT|TRC20`, `USDT|ERC20`): `{ [railKey]: { min_human?, max_human?, treasury_address? } }`. Empty fields fall back to {@link payoutMinAmountHuman} / {@link payoutMaxAmountHuman} / {@link payoutTreasuryAddressesJson}.
+  payoutRailsPolicyJson Json @default("{}") @map("payout_rails_policy_json")
   createdAt    DateTime  @default(now()) @map("created_at")
   updatedAt    DateTime  @updatedAt @map("updated_at")
 
@@ -264,6 +276,7 @@ model WalletAssignmentEvent {
   @@map("wallet_assignment_events")
 }
 
+/// Pay-in / deposit ledger only (on-chain credits to merchant wallets). Distinct from {@link Withdrawal} (`withdrawals` table).
 model Transaction {
   id                  Int       @id @default(autoincrement())
   walletId            Int       @map("wallet_id")
@@ -312,22 +325,47 @@ model Transaction {
   @@map("transactions")
 }
 
+/// Pay-out / payout ledger only (merchant withdrawals). Distinct from {@link Transaction} (`transactions` table).
 model Withdrawal {
   id            Int              @id @default(autoincrement())
   merchantId    Int              @map("merchant_id")
   merchant      Merchant        @relation(fields: [merchantId], references: [id], onDelete: Restrict)
+  environment   MerchantGatewayEnv @default(live) @map("environment")
   chain         Chain
   tokenSymbol   String           @map("token_symbol")
+  tokenDecimals Int              @default(6) @map("token_decimals")
   toAddress     String           @map("to_address")
+  /// Ledger debit (gross); matches {@link grossAmount} when set; kept for legacy rows.
   amount        String
+  /// Gross withdrawal request (atomic); fees apply like deposit batch settlement (`splitFeesSequentialFromGross`).
+  grossAmount            String?   @map("gross_amount") @db.VarChar(128)
+  /// Amount to send on-chain after MDR + settlement fee (atomic).
+  netAmount              String?   @map("net_amount") @db.VarChar(128)
+  mdrAmount              String?   @map("mdr_amount") @db.VarChar(128)
+  settlementFeeAmount    String?   @map("settlement_fee_amount") @db.VarChar(128)
+  mdrPercent             Decimal?  @map("mdr_percent") @db.Decimal(7, 4)
+  settlementRatePercent  Decimal?  @map("settlement_rate_percent") @db.Decimal(7, 4)
   status        WithdrawalStatus @default(pending)
   txHash        String?          @map("tx_hash")
+  /// Native fee actually burned (wei for ETH, sun for TRX); populated from chain using `tx_hash`.
+  networkFeeNativeAtomic String? @map("network_fee_native_atomic") @db.VarChar(128)
+  networkFeeNativeSymbol String? @map("network_fee_native_symbol") @db.VarChar(16)
+  networkFeeFetchedAt    DateTime? @map("network_fee_fetched_at")
   failureReason String?          @map("failure_reason") @db.Text
+  /// Idempotency / integrator reference (gateway API); unique per merchant + environment when set.
+  clientReferenceId String?      @map("client_reference_id") @db.VarChar(256)
+  /// `portal` | `gateway_api`
+  source        String           @default("portal") @map("source") @db.VarChar(24)
+  callbackDeliveredAt   DateTime? @map("callback_delivered_at")
+  callbackAttemptCount  Int       @default(0) @map("callback_attempt_count")
+  callbackLastAttemptAt DateTime? @map("callback_last_attempt_at")
   createdAt     DateTime         @default(now()) @map("created_at")
   updatedAt     DateTime         @updatedAt @map("updated_at")
   deletedAt     DateTime?        @map("deleted_at")
 
   @@index([merchantId, createdAt])
+  @@index([merchantId, environment, status])
+  @@index([merchantId, environment, clientReferenceId])
   @@index([deletedAt])
   @@map("withdrawals")
 }

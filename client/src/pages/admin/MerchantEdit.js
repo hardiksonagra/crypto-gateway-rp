@@ -128,6 +128,7 @@ export default function MerchantEdit() {
     supported_deposit_rails: rails,
     callback_url: m.callback_url ?? "",
     mdr_percent: m.mdr_percent ?? 0,
+    payout_mdr_percent: m.payout_mdr_percent ?? m.mdr_percent ?? 0,
     settlement_rate_percent: m.settlement_rate_percent ?? 0,
     min_settlement_amount: m.min_settlement_amount ?? "0",
     settlement_period_days: m.settlement_period_days ?? 0,
@@ -192,6 +193,7 @@ export default function MerchantEdit() {
                   live_gateway_enabled: values.live_gateway_enabled,
                   sandbox_gateway_enabled: values.sandbox_gateway_enabled,
                   mdr_percent: values.mdr_percent,
+                  payout_mdr_percent: values.payout_mdr_percent,
                   settlement_rate_percent: values.settlement_rate_percent,
                   min_settlement_amount: values.min_settlement_amount?.trim() || "0",
                   settlement_period_days: values.settlement_period_days,
@@ -312,6 +314,29 @@ export default function MerchantEdit() {
                 />
                 <ErrorMessage
                   name="mdr_percent"
+                  component="p"
+                  className="mt-1 text-xs text-rose-400"
+                />
+              </div>
+              <div>
+                <label className={label} htmlFor="payout_mdr_percent">
+                  Payout MDR %
+                </label>
+                <Field
+                  id="payout_mdr_percent"
+                  name="payout_mdr_percent"
+                  type="number"
+                  step="0.01"
+                  min={0}
+                  max={100}
+                  className={input}
+                />
+                <p className="mt-1 text-[10px] text-white/35">
+                  RP/admin billing reference on payout volume (shown on payouts and previews). Recipients still receive the
+                  full gross; deposit settlement % does not apply to payouts.
+                </p>
+                <ErrorMessage
+                  name="payout_mdr_percent"
                   component="p"
                   className="mt-1 text-xs text-rose-400"
                 />

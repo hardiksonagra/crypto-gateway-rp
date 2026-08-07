@@ -28,6 +28,7 @@ import {
 } from "../services/panel-audit-log.js";
 import { sendPasswordResetEmail } from "../lib/mailer.js";
 import { getMerchantTrxSweepFunderDisplayAddress } from "../lib/merchant-trx-funder.js";
+import { payoutRailsPolicyForMerchantPortal } from "../lib/merchant-payout-rails-policy.js";
 
 const router = Router();
 
@@ -217,6 +218,7 @@ router.get("/api/v1/auth/me", requireAuth(), async (req, res) => {
         email: true,
         displayName: true,
         mdrPercent: true,
+        payoutMdrPercent: true,
         isActive: true,
         portalEnvironment: true,
       },
@@ -231,6 +233,7 @@ router.get("/api/v1/auth/me", requireAuth(), async (req, res) => {
       role: PORTAL_ROLE_RP,
       displayName: rp.displayName,
       mdr_percent: Number(rp.mdrPercent),
+      payout_mdr_percent: Number(rp.payoutMdrPercent),
       isActive: rp.isActive,
       portalEnvironment: rp.portalEnvironment,
       defaultChains: [],
@@ -272,6 +275,7 @@ router.get("/api/v1/auth/me", requireAuth(), async (req, res) => {
       sandboxGatewayEnabled: true,
       portalEnvironment: true,
       mdrPercent: true,
+      payoutMdrPercent: true,
       settlementRatePercent: true,
       minSettlementAmount: true,
       settlementPeriodDays: true,
@@ -280,6 +284,10 @@ router.get("/api/v1/auth/me", requireAuth(), async (req, res) => {
       sandboxApiKeyHash: true,
       autoSwapEnabled: true,
       autoSwapSettingsJson: true,
+      payoutMinAmountHuman: true,
+      payoutMaxAmountHuman: true,
+      payoutTreasuryAddressesJson: true,
+      payoutRailsPolicyJson: true,
     },
   });
   if (!user) {
@@ -291,17 +299,23 @@ router.get("/api/v1/auth/me", requireAuth(), async (req, res) => {
     sandboxApiKeyCipher,
     sandboxApiKeyHash,
     mdrPercent,
+    payoutMdrPercent,
     settlementRatePercent,
     minSettlementAmount,
     settlementPeriodDays,
     autoSwapEnabled,
     autoSwapSettingsJson,
+    payoutMinAmountHuman,
+    payoutMaxAmountHuman,
+    payoutTreasuryAddressesJson,
+    payoutRailsPolicyJson,
     ...rest
   } = user;
   const out = {
     ...rest,
     role: PORTAL_ROLE_MERCHANT,
     mdr_percent: Number(mdrPercent),
+    payout_mdr_percent: Number(payoutMdrPercent),
     settlement_rate_percent: Number(settlementRatePercent),
     min_settlement_amount: minSettlementAmount ?? "0",
     settlement_period_days: Number(settlementPeriodDays ?? 0),
@@ -310,6 +324,20 @@ router.get("/api/v1/auth/me", requireAuth(), async (req, res) => {
       typeof autoSwapSettingsJson === "object" && autoSwapSettingsJson !== null
         ? autoSwapSettingsJson
         : {},
+    payout_min_amount_human: payoutMinAmountHuman ?? "0",
+    payout_max_amount_human: payoutMaxAmountHuman ?? "0",
+    payout_treasury_addresses:
+      typeof payoutTreasuryAddressesJson === "object" &&
+      payoutTreasuryAddressesJson !== null &&
+      !Array.isArray(payoutTreasuryAddressesJson)
+        ? payoutTreasuryAddressesJson
+        : {},
+    payout_rails_policy: payoutRailsPolicyForMerchantPortal({
+      payoutMinAmountHuman,
+      payoutMaxAmountHuman,
+      payoutRailsPolicyJson,
+      payoutTreasuryAddressesJson,
+    }),
   };
   out.hasSandboxApiKey = Boolean(sandboxApiKeyHash);
   out.api_key_cipher_present = Boolean(apiKeyCipher);

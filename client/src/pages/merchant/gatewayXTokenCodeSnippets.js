@@ -1,7 +1,7 @@
 /**
  * Reference implementations for gateway X-Token (canonical JSON + AES-256-GCM + SHA-256 key).
  * Must match server: `server/src/lib/gateway-x-token.js`
- * PHP: every json_encode in canonical JSON must include JSON_UNESCAPED_SLASHES (see MERCHANT_API_INTEGRATION.md §3.1).
+ * PHP: every json_encode in canonical JSON must include JSON_UNESCAPED_SLASHES (see MERCHANT_API_INTEGRATION.md Part I §I.3.1).
  *
  * @typedef {{ id: string, label: string, code: string }} XTokenSnippet
  */

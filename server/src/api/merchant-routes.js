@@ -1,11 +1,5 @@
 import { Router } from "express";
-import {
-  Chain,
-  MerchantGatewayEnv,
-  Prisma,
-  TxStatus,
-  WithdrawalStatus,
-} from "@prisma/client";
+import { Chain, MerchantGatewayEnv, Prisma, TxStatus } from "@prisma/client";
 import { formatAtomicAmountString } from "../lib/format-atomic-amount.js";
 import {
   expectedReceivedAmountQuadForTransaction,
@@ -22,6 +16,11 @@ import {
   listMerchantDashboardRecentTxRaw,
   listMerchantPortalTransactionsRaw,
 } from "../lib/merchant-transactions-list-raw.js";
+import {
+  countMerchantLedgerUnion,
+  fetchMerchantLedgerUnionPage,
+  parseLedgerKindQuery,
+} from "../lib/merchant-ledger-merge.js";
 import { prisma } from "../lib/prisma.js";
 import { prismaClientKnowsTxStatusCreated } from "../lib/prisma-tx-status.js";
 import {
@@ -41,7 +40,18 @@ import { parsePageQuery } from "../lib/pagination.js";
 import { ensureMerchantPortalEnvironmentConsistent } from "../lib/merchant-gateway-env.js";
 import { resolveMerchantPortalForLists } from "../lib/merchant-portal-for-lists.js";
 import { computeMerchantBalances } from "../services/merchant-balance.js";
+import { withdrawalPublicJson } from "../lib/merchant-withdrawal-response.js";
+import { fillMissingWithdrawalNetworkFees } from "../services/payout-withdrawal-network-fee.js";
+import { normalizePayoutTreasuryAddressesJson } from "../lib/merchant-payout-settings.js";
+import { normalizePayoutRailsPolicyFromBody } from "../lib/merchant-payout-rails-policy.js";
+import {
+  isValidFeePercent,
+  parseFeePercent,
+  parseHumanMinSettlementToAtomic,
+  validateAndNormalizeHumanMinSettlement,
+} from "../lib/merchant-fee-math.js";
 import { buildAllPendingPreviews } from "../services/settlement-batch.js";
+import { buildPendingPayoutPreviewBuckets } from "../services/merchant-payout-preview.js";
 import { proofPathForFileName } from "../lib/settlement-upload.js";
 import fs from "fs";
 import { re } from "../config/runtime-env.js";
@@ -831,6 +841,141 @@ router.get("/api/v1/merchant/transactions", async (req, res) => {
       ? req.query.transaction_id.trim()
       : "";
 
+  const ledgerKind = parseLedgerKindQuery(req.query.ledger_kind);
+  const useDepositOnlyPrismaPath =
+    ledgerKind !== "payout" && (Boolean(qUser) || Boolean(qTxRef));
+
+  /**
+   * @param {import("@prisma/client").Transaction & { payerUser?: { externalUserId: string } | null, wallet: import("@prisma/client").Wallet & { assignedUser?: { externalUserId: string } | null } }} t
+   * @param {Awaited<ReturnType<typeof loadExpectedAtomicByWalletSessionForTransactions>>} expectedByKey
+   */
+  const mapDepositRow = (t, expectedByKey) => ({
+    id: t.id,
+    transaction_id: t.referenceTransactionId ?? null,
+    tx_hash: t.txHash,
+    chain: t.chain,
+    status: t.status,
+    token_symbol: t.tokenSymbol,
+    token_decimals: t.tokenDecimals,
+    amount: t.amount,
+    amount_decimal: formatAtomicAmountString(t.amount, t.tokenDecimals),
+    ...requestedAmountFieldsForTransaction(t, expectedByKey),
+    ...expectedReceivedAmountQuadForTransaction(t, expectedByKey),
+    confirmations: t.confirmations,
+    from_address: t.fromAddress,
+    to_address: t.toAddress,
+    wallet_id: t.walletId,
+    wallet_address: t.wallet.address,
+    currency: t.wallet.currency,
+    network: t.wallet.network,
+    block_number: t.blockNumber?.toString() ?? null,
+    log_index: t.logIndex,
+    callback_delivered_at: t.callbackDeliveredAt,
+    external_user_id:
+      t.payerUser?.externalUserId ??
+      t.wallet.assignedUser?.externalUserId ??
+      null,
+    gateway_environment: t.wallet.environment,
+    created_at: t.createdAt,
+    updated_at: t.updatedAt,
+  });
+
+  if (!useDepositOnlyPrismaPath) {
+    const unionParams = {
+      merchantIds: [mid],
+      environment,
+      skip,
+      take,
+      chain,
+      chainOk: !!(chain && CHAIN_SET.has(chain)),
+      token,
+      statusUi: status,
+      qUser,
+      qTxRef,
+      qAddr: "",
+      ledgerKind,
+    };
+    const totalMerged = await countMerchantLedgerUnion(prisma, unionParams);
+    if (totalMerged !== null) {
+      const unionRows = await fetchMerchantLedgerUnionPage(prisma, unionParams);
+      const depIds = unionRows.filter((u) => u.entry_kind === "deposit").map((u) => u.entry_id);
+      const payIds = unionRows.filter((u) => u.entry_kind === "payout").map((u) => u.entry_id);
+      const [txRows, wdRows] = await Promise.all([
+        depIds.length
+          ? prisma.transaction.findMany({
+              where: {
+                id: { in: depIds },
+                ...ACTIVE,
+                wallet: {
+                  is: {
+                    merchantId: mid,
+                    environment,
+                    ...ACTIVE,
+                  },
+                },
+              },
+              include: {
+                payerUser: { select: { externalUserId: true } },
+                wallet: {
+                  include: {
+                    assignedUser: { select: { externalUserId: true } },
+                  },
+                },
+              },
+            })
+          : [],
+        payIds.length
+          ? prisma.withdrawal.findMany({
+              where: {
+                id: { in: payIds },
+                merchantId: mid,
+                environment,
+                ...ACTIVE,
+              },
+            })
+          : [],
+      ]);
+      await fillMissingWithdrawalNetworkFees(wdRows);
+      const tm = new Map(txRows.map((t) => [t.id, t]));
+      const wm = new Map(wdRows.map((w) => [w.id, w]));
+      const expectedByKeyMerge =
+        await loadExpectedAtomicByWalletSessionForTransactions(txRows);
+      const ledger = [];
+      for (const ur of unionRows) {
+        if (ur.entry_kind === "deposit") {
+          const t = tm.get(ur.entry_id);
+          if (!t) continue;
+          ledger.push({
+            kind: "deposit",
+            created_at: t.createdAt,
+            deposit: mapDepositRow(t, expectedByKeyMerge),
+          });
+        } else {
+          const w = wm.get(ur.entry_id);
+          if (!w) continue;
+          ledger.push({
+            kind: "payout",
+            created_at: w.createdAt,
+            payout: withdrawalPublicJson(w),
+          });
+        }
+      }
+      const transactions = ledger
+        .filter((x) => x.kind === "deposit")
+        .map((x) => x.deposit);
+      res.json({
+        page,
+        pageSize,
+        total: totalMerged,
+        environment,
+        ledger_kind: ledgerKind,
+        ledger,
+        transactions,
+      });
+      return;
+    }
+  }
+
   const where = {
     ...ACTIVE,
     wallet: {
@@ -926,41 +1071,21 @@ router.get("/api/v1/merchant/transactions", async (req, res) => {
   const expectedByKey =
     await loadExpectedAtomicByWalletSessionForTransactions(rows);
 
+  const deposits = rows.map((t) => mapDepositRow(t, expectedByKey));
+  const ledger = deposits.map((d) => ({
+    kind: "deposit",
+    created_at: d.created_at,
+    deposit: d,
+  }));
+
   res.json({
     page,
     pageSize,
     total,
     environment,
-    transactions: rows.map((t) => ({
-      id: t.id,
-      transaction_id: t.referenceTransactionId ?? null,
-      tx_hash: t.txHash,
-      chain: t.chain,
-      status: t.status,
-      token_symbol: t.tokenSymbol,
-      token_decimals: t.tokenDecimals,
-      amount: t.amount,
-      amount_decimal: formatAtomicAmountString(t.amount, t.tokenDecimals),
-      ...requestedAmountFieldsForTransaction(t, expectedByKey),
-      ...expectedReceivedAmountQuadForTransaction(t, expectedByKey),
-      confirmations: t.confirmations,
-      from_address: t.fromAddress,
-      to_address: t.toAddress,
-      wallet_id: t.walletId,
-      wallet_address: t.wallet.address,
-      currency: t.wallet.currency,
-      network: t.wallet.network,
-      block_number: t.blockNumber?.toString() ?? null,
-      log_index: t.logIndex,
-      callback_delivered_at: t.callbackDeliveredAt,
-      external_user_id:
-        t.payerUser?.externalUserId ??
-        t.wallet.assignedUser?.externalUserId ??
-        null,
-      gateway_environment: t.wallet.environment,
-      created_at: t.createdAt,
-      updated_at: t.updatedAt,
-    })),
+    ledger_kind: "deposit",
+    ledger,
+    transactions: deposits,
   });
 });
 
@@ -1019,66 +1144,6 @@ router.post(
   },
 );
 
-router.get("/api/v1/merchant/withdrawals", async (req, res) => {
-  const mid = merchantId(req);
-  if (!mid) {
-    res.status(401).json({ error: "unauthorized" });
-    return;
-  }
-  const { skip, take, page, pageSize } = parsePageQuery(req.query);
-  const chain =
-    typeof req.query.chain === "string" ? req.query.chain.trim() : "";
-  const status =
-    typeof req.query.status === "string" ? req.query.status.trim() : "";
-  const token =
-    typeof req.query.token_symbol === "string"
-      ? req.query.token_symbol.trim()
-      : "";
-  const toAddr =
-    typeof req.query.to_address === "string" ? req.query.to_address.trim() : "";
-
-  const where = {
-    merchantId: mid,
-    ...ACTIVE,
-    ...(chain && CHAIN_SET.has(chain) ? { chain } : {}),
-    ...(status && Object.values(WithdrawalStatus).includes(status)
-      ? { status }
-      : {}),
-    ...(token ? { tokenSymbol: { equals: token, mode: "insensitive" } } : {}),
-    ...(toAddr
-      ? {
-          toAddress: toAddr.startsWith("0x")
-            ? { equals: toAddr, mode: "insensitive" }
-            : { contains: toAddr, mode: "insensitive" },
-        }
-      : {}),
-  };
-
-  const [total, rows] = await Promise.all([
-    prisma.withdrawal.count({ where }),
-    prisma.withdrawal.findMany({
-      where,
-      orderBy: { createdAt: "desc" },
-      skip,
-      take,
-    }),
-  ]);
-  res.json({ page, pageSize, total, withdrawals: rows });
-});
-
-router.post("/api/v1/merchant/withdrawals", async (req, res) => {
-  const mid = merchantId(req);
-  if (!mid) {
-    res.status(401).json({ error: "unauthorized" });
-    return;
-  }
-  res.status(501).json({
-    error: "merchant_withdraw_not_supported",
-    message:
-      "This gateway supports USDT·TRC20 and USDT·ERC20 deposits only; merchant API withdrawals are not enabled.",
-  });
-});
-
 router.patch("/api/v1/merchant/settings", async (req, res) => {
   const mid = merchantId(req);
   if (!mid) {
@@ -1095,6 +1160,12 @@ router.patch("/api/v1/merchant/settings", async (req, res) => {
       supportedDepositRails: true,
       autoSwapEnabled: true,
       autoSwapSettingsJson: true,
+      payoutMinAmountHuman: true,
+      payoutMaxAmountHuman: true,
+      payoutTreasuryAddressesJson: true,
+      mdrPercent: true,
+      settlementRatePercent: true,
+      payoutMdrPercent: true,
     },
   });
   if (!existing) {
@@ -1104,6 +1175,15 @@ router.patch("/api/v1/merchant/settings", async (req, res) => {
 
   const data = {};
   if (body.callback_url !== undefined) data.callbackUrl = body.callback_url;
+
+  if (body.payout_mdr_percent !== undefined) {
+    const p = parseFeePercent(body.payout_mdr_percent);
+    if (p === null || !isValidFeePercent(p)) {
+      res.status(400).json({ error: "invalid_payout_mdr_percent" });
+      return;
+    }
+    data.payoutMdrPercent = p;
+  }
 
   let nextChains = existing.defaultChains ?? [];
   if (body.default_chains !== undefined) {
@@ -1222,6 +1302,80 @@ router.patch("/api/v1/merchant/settings", async (req, res) => {
     data.autoSwapSettingsJson = v.json;
   }
 
+  const railsPolicyInBody =
+    body.payout_rails_policy !== undefined || body.payoutRailsPolicy !== undefined;
+
+  if (!railsPolicyInBody && body.payout_min_amount_human !== undefined) {
+    const n = validateAndNormalizeHumanMinSettlement(body.payout_min_amount_human);
+    if (!n.ok) {
+      res.status(400).json({ error: "invalid_payout_min_amount", message: n.error });
+      return;
+    }
+    data.payoutMinAmountHuman = n.raw;
+  }
+  if (!railsPolicyInBody && body.payout_max_amount_human !== undefined) {
+    const n = validateAndNormalizeHumanMinSettlement(body.payout_max_amount_human);
+    if (!n.ok) {
+      res.status(400).json({ error: "invalid_payout_max_amount", message: n.error });
+      return;
+    }
+    data.payoutMaxAmountHuman = n.raw;
+  }
+  if (
+    !railsPolicyInBody &&
+    (body.payout_treasury_addresses !== undefined ||
+      body.payoutTreasuryAddresses !== undefined)
+  ) {
+    const raw = body.payout_treasury_addresses ?? body.payoutTreasuryAddresses;
+    const tre = normalizePayoutTreasuryAddressesJson(raw);
+    if (!tre.ok) {
+      res.status(400).json({ error: tre.error });
+      return;
+    }
+    data.payoutTreasuryAddressesJson = tre.value;
+  }
+
+  if (railsPolicyInBody) {
+    const raw = body.payout_rails_policy ?? body.payoutRailsPolicy;
+    const v = normalizePayoutRailsPolicyFromBody(raw);
+    if (!v.ok) {
+      res.status(400).json({
+        error: v.error,
+        ...(v.message ? { message: v.message } : {}),
+      });
+      return;
+    }
+    data.payoutRailsPolicyJson = v.policy;
+    data.payoutTreasuryAddressesJson = v.treasuryDerived;
+  }
+
+  if (
+    !railsPolicyInBody &&
+    (body.payout_min_amount_human !== undefined ||
+      body.payout_max_amount_human !== undefined)
+  ) {
+    const effMinStr =
+      data.payoutMinAmountHuman ?? existing.payoutMinAmountHuman ?? "0";
+    const effMaxStr =
+      data.payoutMaxAmountHuman ?? existing.payoutMaxAmountHuman ?? "0";
+    const minAt = parseHumanMinSettlementToAtomic(effMinStr, 6);
+    const maxAt = parseHumanMinSettlementToAtomic(effMaxStr, 6);
+    if (
+      minAt.ok &&
+      maxAt.ok &&
+      maxAt.value > 0n &&
+      minAt.value > 0n &&
+      maxAt.value < minAt.value
+    ) {
+      res.status(400).json({
+        error: "payout_max_below_min",
+        message:
+          "Maximum payout must be greater than or equal to minimum (when both are set).",
+      });
+      return;
+    }
+  }
+
   if (body.trx_sweep_funder_private_key !== undefined) {
     const raw = body.trx_sweep_funder_private_key;
     if (raw === null || raw === "") {
@@ -1270,6 +1424,7 @@ router.get("/api/v1/merchant/settlements/pending-preview", async (req, res) => {
     select: {
       id: true,
       mdrPercent: true,
+      payoutMdrPercent: true,
       settlementRatePercent: true,
       minSettlementAmount: true,
       settlementPeriodDays: true,
@@ -1288,9 +1443,48 @@ router.get("/api/v1/merchant/settlements/pending-preview", async (req, res) => {
     environment,
     fee_rates: {
       mdr_percent: Number(merchRates.mdrPercent),
+      payout_mdr_percent: Number(merchRates.payoutMdrPercent),
       settlement_rate_percent: Number(merchRates.settlementRatePercent),
       min_settlement_amount: merchRates.minSettlementAmount,
       settlement_period_days: Number(merchRates.settlementPeriodDays ?? 0),
+    },
+    buckets,
+  });
+});
+
+router.get("/api/v1/merchant/settlements/payout-preview", async (req, res) => {
+  const mid = merchantId(req);
+  if (!mid) {
+    res.status(401).json({ error: "unauthorized" });
+    return;
+  }
+  const gate = await resolveMerchantPortalForLists(mid);
+  if (!gate.ok) {
+    res.status(gate.status).json({
+      error: gate.error,
+      ...(gate.message ? { message: gate.message } : {}),
+    });
+    return;
+  }
+  const { environment } = gate;
+  const merchRates = await prisma.merchant.findFirst({
+    where: { id: mid, ...ACTIVE },
+    select: {
+      id: true,
+      payoutMdrPercent: true,
+    },
+  });
+  if (!merchRates) {
+    res.status(404).json({ error: "not_found" });
+    return;
+  }
+  const buckets = await buildPendingPayoutPreviewBuckets(mid, environment, {
+    payoutMdrPercent: merchRates.payoutMdrPercent,
+  });
+  res.json({
+    environment,
+    fee_rates: {
+      payout_mdr_percent: Number(merchRates.payoutMdrPercent),
     },
     buckets,
   });

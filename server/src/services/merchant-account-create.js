@@ -98,7 +98,7 @@ export async function createMerchantFromPanelBody(body, opts = {}) {
   if (resellerPartnerId != null) {
     const rp = await prisma.resellerPartner.findFirst({
       where: { id: resellerPartnerId, deletedAt: null },
-      select: { mdrPercent: true },
+      select: { mdrPercent: true, payoutMdrPercent: true },
     });
     if (!rp) {
       return {
@@ -155,6 +155,37 @@ export async function createMerchantFromPanelBody(body, opts = {}) {
     }
   }
 
+  /** @type {number} */
+  let payoutMdrP;
+  if (resellerPartnerId != null) {
+    const hasBodyPayoutMdr =
+      body.payout_mdr_percent !== undefined &&
+      body.payout_mdr_percent !== null &&
+      String(body.payout_mdr_percent).trim() !== "";
+    payoutMdrP = hasBodyPayoutMdr ? parseFeePercent(body.payout_mdr_percent) : rpPayoutMdr;
+    if (payoutMdrP === null || !isValidFeePercent(payoutMdrP)) {
+      return {
+        ok: false,
+        status: 400,
+        json: { error: "invalid_payout_mdr_percent" },
+      };
+    }
+  } else {
+    payoutMdrP =
+      body.payout_mdr_percent !== undefined &&
+      body.payout_mdr_percent !== null &&
+      String(body.payout_mdr_percent).trim() !== ""
+        ? parseFeePercent(body.payout_mdr_percent)
+        : mdrP;
+    if (payoutMdrP === null || !isValidFeePercent(payoutMdrP)) {
+      return {
+        ok: false,
+        status: 400,
+        json: { error: "invalid_payout_mdr_percent" },
+      };
+    }
+  }
+
   const minSettle = validateAndNormalizeHumanMinSettlement(
     body.min_settlement_amount,
   );
@@ -201,6 +232,7 @@ export async function createMerchantFromPanelBody(body, opts = {}) {
         sandboxApiKeyHint: apiSecret.slice(-6),
         sandboxApiKeyCipher: encryptMerchantApiKey(apiSecret),
         mdrPercent: mdrP,
+        payoutMdrPercent: payoutMdrP,
         settlementRatePercent: settlementP,
         minSettlementAmount: minSettle.raw,
         settlementPeriodDays: periodDays,

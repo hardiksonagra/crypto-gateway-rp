@@ -2,7 +2,7 @@
 
 Share your **HTTPS base URL** (e.g. `https://payments.example.com`) with integrators. All paths below are **relative** to that base.
 
-**Merchants** using the portal and integrating their backend should also read **[MERCHANT_API_INTEGRATION.md](./MERCHANT_API_INTEGRATION.md)** (JWT login vs gateway auth: `X-Token` or legacy `api_key`, settings, rails). §3.1 adds **PHP `json_encode` + `JSON_UNESCAPED_SLASHES`**, **`Content-Type: application/json`**, and matching the wire body to the canonical string for `X-Token`.
+**Merchants** using the portal and integrating their backend should read **[MERCHANT_API_INTEGRATION.md](./MERCHANT_API_INTEGRATION.md)**. That guide is organized in **three parts**: **Part I** (supported currency & gateway setup), **Part II** (pay-in / deposits), **Part III** (payout). **Part I §I.3.1** covers **PHP `json_encode` + `JSON_UNESCAPED_SLASHES`**, **`Content-Type: application/json`**, and matching the wire body to the canonical string for `X-Token`.
 
 ---
 
@@ -12,7 +12,7 @@ Share your **HTTPS base URL** (e.g. `https://payments.example.com`) with integra
 | ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Purpose**        | Issue **per-customer deposit addresses**, detect incoming transfers, and **POST webhooks** to the merchant’s configured callback URL when a payment is confirmed.                                                                                                 |
 | **Format**         | JSON over HTTPS (`Content-Type: application/json`)                                                                                                                                                                                                                |
-| **Authentication** | Preferred: **`X-Token`** + **`X-Merchant-Id`**. Legacy: **`api_key`** in JSON. Keys are created in the **admin portal** when a merchant is provisioned (shown **once**). See [MERCHANT_API_INTEGRATION.md](./MERCHANT_API_INTEGRATION.md) §3.                     |
+| **Authentication** | Preferred: **`X-Token`** + **`X-Merchant-Id`**. Legacy: **`api_key`** in JSON. Keys are created in the **admin portal** when a merchant is provisioned (shown **once**). See [MERCHANT_API_INTEGRATION.md — Part I §I.3](./MERCHANT_API_INTEGRATION.md#i3-merchant-api-key-gateway).                     |
 | **Rails**          | Deposits are identified by `**currency`** + `**network`** (e.g. `USDT`+`TRC20`). Merchants configure **supported chains** and **supported rails** in the portal; if omitted on `deposit-address`, the merchant’s **default** pair is used (first supported rail). |
 
 ---
@@ -23,7 +23,7 @@ Share your **HTTPS base URL** (e.g. `https://payments.example.com`) with integra
 2. Integrator calls `**POST /api/v1/gateway/deposit-address`** with gateway auth (`X-Token` + `X-Merchant-Id`, or legacy `api_key`) and `external_user_id`, and optionally `currency` + `network`, optional **`amount`** (fixed checkout total), optional **`transaction_id`** (your order id), optional **`redirect_url`** (optional HTTPS return URL stored and echoed on **200**).
 3. Response includes `address`, `chain`, `currency`, `network`, **`transaction_id`** and **`reference_id`** (same checkout reference — your optional request `transaction_id` or gateway-generated). When `amount` was sent, the response also includes **`expected_amount_decimal`** / **`expected_amount_atomic`** for display. Each call also creates a **`transactions` row** with `status: "created"` (placeholder, `amount` 0) — with or without optional `amount` — using that same reference; poll status with **`GET /api/v1/gateway/transactions?transaction_id=…`** (gateway auth headers; single row JSON). Same customer + rail is idempotent for the **wallet**; each call can start a new **checkout session** when the pool refreshes the assignment. For **another rail** for the same end user, call **`deposit-address` again** with the same **`external_user_id`** and the desired **`currency`** / **`network`**.
 4. User sends crypto to the shown address on the **correct network** (show **amount due** from the response when you passed `amount`).
-5. When confirmations pass, the gateway POSTs to the merchant **callback URL** with **`X-Webhook-Event: payment`** and JSON **`status`** (`success`, `underpaid`, etc.). If you used a fixed **`amount`** and the first on-chain credit is **below** the expected session total, **`status` is `underpaid`** first; when the **combined** session total reaches the expected amount, another POST with **`status: success`** follows (see MERCHANT_API_INTEGRATION.md section 6).
+5. When confirmations pass, the gateway POSTs to the merchant **callback URL** with **`X-Webhook-Event: payment`** and JSON **`status`** (`success`, `underpaid`, etc.). If you used a fixed **`amount`** and the first on-chain credit is **below** the expected session total, **`status` is `underpaid`** first; when the **combined** session total reaches the expected amount, another POST with **`status: success`** follows (see [MERCHANT_API_INTEGRATION.md — Part II §II.3](./MERCHANT_API_INTEGRATION.md#ii3-payment-webhooks-x-webhook-event-payment)). **Payouts** do not use webhooks — poll **`GET /api/v1/gateway/payout?client_reference_id=…`** ([Part III §III.2](./MERCHANT_API_INTEGRATION.md#iii2-get-payout-status)).
 
 ---
 
@@ -83,10 +83,10 @@ Content-Type: application/json
 | `external_user_id` | string | Yes       | Stable unique id of the payer on **your** system.                                                                                                                        |
 | `currency`         | string | No        | Upper-case token symbol (e.g. `USDT`). Defaults to merchant default.                                                                                                     |
 | `network`          | string | No        | Network label (e.g. `TRC20`). Defaults to merchant default.                                                                                                              |
-| `amount`           | string | No        | Optional fixed total: decimal (e.g. `10.5`) or digits-only **whole USDT** (e.g. `11` = 11 USDT). USDT on TRC20/ERC20/BEP20; see MERCHANT_API_INTEGRATION.md section 5.1. |
+| `amount`           | string | No        | Optional fixed total: decimal (e.g. `10.5`) or digits-only **whole USDT** (e.g. `11` = 11 USDT). USDT on TRC20/ERC20/BEP20; see [MERCHANT_API_INTEGRATION.md — Part II §II.1](./MERCHANT_API_INTEGRATION.md#ii1-get-or-create-deposit-address). |
 | `transaction_id`   | string | No        | Your checkout / order id (max 256 chars); **200** always returns **`transaction_id`** and **`reference_id`** (same string, yours or generated). Same value on the `created` row and as **`reference_id` / `merchant_transaction_id`** on webhooks. |
 | `redirect_url`     | string | No        | Optional HTTPS URL stored with the session and echoed on **200**.                                                                                                                  |
-| (headers)          |        | Preferred | `X-Token`, `X-Merchant-Id` — see MERCHANT_API_INTEGRATION.md §3.1.                                                                                                       |
+| (headers)          |        | Preferred | `X-Token`, `X-Merchant-Id` — see [MERCHANT_API_INTEGRATION.md — Part I §I.3.1](./MERCHANT_API_INTEGRATION.md#i31-recommended-x-token-secret-not-in-the-json-body).                                                                                                       |
 
 **200** — includes `transaction_id`, `reference_id`, `deposit_scan_expires_at`, `deposit_scan_ttl_minutes`, `reservation_expires_at`, `redirect_url`, `gateway_environment`, and wallet fields. When `amount` was valid, also `expected_amount_atomic` and `expected_amount_decimal`.
 
@@ -151,9 +151,11 @@ GET /api/v1/gateway/transactions?transaction_id={checkout_reference}
 
 ---
 
-## 6. Webhooks
+## 6. Webhooks (deposits only)
 
-Every payment callback uses **`X-Webhook-Event: payment`**. Read **`status`** in the JSON body (`success`, `underpaid`, `pending`, `failed`). Details and retry rules: [MERCHANT_API_INTEGRATION.md §6](./MERCHANT_API_INTEGRATION.md#6-webhooks-unified-payment-event).
+The merchant **callback URL** receives **`POST`** requests for **pay-ins (deposits)** only, with **`X-Webhook-Event: payment`**. For **payout** status, use **`GET /api/v1/gateway/payout?client_reference_id=…`** — see [MERCHANT_API_INTEGRATION.md — Part III §III.2](./MERCHANT_API_INTEGRATION.md#iii2-get-payout-status).
+
+For deposits, JSON **`status`** is `success`, `underpaid`, `pending`, or `failed`. Full field list and retries: [MERCHANT_API_INTEGRATION.md — Part II §II.3](./MERCHANT_API_INTEGRATION.md#ii3-payment-webhooks-x-webhook-event-payment).
 
 Every payment body includes **`expected_amount_atomic`**, **`expected_amount_decimal`**, **`received_amount_atomic`**, and **`received_amount_decimal`**.
 
@@ -225,7 +227,7 @@ X-Webhook-Event: payment
 }
 ```
 
-**Idempotency:** Use `tx_hash` + `chain` + `wallet_id` (and **`reference_id`** / `merchant_transaction_id` / the **deposit-address** reference string for your order correlation).
+**Idempotency (payment webhooks):** Use `tx_hash` + `chain` + `wallet_id` (and **`reference_id`** / `merchant_transaction_id` / the **deposit-address** reference string for your order correlation).
 
 **Security:** Add a shared secret or signature at your edge; the default gateway does not sign payloads.
 

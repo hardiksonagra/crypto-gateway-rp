@@ -4,20 +4,34 @@ This document is for **merchants** who use the **merchant portal** (`/m`) and ne
 
 There are **two separate auth mechanisms**:
 
-| Use case                                                               | How you authenticate                                                                        | Base paths                             |
-| ---------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- | -------------------------------------- |
-| **Browser portal** (dashboard, settings, reports)                      | **JWT** after email/password login                                                          | `/api/v1/auth/*`, `/api/v1/merchant/*` |
-| **Your server calling the gateway** (deposit addresses, status polling) | **`X-Token` + `X-Merchant-Id` headers** (recommended), or legacy **`api_key`** in JSON body | `/api/v1/gateway/*`                    |
+| Use case                                                                  | How you authenticate                                                                        | Base paths                             |
+| ------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- | -------------------------------------- |
+| **Browser portal** (dashboard, settings, reports)                         | **JWT** after email/password login                                                          | `/api/v1/auth/*`, `/api/v1/merchant/*` |
+| **Your server calling the gateway** (deposit addresses, status polling)    | **`X-Token` + `X-Merchant-Id` headers** (recommended), or legacy **`api_key`** in JSON body | `/api/v1/gateway/*`                    |
 
 The API key is **not** the same as the login JWT. End users of your product should **never** see the API key.
 
 ---
 
-## 1. Merchant portal login (JWT)
+## How this guide is organized
+
+| Part | Topic | What’s inside |
+| ---- | ----- | ------------- |
+| **Part I** | **Supported currency & gateway setup** | Portal login (JWT), Settings (chains, rails, callback URL), gateway API key / `X-Token`, rail reference table, **`GET …/supported-currency`**. |
+| **Part II** | **Pay-in (deposits)** | **`POST …/deposit-address`**, **`GET …/gateway/transactions`**, **payment** webhooks (`X-Webhook-Event: payment`). |
+| **Part III** | **Payout** | **`POST …/gateway/payout`**, **`GET …/gateway/payout`** (poll status by **`client_reference_id`**). No payout webhooks — callback URL is for **deposits only**. |
+
+---
+
+# Part I: Supported currency and gateway setup
+
+Everything you need before calling pay-in or payout APIs: authentication modes, merchant settings, allowed rails, and how to list **`pairs`** your key may use.
+
+## I.1 Merchant portal login (JWT)
 
 Used by the React app and optional tooling (Postman, scripts) to access **your** data in the dashboard.
 
-### 1.1 Login
+### Login
 
 ```http
 POST /api/v1/auth/login
@@ -44,7 +58,7 @@ Content-Type: application/json
 
 **401** — `{ "error": "invalid_credentials" }` (wrong password, unknown email, or deactivated account).
 
-### 1.2 Authenticated requests
+### Authenticated requests
 
 Send the token on every request:
 
@@ -52,7 +66,7 @@ Send the token on every request:
 Authorization: Bearer <JWT>
 ```
 
-### 1.3 Current user (settings snapshot)
+### Current user (settings snapshot)
 
 ```http
 GET /api/v1/auth/me
@@ -61,7 +75,7 @@ Authorization: Bearer <JWT>
 
 Returns your profile fields used by the UI, including `defaultChains`, `defaultCurrency`, `defaultNetwork`, `supportedDepositRails`, `callbackUrl`, `apiKeyHint` (last characters of the key only — **not** the secret). Also **`gateway_tron_usdt_only`** (boolean) and **`gateway_supported_rail_keys`** (string array like `["USDT|TRC20",…]`): the rails the **gateway API** will actually accept — same as `GET /api/v1/gateway/supported-currency` when using your key. These can be a **subset** of `supportedDepositRails` while `gateway_tron_usdt_only` is true.
 
-### 1.4 Other merchant-scoped routes
+### Other merchant-scoped routes
 
 All require `Authorization: Bearer` and `MERCHANT` role, for example:
 
@@ -72,30 +86,26 @@ All require `Authorization: Bearer` and `MERCHANT` role, for example:
 
 Full list: see `server/src/api/merchant-routes.js`.
 
----
-
-## 2. Integration settings (before coding against the gateway)
+## I.2 Integration settings (before coding against the gateway)
 
 Configure these in the portal (**Settings** / `/m/settings`) or via `PATCH /api/v1/merchant/settings` with your JWT:
 
 | Setting                                                             | Effect on integration                                                                                                                                                                                                                                                       |
 | ------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Callback URL**                                                    | HTTPS URL for **payment** webhooks: same `X-Webhook-Event` for every POST; use JSON **`status`** to branch (`success`, `underpaid`, …). See §6.                                                                                                                             |
+| **Callback URL**                                                    | HTTPS URL for **deposit (pay-in) webhooks only** (`X-Webhook-Event: payment`). Payout status: poll **`GET …/gateway/payout`** (**Part III §III.2**). See **Part II §II.3**.                                                                                                                                    |
 | **Supported chains**                                                | Underlying chains the gateway may use. Each deposit **rail** must belong to one of these chains.                                                                                                                                                                            |
 | **Supported currency / network (rails)**                            | Whitelist of `(currency, network)` pairs your API key may use (e.g. `USDT` + `TRC20`). If this list is **non-empty**, requests for other pairs return `rail_not_enabled_for_merchant`. If the list is **empty** (legacy), any gateway rail on a supported chain is allowed. |
 | **Default pair** (stored as `default_currency` / `default_network`) | Set automatically from the **first** rail in your supported list when you save settings. Used when `deposit-address` is called **without** `currency` and `network`.                                                                                                        |
 
 **Important:** Put the rail you want as the default **first** in the supported list (selection order in the UI defines the array order).
 
----
-
-## 3. Merchant API key (gateway)
+## I.3 Merchant API key (gateway)
 
 - Issued when an **admin** creates the merchant or when you **regenerate** the key (old key stops working).
 - Shown **once** in the admin UI or modal — store it in **secrets** (environment variables, vault), not in git or frontend bundles.
 - Gateway POST routes accept either **recommended header auth** (`X-Token`) or **legacy** JSON field **`api_key`**. No `Authorization` JWT is required for `/api/v1/gateway/*` (that JWT is for the browser portal only).
 
-### 3.1 Recommended: `X-Token` (secret not in the JSON body)
+### I.3.1 Recommended: `X-Token` (secret not in the JSON body)
 
 For **POST** routes, send the **same JSON body as before but omit `api_key`**, and add headers below. **Live vs sandbox** defaults to the merchant **portal profile** (Settings); omit `gateway_environment` in JSON unless you need an override when live and sandbox share one secret.
 
@@ -116,15 +126,13 @@ The server decrypts `X-Token` with your stored gateway secret and checks that th
 
 **GET** `/api/v1/gateway/supported-currency` has no body: build `X-Token` from canonical JSON `{"api_key":"<your_secret>"}` only (secret encrypted inside the token, not sent as plain text).
 
-### 3.2 Legacy: `api_key` in the JSON body
+### I.3.2 Legacy: `api_key` in the JSON body
 
 You may still pass **`api_key`** in the body on the same routes. New integrations should prefer **`X-Token`** so the secret is not embedded in JSON logs or proxies.
 
----
+## I.4 Supported deposit rails (reference table)
 
-## 4. Supported deposit rails (gateway)
-
-These `(currency, network)` pairs are accepted when they resolve to a known rail **and** your merchant is allowed to use them (see §2).
+These `(currency, network)` pairs are accepted when they resolve to a known rail **and** your merchant is allowed to use them (see **§I.2**).
 
 | `currency` | `network` | Chain |
 | ---------- | --------- | ----- |
@@ -136,15 +144,9 @@ These `(currency, network)` pairs are accepted when they resolve to a known rail
 
 Values are matched case-insensitively after trim.
 
----
+## I.5 List supported currency pairs
 
-## 5. Gateway API reference
-
-Most gateway **POST** routes use `Content-Type: application/json`. **Supported currency list** is **GET** with headers only (see below).
-
-### List supported currency pairs
-
-**GET (no JSON body)**
+**GET** (no JSON body)
 
 ```http
 GET /api/v1/gateway/supported-currency
@@ -158,7 +160,15 @@ Build `X-Token` exactly like other gateway tokens, but the encrypted **plaintext
 
 **200** — `{ "pairs": [...], "default_currency", "default_network", "gateway_environment", "gateway_tron_usdt_only" }`. Each `pairs[]` object includes `currency`, `network`, and `chain` (underlying chain code, same meaning as `deposit-address` responses). When `gateway_tron_usdt_only` is **true** (default in many deployments), the gateway only allows **USDT + TRC20** regardless of how many rails you saved in Settings — `pairs` will contain that one rail only until an admin sets `GATEWAY_TRON_USDT_ONLY` to **false** / **0** (env or System settings) and the API process is restarted if needed.
 
-### 5.1 Get or create deposit address
+Most other gateway **POST** routes use `Content-Type: application/json` and the same auth model (**§I.3**).
+
+---
+
+# Part II: Pay-in (deposits)
+
+Create deposit addresses, poll checkout status, and handle **payment** webhooks.
+
+## II.1 Get or create deposit address
 
 ```http
 POST /api/v1/gateway/deposit-address
@@ -168,17 +178,17 @@ POST /api/v1/gateway/deposit-address
 | --------------------- | -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `api_key`             | Legacy only    | Merchant API secret; omit when using `X-Token` + `X-Merchant-Id`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 | `external_user_id`    | Yes            | Stable unique id of the payer on **your** system.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| `currency`            | No             | e.g. `USDT`. If omitted, merchant **default** pair is used.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
+| `currency`            | No             | e.g. `USDT`. If omitted, merchant **default** pair is used.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | `network`             | No             | e.g. `TRC20`. If omitted, merchant **default** pair is used.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | `amount`              | No             | **Optional fixed checkout amount.** Either a **decimal token amount** (e.g. `"10.50"`) or **digits-only whole token units** (e.g. `"11"` = 11 USDT, scaled by the rail’s decimals). When set, the gateway stores it for this checkout session and treats the deposit as **underpaid** until the **sum of on-chain credits for this checkout session** reaches the expected total (within a one–smallest-unit tolerance). Omit `amount` for the classic “pay any amount” flow. Supported for rails where the gateway knows token decimals (today: **USDT** on **TRC20**, **ERC20**, **BEP20**). |
-| `transaction_id`      | No             | Your order / checkout id (stored on new deposit rows). Max 256 characters. If omitted, the gateway generates a unique reference. **200** returns it as **`transaction_id`** and duplicate **`reference_id`** (same string everywhere: `created` row, `GET …/gateway/transactions?transaction_id=…` response, webhooks `reference_id` / `merchant_transaction_id`).                                                                                                                                                                                                                                                                                                                                                                                    |
-| `redirect_url`        | No             | Optional HTTPS URL stored with the session and echoed on **200** for your own post-pay flows (HTTPS allowlist).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `transaction_id`      | No             | Your order / checkout id (stored on new deposit rows). Max 256 characters. If omitted, the gateway generates a unique reference. **200** returns it as **`transaction_id`** and duplicate **`reference_id`** (same string everywhere: `created` row, `GET …/gateway/transactions?transaction_id=…` response, webhooks `reference_id` / `merchant_transaction_id`).                                                                                                                                                                                                                                                                                                                                                     |
+| `redirect_url`        | No             | Optional HTTPS URL stored with the session and echoed on **200** for your own post-pay flows (HTTPS allowlist).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `gateway_environment` | No             | **Omit** to use the merchant portal **Live/Sandbox** setting (Settings). Optional override only when live and sandbox share one secret and you need the other environment.                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | Headers               | With `X-Token` | `X-Token` (required), `X-Merchant-Id` (required).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
 
 **200** — always includes `address`, `chain`, `currency`, `network`, numeric `wallet_id`, `user_id`, `merchant_id`, `created_new_user`, `gateway_environment`, **`transaction_id`** and **`reference_id`** (same checkout reference string — your optional id or gateway-generated; use either field), `deposit_scan_expires_at`, `deposit_scan_ttl_minutes`, `reservation_expires_at`, and `redirect_url` (echo, may be `null`).
 
-When `amount` was sent and parsed, the response also includes `expected_amount_atomic` and `expected_amount_decimal` (human-readable for display). Every **`deposit-address`** call inserts a **`transactions` row** with `status: "created"` (placeholder `amount` `0`, synthetic `tx_hash` `gateway-created:<session>`, `reference_transaction_id` set to that **`transaction_id`**) — **even when no optional `amount`** was sent, so you can track the checkout from the response onward. The placeholder is removed when the first on-chain credit exists for that checkout session. If the payer never sends funds and the row stays `created` longer than **`CHECKOUT_CREATED_EXPIRY_HOURS`** (default **24**, `.env` or Admin → System settings under **Checkout · abandoned fixed-amount**), the maintenance cron marks it **`failed`** and POSTs a **payment** webhook with `status: "failed"` (see §6) so you can cancel the order on your side.
+When `amount` was sent and parsed, the response also includes `expected_amount_atomic` and `expected_amount_decimal` (human-readable for display). Every **`deposit-address`** call inserts a **`transactions` row** with `status: "created"` (placeholder `amount` `0`, synthetic `tx_hash` `gateway-created:<session>`, `reference_transaction_id` set to that **`transaction_id`**) — **even when no optional `amount`** was sent, so you can track the checkout from the response onward. The placeholder is removed when the first on-chain credit exists for that checkout session. If the payer never sends funds and the row stays `created` longer than **`CHECKOUT_CREATED_EXPIRY_HOURS`** (default **24**, `.env` or Admin → System settings under **Checkout · abandoned fixed-amount**), the maintenance cron marks it **`failed`** and POSTs a **payment** webhook with `status: "failed"` (see **§II.3**) so you can cancel the order on your side.
 
 ```json
 {
@@ -206,8 +216,8 @@ When `amount` was sent and parsed, the response also includes `expected_amount_a
 | ---- | ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | 400  | `gateway_auth_required`                                                               | Neither `api_key` nor `X-Token` auth provided.                                                                                                                                                                     |
 | 400  | `x_merchant_id_required`                                                              | `X-Token` sent without `X-Merchant-Id`.                                                                                                                                                                            |
-| 400  | `ambiguous_gateway_auth`                                                              | Both `api_key` and `X-Token` sent.                                                                                                                                                                                 |
-| 400  | (message)                                                                             | Missing `external_user_id`, or unsupported pair.                                                                                                                                                                   |
+| 400  | `ambiguous_gateway_auth`                                                              | Both `api_key` and `X-Token` sent.                                                                                                                                                                                   |
+| 400  | (message)                                                                             | Missing `external_user_id`, or unsupported pair.                                                                                                                                                                     |
 | 400  | `amount_invalid` / `amount_must_be_positive` / `amount_too_long` / `amount_too_large` | Bad `amount` string.                                                                                                                                                                                               |
 | 400  | `amount_not_supported_for_rail`                                                       | `amount` sent but this `currency`/`network` has no fixed-decimal rules in the gateway (use omit or another rail).                                                                                                  |
 | 401  | `invalid_api_key`                                                                     | Bad or inactive key (legacy body auth).                                                                                                                                                                            |
@@ -216,29 +226,31 @@ When `amount` was sent and parsed, the response also includes `expected_amount_a
 | 503  | `gateway_secret_unavailable`                                                          | Server cannot verify `X-Token` (missing cipher; regenerate key).                                                                                                                                                   |
 | 403  | `rail_not_enabled_for_merchant`                                                       | Pair not in your supported rails (when configured).                                                                                                                                                                |
 | 400  | `unsupported_currency_network`                                                        | Unknown `currency`/`network` combination.                                                                                                                                                                          |
-| 429  | `deposit_address_cooldown`                                                              | Operator limit: another successful `deposit-address` for this **same** merchant + `external_user_id` + gateway environment was too recent. Body includes **`retry_after_seconds`** (and a **`message`**) — wait, then retry. Tunable via **`GATEWAY_DEPOSIT_ADDRESS_COOLDOWN_SEC`** (Admin → **Gateway** / `.env`; `0` = off). |
+| 429  | `deposit_address_cooldown`                                                            | Operator limit: another successful `deposit-address` for this **same** merchant + `external_user_id` + gateway environment was too recent. Body includes **`retry_after_seconds`** (and a **`message`**) — wait, then retry. Tunable via **`GATEWAY_DEPOSIT_ADDRESS_COOLDOWN_SEC`** (Admin → **Gateway** / `.env`; `0` = off). |
 
 Idempotent: same merchant + `external_user_id` + same `(currency, network)` returns the same wallet. Each successful `deposit-address` call still logs a new **checkout session** when the pool assigns or refreshes the row; optional `amount` applies to that session only. For another rail for the same end user, call **`deposit-address` again** with the same **`external_user_id`** and the desired **`currency`** / **`network`** (unless a configured per-user **cooldown** blocks a second call until **`retry_after_seconds`** has passed — see **429** above).
 
-### 5.2 Get transaction by checkout reference
+## II.2 Get transaction by checkout reference
 
 ```http
 GET /api/v1/gateway/transactions?transaction_id={checkout_reference}
 ```
 
-**Auth (required):** same as **`GET /api/v1/gateway/supported-currency`** — headers **`X-Merchant-Id`** and **`X-Token`** where **`X-Token`** is AES-GCM of canonical JSON exactly `{"api_key":"<your_gateway_secret>"}` (see §3). Optional query **`gateway_environment=live|sandbox`** when using one shared key (same as supported-currency).
+**Auth (required):** same as **`GET /api/v1/gateway/supported-currency`** — headers **`X-Merchant-Id`** and **`X-Token`** where **`X-Token`** is AES-GCM of canonical JSON exactly `{"api_key":"<your_gateway_secret>"}` (see **§I.3**). Optional query **`gateway_environment=live|sandbox`** when using one shared key (same as supported-currency).
 
 **Query:** only **`transaction_id`** — the checkout reference string returned as **`transaction_id`** / **`reference_id`** on **`deposit-address` 200** (your optional id or gateway-generated hex). Do not send **`address`**, **`reference_id`**, **`currency`**, **`network`**, or **`chain`** (removed; **`400 unsupported_query_param`** if any are present).
 
 **200** — a **single JSON object** (not wrapped in `transactions`), same fields as before each list element: numeric **`id`** (internal row id — same meaning as webhook **`transaction_id`**), **`wallet_id`**, string **`transaction_id`** / **`reference_id`**, **`external_user_id`**, **`deposit_session_key`**, **`gateway_environment`**, and the **same amount fields as payment webhooks**. **`404 transaction_not_found`** if the reference is unknown or not yours for the authenticated environment.
 
----
+## II.3 Payment webhooks (`X-Webhook-Event: payment`)
 
-## 6. Webhooks (unified `payment` event)
+Pay-in callbacks **`POST`** your **Callback URL** from Settings (**§I.2**).
 
-The gateway does not sign webhooks by default — protect your endpoint (secret token in URL, mTLS, or IP allowlist). Treat delivery as **at-least-once**; dedupe with `tx_hash` + `chain` + `wallet_id` (and `log_index` / event id semantics for multi-log chains).
+The gateway does not sign webhooks by default — protect your endpoint (secret token in URL, mTLS, or IP allowlist). Treat delivery as **at-least-once** until your endpoint returns **2xx**.
 
-All automatic and manual payment callbacks use the **same** header:
+Treat delivery as **at-least-once**; dedupe payments with `tx_hash` + `chain` + `wallet_id` (and `log_index` / event id semantics for multi-log chains).
+
+All automatic and manual **payment** callbacks use:
 
 ```http
 POST {callback_url}
@@ -259,30 +271,75 @@ When later transfers bring a fixed-amount **session** total to the expected valu
 
 Common body fields (success, underpaid, and failed): `transaction_id` (numeric gateway row id), **`reference_id`** and **`merchant_transaction_id`** (duplicate checkout reference string — same as **`reference_id` / `transaction_id`** on **`deposit-address` 200** and on **`GET …/gateway/transactions?transaction_id=…` 200**), flat `expected_amount_*` / `received_amount_*`, nested **`checkout`** / **`received`**, legacy `amount` / `amount_decimal` (= received), `tx_hash`, `chain`, `currency`, `network`, `token_symbol`, `wallet_address`, `confirmations`, `external_user_id`, `merchant_id`, `gateway_environment`. Atomic amounts are JSON strings (digits-only).
 
-### 6.1 New `deposit-address` while webhooks are stuck
+## II.4 New `deposit-address` while payment webhooks are stuck
 
 If a **payment** webhook (`status` **success**, **underpaid**, or **failed**) has not been acknowledged with **`2xx`**, the gateway **still retries** delivery (same limits as before). **`deposit-address` is not blocked** for that payer — implement **idempotent** webhook handling and reconcile from **`GET …/gateway/transactions`** when needed.
 
 ---
 
-## 7. Minimal integration checklist
+# Part III: Payout
 
-1. Log in to `/m`, set **callback URL**, **chains**, and **supported rails** (order = default rail first).
-2. Store **`api_key`** from admin onboarding in server-side secrets; note your **`id`** from `GET /api/v1/auth/me` for `X-Merchant-Id` when using header auth.
-3. On checkout, call **`deposit-address`** with `external_user_id` and optionally `currency` / `network`, optional **`amount`** (fixed price), optional **`transaction_id`** / **`redirect_url`**, using **`X-Token`** (recommended) or legacy **`api_key`** in the body. Persist the returned **`reference_id`** (or **`transaction_id`**) string for support and correlation (same value on webhooks as **`reference_id` / `merchant_transaction_id`** and on **`GET …/gateway/transactions?transaction_id=…`**).
-4. Show the user the returned **`address`** and the correct **`network`** label (e.g. TRC20 vs ERC20), and the **amount due** when you passed optional **`amount`** on **`deposit-address`**.
-5. Handle **`POST` callback** with `X-Webhook-Event: payment` and **`body.status`** (`success`, `underpaid`, or `failed`); treat delivery as **at-least-once** (dedupe by `tx_hash` + `chain` + `wallet_id` / `log_index` as documented).
+USDT payouts on **TRON (TRC20)** or **Ethereum (ERC20)** via the gateway API. **There are no payout webhooks** — after **`POST …/gateway/payout`**, poll **`GET …/gateway/payout?client_reference_id=…`** for terminal status (`completed` / `failed`).
+
+## III.1 Create payout
+
+```http
+POST /api/v1/gateway/payout
+Content-Type: application/json
+```
+
+**Auth:** Same as other gateway **POST** routes — **`X-Merchant-Id`** + **`X-Token`** built from the **canonical JSON of this body** (see **§I.3**), or legacy **`api_key`** in the body.
+
+| Field                   | Required | Description |
+| ----------------------- | -------- | ----------- |
+| `chain`                 | Yes      | `TRON` for USDT·TRC20, or `ETH` / `ETHEREUM` for USDT·ERC20. |
+| `token_symbol`          | Typical  | `USDT` (only USDT payouts are supported today). |
+| `to_address`            | Yes      | Destination address (TRON base58 or EVM checksummed hex). |
+| `amount`                | Yes      | Payout amount in human decimal form (same conventions as deposit `amount` where applicable). This full amount is debited from portal balance and is what the recipient should receive on-chain. The gateway payout response does not include RP billing (`mdr`) fields — only amounts and on-chain `network_fee_*` when known. |
+| `client_reference_id`   | Recommended | Your idempotency / correlation string (max 256 chars); unique per merchant + environment when set. **Required for `GET …/gateway/payout`** status polling — lookups use this query param only. |
+| `gateway_environment`   | No       | Omit to use portal Live/Sandbox (**§I.2**). |
+
+**201** — JSON body matches **`GET …/gateway/payout`** (single payout object): numeric `id`, `environment`, `chain`, `token_symbol`, `token_decimals`, `to_address`, gross/net amounts (atomic strings + decimals; **net equals gross** — full send), `network_fee_*` / `network_fee_fetched_at` (native TRX or ETH gas once `tx_hash` exists and the fee is resolved; otherwise `null`). This endpoint **does not** return `mdr_*`, `mdr_percent`, or settlement-fee fields. Also `status` (`pending`, `processing`, …), `tx_hash`, `failure_reason`, `client_reference_id`, `source`, timestamps.
+
+Common errors: **`403 rail_not_enabled_for_merchant`**, **`403 chain_disabled_for_platform`**, **`400 unsupported_chain`**, **`409 payout_already_pending`**, **`400 insufficient_balance`**, **`400 below_merchant_payout_minimum`**, **`409 client_reference_exists`**, auth errors as in **§II.1** table.
+
+Only **one** payout may be **`pending`** or **`processing`** per merchant + environment at a time.
+
+## III.2 Get payout status
+
+```http
+GET /api/v1/gateway/payout?client_reference_id={your_ref}
+```
+
+**Auth:** Same headers as **`GET …/supported-currency`** — **`X-Token`** from canonical `{"api_key":"<secret>"}` only (**§I.3**, **§I.5**).
+
+**Query:** **`client_reference_id`** is **required** — must match the value you sent on **`POST …/gateway/payout`** when creating the payout. Numeric **`payout_id`** / **`id`** query parameters are **not** accepted (**`400 payout_id_not_supported`**).
+
+**200** — same payout object shape as **§III.1** **201**. **`404 payout_not_found`** if no row matches. If you created a payout **without** `client_reference_id`, use the portal or support — there is no GET-by-internal-id on this route.
+
+**400** — **`client_reference_id_required`** if the query is missing or empty.
 
 ---
 
-## 8. Related docs
+## Integration checklist
+
+1. Log in to `/m`, set **callback URL**, **chains**, and **supported rails** (order = default rail first) — **Part I**.
+2. Store **`api_key`** from admin onboarding in server-side secrets; note your **`id`** from `GET /api/v1/auth/me` for `X-Merchant-Id` when using header auth — **Part I §I.3**.
+3. Call **`GET …/supported-currency`** to confirm allowed **`pairs`** — **Part I §I.5**.
+4. **Pay-in:** On checkout, call **`deposit-address`** (**Part II §II.1**) with `external_user_id` and optionally `currency` / `network`, optional **`amount`**, optional **`transaction_id`** / **`redirect_url`**, using **`X-Token`** (recommended) or legacy **`api_key`**. Persist **`reference_id`**. Handle **payment** webhooks (**§II.3**).
+5. **Payout:** Call **`POST …/gateway/payout`** (**§III.1**) with **`client_reference_id`**; poll **`GET …/gateway/payout`** (**§III.2**) until **`status`** is **`completed`** or **`failed`**.
+6. On your callback URL, handle **`X-Webhook-Event: payment`** only (**§II.3**); return **2xx**. Payouts are **not** POSTed to this URL.
+
+---
+
+## Related docs
 
 - [CLIENT_INTEGRATION.md](./CLIENT_INTEGRATION.md) — third-party overview (being aligned with this guide).
 - Operator: runbook in repo root / `server` workspace for migrate, seed, env vars.
 
 ---
 
-## 9. Development quick reference
+## Development quick reference
 
 After seed (see `.env` / operator docs):
 

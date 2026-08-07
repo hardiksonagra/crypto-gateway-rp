@@ -1,5 +1,5 @@
 import axios from "axios";
-import { TxStatus } from "@prisma/client";
+import { TxStatus, WithdrawalStatus } from "@prisma/client";
 import {
   prismaClientKnowsTxStatusUnderpaid,
   TX_STATUS_UNDERPAID,
@@ -24,7 +24,6 @@ import {
   expectedReceivedAmountQuad,
   paymentWebhookAmountGroups,
 } from "../lib/transaction-requested-amounts.js";
-
 /**
  * HTTP `X-Webhook-Event` for every automatic and manual payment callback.
  * Branch on JSON `status` (`success`, `underpaid`, `pending`, `failed`). Every payment

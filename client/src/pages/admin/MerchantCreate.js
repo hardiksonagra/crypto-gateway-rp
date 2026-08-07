@@ -33,6 +33,7 @@ function buildCreateInitialValues(platform) {
     supported_deposit_rails: rails.length > 0 ? [rails[0].key] : [railKeyFromParts("USDT", "TRC20")],
     callback_url: "",
     mdr_percent: 0,
+    payout_mdr_percent: 0,
     settlement_rate_percent: 0,
     min_settlement_amount: "0",
     settlement_period_days: 0,
@@ -78,7 +79,12 @@ export default function MerchantCreate() {
       typeof rpProfileQ.data?.mdr_percent === "number" && Number.isFinite(rpProfileQ.data.mdr_percent)
         ? rpProfileQ.data.mdr_percent
         : 0;
-    return { ...base, mdr_percent: m, settlement_rate_percent: 0 };
+    const pm =
+      typeof rpProfileQ.data?.payout_mdr_percent === "number" &&
+      Number.isFinite(rpProfileQ.data.payout_mdr_percent)
+        ? rpProfileQ.data.payout_mdr_percent
+        : m;
+    return { ...base, mdr_percent: m, payout_mdr_percent: pm, settlement_rate_percent: 0 };
   }, [platform, isRp, rpProfileQ.data]);
 
   const merchantCreateSchema = useMemo(
@@ -139,6 +145,7 @@ export default function MerchantCreate() {
                 supported_deposit_rails: values.supported_deposit_rails,
                 callback_url: values.callback_url?.trim() || undefined,
                 mdr_percent: values.mdr_percent,
+                payout_mdr_percent: values.payout_mdr_percent,
                 settlement_rate_percent: isRp ? 0 : values.settlement_rate_percent,
                 min_settlement_amount: values.min_settlement_amount?.trim() || "0",
                 settlement_period_days: values.settlement_period_days,
@@ -322,6 +329,31 @@ export default function MerchantCreate() {
                 ) : null}
                 <ErrorMessage
                   name="mdr_percent"
+                  component="p"
+                  className="mt-1 text-xs text-rose-400"
+                />
+              </div>
+              <div>
+                <label className={label} htmlFor="payout_mdr_percent">
+                  Payout MDR %
+                </label>
+                <Field
+                  id="payout_mdr_percent"
+                  name="payout_mdr_percent"
+                  type="number"
+                  step="0.01"
+                  min={0}
+                  max={100}
+                  className={input}
+                />
+                <p className="mt-1 text-[10px] text-white/40">
+                  Reference % on payout volume for RP/admin (withdrawals send full gross).{" "}
+                  {isRp
+                    ? "Prefilled from your RP profile default payout MDR; change here for this merchant only."
+                    : "Independent of deposit settlement %; does not reduce the on-chain payout amount."}
+                </p>
+                <ErrorMessage
+                  name="payout_mdr_percent"
                   component="p"
                   className="mt-1 text-xs text-rose-400"
                 />
