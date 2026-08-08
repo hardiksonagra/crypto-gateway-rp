@@ -45,11 +45,100 @@ function isWalletAssignmentTableMissingError(e) {
 }
 
 /**
+ * Digits-only atomic amount, or null for open (any-amount) checkout.
+ * @param {unknown} raw
+ * @returns {string | null}
+ */
+function normalizeExpectedAtomic(raw) {
+  if (typeof raw === "string" && /^\d+$/.test(raw.trim())) return raw.trim();
+  return null;
+}
+
+/**
+ * Open `created` placeholder matching merchant reference (when provided) + expected amount.
+ * @param {Tx} tx
+ * @param {{
+ *   walletId: number,
+ *   userId: number | string,
+ *   merchantRefProvided: boolean,
+ *   merchantRef: string,
+ *   requestExpectedAtomic: string | null,
+ * }} args
+ * @returns {Promise<{ id: number, depositSessionKey: string | null, referenceTransactionId: string | null } | null>}
+ */
+async function findReusableCreatedCheckout(tx, args) {
+  const {
+    walletId,
+    userId,
+    merchantRefProvided,
+    merchantRef,
+    requestExpectedAtomic,
+  } = args;
+  /** @type {Record<string, unknown>} */
+  const where = {
+    walletId,
+    payerUserId: userId,
+    status: TxStatus.created,
+    txHash: { startsWith: "gateway-created:" },
+    ...ACTIVE,
+  };
+  if (merchantRefProvided) {
+    where.referenceTransactionId = merchantRef;
+  }
+  const candidates = await tx.transaction.findMany({
+    where,
+    orderBy: { createdAt: "desc" },
+    take: merchantRefProvided ? 5 : 20,
+    select: {
+      id: true,
+      depositSessionKey: true,
+      referenceTransactionId: true,
+    },
+  });
+  for (const row of candidates) {
+    const sk =
+      typeof row.depositSessionKey === "string"
+        ? row.depositSessionKey.trim()
+        : "";
+    /** @type {string | null} */
+    let eventAmt = null;
+    if (sk) {
+      const ev = await tx.walletAssignmentEvent.findFirst({
+        where: {
+          walletId,
+          userId,
+          depositSessionKey: sk,
+          ...ACTIVE,
+        },
+        orderBy: { createdAt: "desc" },
+        select: { expectedAmountAtomic: true },
+      });
+      if (ev) {
+        eventAmt = normalizeExpectedAtomic(ev.expectedAmountAtomic);
+      } else if (requestExpectedAtomic != null) {
+        continue;
+      }
+    } else if (requestExpectedAtomic != null) {
+      continue;
+    }
+    if (requestExpectedAtomic === eventAmt) {
+      return row;
+    }
+  }
+  return null;
+}
+
+/**
  * Assign a deposit wallet for an end-user (gateway). Runs on gateway API request, not on a timer.
  *
  * **Dedicated per user (per rail):** each `(merchant, environment, chain, currency, network)` keeps at most one
  * wallet row for a given `userId`. That user always receives the same address on repeat `deposit-address`
  * calls; the wallet is never reassigned to another user after a successful deposit or hold expiry.
+ *
+ * **Open `created` checkout reuse:** if a `gateway-created:` placeholder is still `created` on that wallet for
+ * this user and the request matches (same merchant `transaction_id` when provided, same expected amount),
+ * refresh hold/scan + placeholder timestamps and return that session — no new transaction row. Otherwise
+ * create a new checkout session as before.
  *
  * Resolution order: (1) existing row for this user on the rail — refresh hold/scan TTLs; (2) else the oldest
  * **unassigned** pool row (`assigned_user_id` null) for the rail; (3) else derive a new address.
@@ -78,10 +167,8 @@ export async function assignPooledWalletForDeposit(tx, p) {
     p.referenceTransactionId != null
       ? String(p.referenceTransactionId).trim()
       : "";
-  /** Always set: merchant `transaction_id` or gateway-generated 64-char hex (fits VARCHAR(256)). */
-  const referenceTransactionId = refTxRaw
-    ? refTxRaw.slice(0, 256)
-    : generateGatewayReferenceTransactionId();
+  const merchantRefProvided = Boolean(refTxRaw);
+  const requestExpectedAtomic = normalizeExpectedAtomic(p.expectedAmountAtomic);
 
   const holdMin =
     typeof re.walletAssignmentHoldMinutes === "number" &&
@@ -176,6 +263,47 @@ export async function assignPooledWalletForDeposit(tx, p) {
     }
   }
 
+  const reusable = await findReusableCreatedCheckout(tx, {
+    walletId: wallet.id,
+    userId,
+    merchantRefProvided,
+    merchantRef: merchantRefProvided ? refTxRaw.slice(0, 256) : "",
+    requestExpectedAtomic,
+  });
+  const reusableSessionKey =
+    typeof reusable?.depositSessionKey === "string"
+      ? reusable.depositSessionKey.trim()
+      : "";
+  if (reusable && reusableSessionKey) {
+    const now = new Date();
+    await tx.transaction.update({
+      where: { id: reusable.id },
+      data: {
+        createdAt: now,
+        updatedAt: now,
+      },
+    });
+    const keptRef =
+      typeof reusable.referenceTransactionId === "string"
+        ? reusable.referenceTransactionId.trim()
+        : "";
+    return {
+      wallet,
+      assignmentSource: "existing_session",
+      depositSessionKey: reusableSessionKey,
+      referenceTransactionId:
+        keptRef ||
+        (merchantRefProvided
+          ? refTxRaw.slice(0, 256)
+          : generateGatewayReferenceTransactionId()),
+    };
+  }
+
+  /** Always set: merchant `transaction_id` or gateway-generated 64-char hex (fits VARCHAR(256)). */
+  const referenceTransactionId = merchantRefProvided
+    ? refTxRaw.slice(0, 256)
+    : generateGatewayReferenceTransactionId();
+
   const depositSessionKey = randomBytes(24).toString("hex");
   try {
     await tx.walletAssignmentEvent.create({
@@ -187,11 +315,7 @@ export async function assignPooledWalletForDeposit(tx, p) {
         source,
         depositSessionKey,
         referenceTransactionId,
-        expectedAmountAtomic:
-          typeof p.expectedAmountAtomic === "string" &&
-          /^\d+$/.test(p.expectedAmountAtomic.trim())
-            ? p.expectedAmountAtomic.trim()
-            : null,
+        expectedAmountAtomic: requestExpectedAtomic,
       },
     });
   } catch (e) {
@@ -199,7 +323,7 @@ export async function assignPooledWalletForDeposit(tx, p) {
   }
 
   const dec = tokenDecimalsForGatewayRail(currency, network) ?? 6;
-  /** One `created` placeholder per `deposit-address` call (open or fixed amount) — removed when first on-chain row exists for this session. */
+  /** New `created` placeholder when no matching open checkout — removed when first on-chain row exists for this session. */
   await tx.transaction.create({
     data: {
       walletId: wallet.id,
