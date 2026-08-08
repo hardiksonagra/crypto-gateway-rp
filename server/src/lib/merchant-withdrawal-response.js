@@ -1,4 +1,5 @@
 import { formatAtomicAmountString } from "./format-atomic-amount.js";
+import { payoutFailureMessage } from "../services/payout/payout-failure-message.js";
 
 /**
  * @param {string | null | undefined} sym
@@ -12,6 +13,19 @@ function nativeNetworkFeeDecimals(sym) {
 
 /**
  * Gateway payout API (`POST`/`GET …/gateway/payout`): amounts + on-chain network fee only — no MDR / settlement fee fields.
+ *
+ * @param {import("@prisma/client").Withdrawal} w
+ */
+/** @param {Date | string | null | undefined} d */
+function toIso(d) {
+  if (d == null) return null;
+  if (d instanceof Date) return d.toISOString();
+  const t = new Date(d);
+  return Number.isNaN(t.getTime()) ? null : t.toISOString();
+}
+
+/**
+ * Gateway payout JSON — same field set for sandbox and live.
  *
  * @param {import("@prisma/client").Withdrawal} w
  */
@@ -39,17 +53,19 @@ export function withdrawalGatewayPayoutJson(w) {
     net_amount_decimal:
       netAtomic != null ? formatAtomicAmountString(netAtomic, dec) : null,
     status: w.status,
-    tx_hash: w.txHash,
+    tx_hash: w.txHash ?? null,
     network_fee_native_atomic: nfAtomic,
     network_fee_native_symbol: nfSym,
     network_fee_native_decimal: nfDec,
-    network_fee_fetched_at: w.networkFeeFetchedAt ?? null,
-    failure_reason: w.failureReason,
+    network_fee_fetched_at: toIso(w.networkFeeFetchedAt),
+    failure_reason: w.failureReason ?? null,
+    /** Human-readable why it failed; null when not failed (sandbox + live). */
+    message: payoutFailureMessage(w.status, w.failureReason),
     client_reference_id: w.clientReferenceId ?? null,
     source: w.source ?? "portal",
-    callback_delivered_at: w.callbackDeliveredAt ?? null,
-    created_at: w.createdAt,
-    updated_at: w.updatedAt,
+    callback_delivered_at: toIso(w.callbackDeliveredAt),
+    created_at: toIso(w.createdAt),
+    updated_at: toIso(w.updatedAt),
   };
 }
 

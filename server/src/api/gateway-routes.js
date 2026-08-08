@@ -38,6 +38,7 @@ import {
   resolveDepositRail,
 } from "../config/payment-rails.js";
 import { createMerchantWithdrawalRequest } from "../services/merchant-withdrawal-request.js";
+import { executeAutoPayout } from "../services/payout/execute-auto-payout.js";
 import { withdrawalGatewayPayoutJson } from "../lib/merchant-withdrawal-response.js";
 import { fillMissingWithdrawalNetworkFees } from "../services/payout-withdrawal-network-fee.js";
 import {
@@ -1297,6 +1298,8 @@ router.post("/api/v1/gateway/payout", async (req, res) => {
         payoutMaxAmountHuman: effPayout.max,
       },
       clientReferenceId: body.client_reference_id ?? body.clientReferenceId,
+      forceFail: body.force_fail ?? body.forceFail,
+      simulateResult: body.simulate_result ?? body.simulateResult,
       source: "gateway_api",
     });
 
@@ -1314,22 +1317,35 @@ router.post("/api/v1/gateway/payout", async (req, res) => {
       res.status(result.status).json({
         error: result.error,
         ...(result.message ? { message: result.message } : {}),
+        ...("environment" in result && result.environment
+          ? { environment: result.environment }
+          : {}),
       });
       return;
     }
+
+    const executed = await executeAutoPayout(result.withdrawal.id, {
+      forceFail: body.force_fail ?? body.forceFail,
+      simulateResult: body.simulate_result ?? body.simulateResult,
+    });
+    const outRow = executed.withdrawal ?? result.withdrawal;
 
     auditGatewayApi(req, {
       action: "gateway_payout",
       merchantId: merchant.id,
       actorType: "gateway_api_key",
-      summary: `payout POST 201 · id=${result.withdrawal.id}`,
+      summary: `payout POST 201 · id=${outRow.id} · status=${outRow.status}`,
       metadata: {
         request_in: redactGatewayBody(body),
-        response_out: { id: result.withdrawal.id, status: 201 },
+        response_out: {
+          id: outRow.id,
+          status: outRow.status,
+          http_status: 201,
+        },
         occurred_at_iso: new Date().toISOString(),
       },
     });
-    res.status(201).json(withdrawalGatewayPayoutJson(result.withdrawal));
+    res.status(201).json(withdrawalGatewayPayoutJson(outRow));
   } catch (e) {
     logger.error("gateway payout POST failed", { err: String(e) });
     auditGatewayApi(req, {

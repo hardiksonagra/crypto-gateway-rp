@@ -310,6 +310,20 @@ export const re = {
     );
   },
 
+  get payoutHotPrivateKeyTron() {
+    return getResolvedString(
+      "PAYOUT_HOT_PRIVATE_KEY_TRON",
+      () => env.payoutHotPrivateKeyTron ?? "",
+    );
+  },
+
+  get payoutHotPrivateKeyEth() {
+    return getResolvedString(
+      "PAYOUT_HOT_PRIVATE_KEY_ETH",
+      () => env.payoutHotPrivateKeyEth ?? "",
+    );
+  },
+
   get gatewaySandbox() {
     return getResolvedBool("GATEWAY_SANDBOX", () => env.gatewaySandbox);
   },

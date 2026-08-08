@@ -66,7 +66,8 @@ const DOC = {
   rowFailedExpiry: 2300,
   /** Internal payout / withdrawal row id (gateway poll). */
   payoutRowId: 501,
-  payoutClientRef: "PAYOUT-2026-0429-A1",
+  payoutClientRef: "SUCCESS-TEST-1",
+  payoutClientRefFail: "FAIL-TEST-1",
 };
 
 /** @returns {string} */
@@ -797,11 +798,18 @@ X-Token: <base64 from buildXToken on canonical JSON of body>
         </p>
         <p className="mt-2 text-xs text-white/45">
           The merchant must have the rail enabled; platform chain toggles apply. Merchant settings may enforce min/max
-          gross payout. Only one payout may be <span className="font-mono">pending</span> or{" "}
-          <span className="font-mono">processing</span> per merchant and environment (
-          <span className="font-mono">409 payout_already_pending</span>). Duplicate{" "}
+          gross payout. Within limits the gateway <strong className="text-white/70">auto-sends</strong> USDT (treasury
+          or platform hot wallet) and the <span className="font-mono">201</span> body is usually{" "}
+          <span className="font-mono">completed</span> or <span className="font-mono">failed</span>. Only one payout may
+          be <span className="font-mono">pending</span> or <span className="font-mono">processing</span> per merchant and
+          environment (<span className="font-mono">409 payout_already_pending</span>). Duplicate{" "}
           <span className="font-mono">client_reference_id</span> returns{" "}
-          <span className="font-mono">409 client_reference_exists</span>.
+          <span className="font-mono">409 client_reference_exists</span> on{" "}
+          <span className="font-mono">live</span> (DB unique). Sandbox only:{" "}
+          <span className="font-mono">simulate_result: &quot;success&quot;</span> /{" "}
+          <span className="font-mono">&quot;failed&quot;</span> (ignored on live — live always does a real send).
+          Reused test ids on sandbox get an auto suffix for the DB unique constraint. Response shape is the same in
+          sandbox and live.
         </p>
         <p className="mt-3 text-xs font-medium text-white/45">Example JSON body</p>
         <Pre>{`POST /api/v1/gateway/payout
@@ -816,6 +824,18 @@ X-Token: <base64 from buildXToken>
   "amount": "25.50",
   "client_reference_id": "${DOC.payoutClientRef}"
 }`}</Pre>
+        <p className="mt-2 text-xs text-white/45">
+          Sandbox success / fail (recommended — works every time):{" "}
+          <span className="font-mono">simulate_result: &quot;success&quot;</span> or{" "}
+          <span className="font-mono">&quot;failed&quot;</span>.
+        </p>
+        <Pre>{`{
+  "chain": "TRON",
+  "token_symbol": "USDT",
+  "to_address": "${DOC.tronWallet}",
+  "amount": "1",
+  "simulate_result": "failed"
+}`}</Pre>
         <p className="mt-4 text-xs font-medium text-white/45">201 response (shape)</p>
         <Pre>{`{
   "id": ${DOC.payoutRowId},
@@ -829,17 +849,28 @@ X-Token: <base64 from buildXToken>
   "gross_amount_decimal": "25.5",
   "net_amount_atomic": "25500000",
   "net_amount_decimal": "25.5",
-  "status": "pending",
-  "tx_hash": null,
+  "status": "completed",
+  "tx_hash": "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2",
   "network_fee_native_atomic": null,
   "network_fee_native_symbol": null,
   "network_fee_native_decimal": null,
   "network_fee_fetched_at": null,
   "failure_reason": null,
+  "message": null,
   "client_reference_id": "${DOC.payoutClientRef}",
   "source": "gateway_api",
   "created_at": "${DOC.txCreatedAt}",
   "updated_at": "${DOC.txUpdatedAt}"
+}`}</Pre>
+        <p className="mt-3 text-xs font-medium text-white/45">Failed (sandbox / live test) — same shape</p>
+        <Pre>{`{
+  "id": ${DOC.payoutRowId},
+  "environment": "sandbox",
+  "status": "failed",
+  "tx_hash": null,
+  "failure_reason": "force_fail",
+  "message": "Simulated payout failure (client_reference_id FAIL-TEST… or force_fail: true). No on-chain transfer was sent.",
+  "client_reference_id": "${DOC.payoutClientRefFail}"
 }`}</Pre>
       </section>
 

@@ -42,6 +42,10 @@ import { resolveMerchantPortalForLists } from "../lib/merchant-portal-for-lists.
 import { computeMerchantBalances } from "../services/merchant-balance.js";
 import { withdrawalPublicJson } from "../lib/merchant-withdrawal-response.js";
 import { fillMissingWithdrawalNetworkFees } from "../services/payout-withdrawal-network-fee.js";
+import {
+  getMerchantBulkWalletBalanceRefreshStatus,
+  startMerchantBulkWalletBalanceRefresh,
+} from "../services/wallet/wallet-balance-probe.js";
 import { normalizePayoutTreasuryAddressesJson } from "../lib/merchant-payout-settings.js";
 import { normalizePayoutRailsPolicyFromBody } from "../lib/merchant-payout-rails-policy.js";
 import {
@@ -636,8 +640,68 @@ router.get("/api/v1/merchant/wallets", async (req, res) => {
         distinct_payer_users: st?.distinct_payers ?? 0,
         success_deposit_count: st?.success_tx ?? 0,
         deposit_scan_active,
+        cached_balance_display: w.cachedBalanceDisplay ?? null,
+        cached_balance_atomic: w.cachedBalanceAtomic ?? null,
+        cached_balance_error: w.cachedBalanceError ?? null,
+        cached_balance_updated_at: w.cachedBalanceUpdatedAt?.toISOString() ?? null,
       };
     }),
+  });
+});
+
+router.get("/api/v1/merchant/wallets/refresh-balances/status", async (req, res) => {
+  const mid = merchantId(req);
+  if (!mid) {
+    res.status(401).json({ error: "unauthorized" });
+    return;
+  }
+  const gate = await resolveMerchantPortalForLists(mid);
+  if (!gate.ok) {
+    res.status(gate.status).json({
+      error: gate.error,
+      ...(gate.message ? { message: gate.message } : {}),
+    });
+    return;
+  }
+  const s = getMerchantBulkWalletBalanceRefreshStatus(mid, gate.environment);
+  res.json({
+    running: s.running,
+    total: s.lastResult?.total,
+    ok: s.lastResult?.ok,
+    failed: s.lastResult?.failed,
+    error: s.lastError,
+    scan_total: s.scanTotal,
+    scan_processed: s.scanProcessed,
+  });
+});
+
+router.post("/api/v1/merchant/wallets/refresh-balances", async (req, res) => {
+  const mid = merchantId(req);
+  if (!mid) {
+    res.status(401).json({ error: "unauthorized" });
+    return;
+  }
+  const gate = await resolveMerchantPortalForLists(mid);
+  if (!gate.ok) {
+    res.status(gate.status).json({
+      error: gate.error,
+      ...(gate.message ? { message: gate.message } : {}),
+    });
+    return;
+  }
+  const started = startMerchantBulkWalletBalanceRefresh(mid, gate.environment);
+  if (!started.started) {
+    res.status(409).json({
+      error: "refresh_in_progress",
+      message:
+        "A balance refresh is already running. Poll GET …/refresh-balances/status until it finishes.",
+    });
+    return;
+  }
+  res.status(202).json({
+    accepted: true,
+    message:
+      "Balance refresh started in the background. Poll GET /api/v1/merchant/wallets/refresh-balances/status until running is false.",
   });
 });
 

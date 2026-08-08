@@ -412,8 +412,11 @@ export default function MerchantSettings() {
                 Optional per-request gross limits (USDT) for portal and gateway payout APIs,{" "}
                 <strong className="text-white/70">per rail</strong>. Use{" "}
                 <span className="font-mono text-white/70">0</span> for minimum to rely on settlement rules only;{" "}
-                <span className="font-mono text-white/70">0</span> for maximum means no cap. Treasury addresses are an
-                operations hint (where sends originate); format is validated when non-empty.
+                <span className="font-mono text-white/70">0</span> for maximum means no cap. Within limits, payouts
+                send <strong className="text-white/70">automatically</strong>: treasury address is the from-wallet
+                (platform hot wallet address, or one of your gateway USDT deposit wallets). Leave treasury empty to
+                use the platform hot wallet (
+                <span className="font-mono text-white/65">PAYOUT_HOT_PRIVATE_KEY_*</span>).
               </p>
               <div className="mt-5 space-y-5">
                 {(values.payout_rails_policy_rows || []).map((row, idx) => (

@@ -134,7 +134,7 @@ model Merchant {
   payoutMinAmountHuman String @default("0") @map("payout_min_amount_human") @db.VarChar(128)
   /// Max gross payout (human USDT); "0" = no cap.
   payoutMaxAmountHuman String @default("0") @map("payout_max_amount_human") @db.VarChar(128)
-  /// JSON ops hint: e.g. `{ "TRON": "T…", "ETH": "0x…" }` treasury addresses payouts are sent from.
+  /// JSON ops hint: e.g. `{ "TRON": "T…", "ETH": "0x…" }` from-addresses for auto payouts (hot wallet or HD deposit wallet).
   payoutTreasuryAddressesJson Json @default("{}") @map("payout_treasury_addresses_json")
   /// JSON per payout rail (`USDT|TRC20`, `USDT|ERC20`): `{ [railKey]: { min_human?, max_human?, treasury_address? } }`. Empty fields fall back to {@link payoutMinAmountHuman} / {@link payoutMaxAmountHuman} / {@link payoutTreasuryAddressesJson}.
   payoutRailsPolicyJson Json @default("{}") @map("payout_rails_policy_json")

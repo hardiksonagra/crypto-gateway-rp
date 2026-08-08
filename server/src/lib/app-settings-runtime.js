@@ -486,6 +486,10 @@ function envFallbackString(key) {
       return env.sweepTronAutoCronEnabled ? "true" : "false";
     case "SWEEP_TRON_AUTO_CRON_MINUTES":
       return String(env.sweepTronAutoCronMinutes);
+    case "PAYOUT_HOT_PRIVATE_KEY_TRON":
+      return env.payoutHotPrivateKeyTron ?? "";
+    case "PAYOUT_HOT_PRIVATE_KEY_ETH":
+      return env.payoutHotPrivateKeyEth ?? "";
     case "GATEWAY_SANDBOX":
       return env.gatewaySandbox ? "true" : "false";
     case "GATEWAY_TRON_USDT_ONLY":

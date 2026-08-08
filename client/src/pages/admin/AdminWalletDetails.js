@@ -1,8 +1,9 @@
 import { Formik, Form, Field, ErrorMessage } from "formik";
 import { useQuery } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api } from "../../api";
 import { usePanelApiPrefix } from "../../hooks/usePanelApiPrefix.js";
+import { useMerchantPortalEnvironment } from "../../hooks/useMerchantPortalEnvironment.js";
 import ListPaginationBar, { DEFAULT_LIST_PAGE_SIZE } from "../../components/ListPaginationBar";
 import {
   ListActiveFiltersChips,
@@ -18,9 +19,10 @@ import { adminWalletsFilterSchema } from "../../admin/merchantSchemas";
 import WalletDepositActivityModal from "../../components/WalletDepositActivityModal";
 import { BrandLoader } from "../../components/BrandLoader.js";
 
-/** Admin wallet explorer: filters, amounts from recorded deposits (transactions), activity modal. */
+/** Admin / RP wallet explorer: follows header Live/Sandbox; filters + deposit activity. */
 export default function AdminWalletDetails() {
   const { apiPrefix, isRp } = usePanelApiPrefix();
+  const { environment, portalEnvironmentKey } = useMerchantPortalEnvironment();
   const [page, setPage] = useState(1);
   const [activityWalletId, setActivityWalletId] = useState(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -33,10 +35,15 @@ export default function AdminWalletDetails() {
     pageSize: DEFAULT_LIST_PAGE_SIZE,
   });
 
+  useEffect(() => {
+    setPage(1);
+  }, [portalEnvironmentKey]);
+
   const listQ = useQuery({
     queryKey: [
       isRp ? "rp-wallets" : "admin-wallets",
       "details",
+      portalEnvironmentKey,
       page,
       applied.pageSize,
       applied.q,
@@ -49,6 +56,7 @@ export default function AdminWalletDetails() {
       const p = new URLSearchParams({
         page: String(page),
         pageSize: String(applied.pageSize),
+        environment,
       });
       if (applied.q.trim()) p.set("q", applied.q.trim());
       if (applied.merchant_id.trim()) p.set("merchant_id", applied.merchant_id.trim());
@@ -57,6 +65,7 @@ export default function AdminWalletDetails() {
       if (applied.network.trim()) p.set("network", applied.network.trim());
       return api(`${apiPrefix}/wallets?${p}`);
     },
+    enabled: portalEnvironmentKey !== "pending",
   });
 
   const total = listQ.data?.total ?? 0;

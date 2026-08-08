@@ -83,6 +83,10 @@ import {
   hydrateAdminRpLedger,
 } from "../lib/panel-ledger-hydrate.js";
 import { buildPendingPayoutPreviewBuckets } from "../services/merchant-payout-preview.js";
+import {
+  getRpBulkWalletBalanceRefreshStatus,
+  startRpBulkWalletBalanceRefresh,
+} from "../services/wallet/wallet-balance-probe.js";
 
 const router = Router();
 const rpOnly = requireAuth(PORTAL_ROLE_RP);
@@ -1338,6 +1342,17 @@ router.get("/api/v1/rp/wallets", async (req, res) => {
   }
   const mids = await rpMerchantIdArray(rpId);
   const { skip, take, page, pageSize } = parsePageQuery(req.query);
+  const environmentQ =
+    typeof req.query.environment === "string"
+      ? req.query.environment.trim().toLowerCase()
+      : "";
+  /** Always one gateway env — query wins, else RP portal Live/Sandbox toggle. */
+  const listEnv =
+    environmentQ === "sandbox"
+      ? MerchantGatewayEnv.sandbox
+      : environmentQ === "live"
+        ? MerchantGatewayEnv.live
+        : await rpListViewerEnvironment(rpId);
   if (mids.length === 0) {
     res.json({
       page,
@@ -1346,6 +1361,7 @@ router.get("/api/v1/rp/wallets", async (req, res) => {
       unique_address: false,
       deposit_scan_ttl_minutes: walletScanTtlMinutes(),
       wallets: [],
+      viewer_environment: listEnv,
     });
     return;
   }
@@ -1359,10 +1375,6 @@ router.get("/api/v1/rp/wallets", async (req, res) => {
   const network =
     typeof req.query.network === "string" ? req.query.network.trim() : "";
   const q = typeof req.query.q === "string" ? req.query.q.trim() : "";
-  const environmentQ =
-    typeof req.query.environment === "string"
-      ? req.query.environment.trim().toLowerCase()
-      : "";
   const from =
     typeof req.query.created_from === "string" ? new Date(req.query.created_from) : null;
   const to =
@@ -1389,6 +1401,7 @@ router.get("/api/v1/rp/wallets", async (req, res) => {
       unique_address: false,
       deposit_scan_ttl_minutes: walletScanTtlMinutes(),
       wallets: [],
+      viewer_environment: listEnv,
     });
     return;
   }
@@ -1405,6 +1418,7 @@ router.get("/api/v1/rp/wallets", async (req, res) => {
         unique_address: false,
         deposit_scan_ttl_minutes: walletScanTtlMinutes(),
         wallets: [],
+        viewer_environment: listEnv,
       });
       return;
     }
@@ -1412,6 +1426,7 @@ router.get("/api/v1/rp/wallets", async (req, res) => {
 
   const where = {
     ...ACTIVE,
+    environment: listEnv,
     ...(merchantId && walletMerchantClause
       ? { merchant: walletMerchantClause }
       : { merchantId: { in: mids } }),
@@ -1451,14 +1466,6 @@ router.get("/api/v1/rp/wallets", async (req, res) => {
       ? { network: { equals: network, mode: "insensitive" } }
       : {}),
     ...(hasCreatedAt ? { createdAt: createdAtCond } : {}),
-    ...(environmentQ === "live" || environmentQ === "sandbox"
-      ? {
-          environment:
-            environmentQ === "live"
-              ? MerchantGatewayEnv.live
-              : MerchantGatewayEnv.sandbox,
-        }
-      : {}),
   };
 
   const uniqueAddressRaw = req.query.unique_address;
@@ -1527,6 +1534,7 @@ router.get("/api/v1/rp/wallets", async (req, res) => {
     total,
     unique_address: uniqueAddress,
     deposit_scan_ttl_minutes: ttlMin,
+    viewer_environment: listEnv,
     wallets: rows.map((w) => {
       const txCount = w._count.transactions;
       const exp = w.scanExpiresAt;
@@ -1567,6 +1575,50 @@ router.get("/api/v1/rp/wallets", async (req, res) => {
         gateway_wallet_row_count: rowCountById?.get(w.id) ?? 1,
       };
     }),
+  });
+});
+
+router.get("/api/v1/rp/wallets/refresh-balances/status", async (req, res) => {
+  const rpId = rpIdFromReq(req);
+  if (!rpId) {
+    res.status(401).json({ error: "unauthorized" });
+    return;
+  }
+  const listEnv = await rpListViewerEnvironment(rpId);
+  const s = getRpBulkWalletBalanceRefreshStatus(rpId, listEnv);
+  res.json({
+    running: s.running,
+    total: s.lastResult?.total,
+    ok: s.lastResult?.ok,
+    failed: s.lastResult?.failed,
+    error: s.lastError,
+    scan_total: s.scanTotal,
+    scan_processed: s.scanProcessed,
+    viewer_environment: listEnv,
+  });
+});
+
+router.post("/api/v1/rp/wallets/refresh-balances", async (req, res) => {
+  const rpId = rpIdFromReq(req);
+  if (!rpId) {
+    res.status(401).json({ error: "unauthorized" });
+    return;
+  }
+  const listEnv = await rpListViewerEnvironment(rpId);
+  const started = startRpBulkWalletBalanceRefresh(rpId, listEnv);
+  if (!started.started) {
+    res.status(409).json({
+      error: "refresh_in_progress",
+      message:
+        "A balance refresh is already running. Poll GET …/refresh-balances/status until it finishes.",
+    });
+    return;
+  }
+  res.status(202).json({
+    accepted: true,
+    viewer_environment: listEnv,
+    message:
+      "Balance refresh started in the background. Poll GET /api/v1/rp/wallets/refresh-balances/status until running is false.",
   });
 });
 

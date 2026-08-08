@@ -115,6 +115,7 @@ export function useMerchantPortalEnvironment() {
       await queryClient.invalidateQueries({ queryKey: ["rp-users"] });
       await queryClient.invalidateQueries({ queryKey: ["rp-txs"] });
       await queryClient.invalidateQueries({ queryKey: ["rp-wallets"] });
+      await queryClient.invalidateQueries({ queryKey: ["admin-wallets"] });
     },
     [queryClient],
   );

@@ -157,16 +157,35 @@ export async function probeWalletOnChainBalance(w) {
 }
 
 /**
- * Fetches on-chain balance for every wallet and persists cache columns.
+ * Fetches on-chain balance for wallets and persists cache columns.
  * Waits {@link REFRESH_BALANCE_GAP_MS} between each wallet so Etherscan / TronScan
- * are not hit in one tight burst (admin “Refresh balances”).
+ * are not hit in one tight burst (admin / merchant “Refresh balances”).
  *
- * @param {{ onProgress?: (processed: number, total: number) => void }} [opts]
+ * @param {{
+ *   onProgress?: (processed: number, total: number) => void,
+ *   merchantId?: number,
+ *   resellerPartnerId?: number,
+ *   environment?: import("@prisma/client").MerchantGatewayEnv,
+ * }} [opts]
  * @returns {Promise<{ total: number, ok: number, failed: number }>}
  */
 export async function refreshAllWalletCachedBalances(opts) {
   const rows = await prisma.wallet.findMany({
-    where: { ...ACTIVE },
+    where: {
+      ...ACTIVE,
+      ...(opts?.merchantId != null ? { merchantId: opts.merchantId } : {}),
+      ...(opts?.resellerPartnerId != null
+        ? {
+            merchant: {
+              is: {
+                resellerPartnerId: opts.resellerPartnerId,
+                deletedAt: null,
+              },
+            },
+          }
+        : {}),
+      ...(opts?.environment != null ? { environment: opts.environment } : {}),
+    },
     orderBy: { createdAt: "desc" },
     select: {
       id: true,
@@ -270,6 +289,200 @@ export function startAdminBulkWalletBalanceRefresh() {
       logger.error("admin_wallet_balances_refresh_failed", { err: String(e) });
     } finally {
       adminBulkRefreshState.running = false;
+    }
+  })();
+
+  return { started: true };
+}
+
+/** @type {Map<string, { running: boolean, lastResult: { total: number, ok: number, failed: number } | null, lastError: string | null, scanTotal: number, scanProcessed: number }>} */
+const merchantBulkRefreshByKey = new Map();
+
+/**
+ * @param {number} merchantId
+ * @param {import("@prisma/client").MerchantGatewayEnv} environment
+ */
+function merchantRefreshKey(merchantId, environment) {
+  return `${merchantId}:${environment}`;
+}
+
+/**
+ * @param {number} merchantId
+ * @param {import("@prisma/client").MerchantGatewayEnv} environment
+ */
+export function getMerchantBulkWalletBalanceRefreshStatus(merchantId, environment) {
+  const key = merchantRefreshKey(merchantId, environment);
+  const s = merchantBulkRefreshByKey.get(key) ?? {
+    running: false,
+    lastResult: null,
+    lastError: null,
+    scanTotal: 0,
+    scanProcessed: 0,
+  };
+  return {
+    running: s.running,
+    lastResult: s.lastResult,
+    lastError: s.lastError,
+    scanTotal: s.scanTotal,
+    scanProcessed: s.scanProcessed,
+  };
+}
+
+/**
+ * Merchant-scoped background refresh (current portal environment only).
+ *
+ * @param {number} merchantId
+ * @param {import("@prisma/client").MerchantGatewayEnv} environment
+ * @returns {{ started: true } | { started: false, reason: "in_progress" }}
+ */
+export function startMerchantBulkWalletBalanceRefresh(merchantId, environment) {
+  const key = merchantRefreshKey(merchantId, environment);
+  let s = merchantBulkRefreshByKey.get(key);
+  if (!s) {
+    s = {
+      running: false,
+      lastResult: null,
+      lastError: null,
+      scanTotal: 0,
+      scanProcessed: 0,
+    };
+    merchantBulkRefreshByKey.set(key, s);
+  }
+  if (s.running) {
+    return { started: false, reason: "in_progress" };
+  }
+  s.running = true;
+  s.lastResult = null;
+  s.lastError = null;
+  s.scanTotal = 0;
+  s.scanProcessed = 0;
+
+  void (async () => {
+    try {
+      const result = await refreshAllWalletCachedBalances({
+        merchantId,
+        environment,
+        onProgress: (processed, total) => {
+          s.scanTotal = total;
+          s.scanProcessed = processed;
+        },
+      });
+      s.lastResult = result;
+      s.scanTotal = result.total;
+      s.scanProcessed = result.total;
+      logger.info("merchant_wallet_balances_refreshed", {
+        merchant_id: merchantId,
+        environment,
+        total: result.total,
+        ok: result.ok,
+        failed: result.failed,
+      });
+    } catch (e) {
+      s.lastError = String(e);
+      logger.error("merchant_wallet_balances_refresh_failed", {
+        merchant_id: merchantId,
+        environment,
+        err: String(e),
+      });
+    } finally {
+      s.running = false;
+    }
+  })();
+
+  return { started: true };
+}
+
+/** @type {Map<string, { running: boolean, lastResult: { total: number, ok: number, failed: number } | null, lastError: string | null, scanTotal: number, scanProcessed: number }>} */
+const rpBulkRefreshByKey = new Map();
+
+/**
+ * @param {number} resellerPartnerId
+ * @param {import("@prisma/client").MerchantGatewayEnv} environment
+ */
+function rpRefreshKey(resellerPartnerId, environment) {
+  return `${resellerPartnerId}:${environment}`;
+}
+
+/**
+ * @param {number} resellerPartnerId
+ * @param {import("@prisma/client").MerchantGatewayEnv} environment
+ */
+export function getRpBulkWalletBalanceRefreshStatus(resellerPartnerId, environment) {
+  const key = rpRefreshKey(resellerPartnerId, environment);
+  const s = rpBulkRefreshByKey.get(key) ?? {
+    running: false,
+    lastResult: null,
+    lastError: null,
+    scanTotal: 0,
+    scanProcessed: 0,
+  };
+  return {
+    running: s.running,
+    lastResult: s.lastResult,
+    lastError: s.lastError,
+    scanTotal: s.scanTotal,
+    scanProcessed: s.scanProcessed,
+  };
+}
+
+/**
+ * RP-scoped background refresh (current portal environment; merchants under this RP only).
+ *
+ * @param {number} resellerPartnerId
+ * @param {import("@prisma/client").MerchantGatewayEnv} environment
+ * @returns {{ started: true } | { started: false, reason: "in_progress" }}
+ */
+export function startRpBulkWalletBalanceRefresh(resellerPartnerId, environment) {
+  const key = rpRefreshKey(resellerPartnerId, environment);
+  let s = rpBulkRefreshByKey.get(key);
+  if (!s) {
+    s = {
+      running: false,
+      lastResult: null,
+      lastError: null,
+      scanTotal: 0,
+      scanProcessed: 0,
+    };
+    rpBulkRefreshByKey.set(key, s);
+  }
+  if (s.running) {
+    return { started: false, reason: "in_progress" };
+  }
+  s.running = true;
+  s.lastResult = null;
+  s.lastError = null;
+  s.scanTotal = 0;
+  s.scanProcessed = 0;
+
+  void (async () => {
+    try {
+      const result = await refreshAllWalletCachedBalances({
+        resellerPartnerId,
+        environment,
+        onProgress: (processed, total) => {
+          s.scanTotal = total;
+          s.scanProcessed = processed;
+        },
+      });
+      s.lastResult = result;
+      s.scanTotal = result.total;
+      s.scanProcessed = result.total;
+      logger.info("rp_wallet_balances_refreshed", {
+        reseller_partner_id: resellerPartnerId,
+        environment,
+        total: result.total,
+        ok: result.ok,
+        failed: result.failed,
+      });
+    } catch (e) {
+      s.lastError = String(e);
+      logger.error("rp_wallet_balances_refresh_failed", {
+        reseller_partner_id: resellerPartnerId,
+        environment,
+        err: String(e),
+      });
+    } finally {
+      s.running = false;
     }
   })();
 

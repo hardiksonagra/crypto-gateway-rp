@@ -300,6 +300,25 @@ export const APP_SETTING_DEFINITIONS = [
   },
 
   {
+    key: "PAYOUT_HOT_PRIVATE_KEY_TRON",
+    label: "Payout hot wallet private key · TRON (USDT·TRC20)",
+    category: "Payout · auto",
+    type: "string",
+    sensitive: true,
+    helpText:
+      "Used when a merchant has no payout treasury address (or the treasury matches this key). Hex key; wallet must hold USDT + TRX for fees.",
+  },
+  {
+    key: "PAYOUT_HOT_PRIVATE_KEY_ETH",
+    label: "Payout hot wallet private key · ETH (USDT·ERC20)",
+    category: "Payout · auto",
+    type: "string",
+    sensitive: true,
+    helpText:
+      "Used when a merchant has no payout treasury address (or the treasury matches this key). Hex key; wallet must hold USDT + ETH for gas.",
+  },
+
+  {
     key: "GATEWAY_SANDBOX",
     label: "Allow live API key for sandbox simulate-deposit",
     category: "Gateway",

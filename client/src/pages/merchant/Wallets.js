@@ -30,11 +30,98 @@ const DEFAULT_PAGE_SIZE = DEFAULT_LIST_PAGE_SIZE;
 /** Set to `true` when merchants should see “Restart scan” on the wallets table again. */
 const MERCHANT_RESTART_DEPOSIT_SCAN_ENABLED = false;
 
+/**
+ * @param {{ cached_balance_atomic?: string | null }} w
+ * @returns {boolean}
+ */
+function hasPositiveCachedBalance(w) {
+  const a = w.cached_balance_atomic;
+  if (typeof a !== "string" || !/^[0-9]+$/.test(a.trim())) return false;
+  try {
+    return BigInt(a.trim()) > 0n;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * @param {string} address
+ * @returns {string}
+ */
+function shortAddress(address) {
+  const a = String(address ?? "").trim();
+  if (a.length <= 16) return a;
+  return `${a.slice(0, 8)}…${a.slice(-6)}`;
+}
+
+/**
+ * @param {string} text
+ */
+async function copyToClipboard(text) {
+  const t = String(text ?? "").trim();
+  if (!t) return false;
+  try {
+    await navigator.clipboard.writeText(t);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * @param {(p: { processed: number; total: number } | null) => void} [onScanProgress]
+ * @returns {Promise<{ total: number, ok: number, failed: number }>}
+ */
+async function startOrWaitForMerchantBalanceRefresh(onScanProgress) {
+  onScanProgress?.(null);
+  try {
+    await api("/api/v1/merchant/wallets/refresh-balances", {
+      method: "POST",
+      json: {},
+    });
+  } catch (e) {
+    const st = e && typeof e === "object" && "status" in e ? Number(e.status) : NaN;
+    const code =
+      e && typeof e === "object" && "errorCode" in e ? String(e.errorCode) : "";
+    if (st !== 409 && code !== "refresh_in_progress") throw e;
+  }
+  const maxPolls = 4800;
+  for (let i = 0; i < maxPolls; i++) {
+    await new Promise((r) => setTimeout(r, 750));
+    const s = await api("/api/v1/merchant/wallets/refresh-balances/status");
+    const st = Number(s.scan_total ?? 0);
+    if (st > 0) {
+      onScanProgress?.({
+        processed: Number(s.scan_processed ?? 0),
+        total: st,
+      });
+    }
+    if (!s.running) {
+      onScanProgress?.(null);
+      if (typeof s.error === "string" && s.error.trim()) {
+        throw new Error(s.error.trim());
+      }
+      return {
+        total: Number(s.total ?? 0),
+        ok: Number(s.ok ?? 0),
+        failed: Number(s.failed ?? 0),
+      };
+    }
+  }
+  throw new Error(
+    "Balance refresh did not finish in time. Check again later.",
+  );
+}
+
 export default function MerchantWallets() {
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
   const [activityWalletId, setActivityWalletId] = useState(null);
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [balanceRefreshScan, setBalanceRefreshScan] = useState(
+    /** @type {{ processed: number; total: number } | null} */ (null),
+  );
+  const [copiedId, setCopiedId] = useState(/** @type {string | null} */ (null));
   const [applied, setApplied] = useState({
     q: "",
     pageSize: DEFAULT_PAGE_SIZE,
@@ -90,6 +177,14 @@ export default function MerchantWallets() {
     },
   });
 
+  const refreshBalances = useMutation({
+    mutationFn: () => startOrWaitForMerchantBalanceRefresh(setBalanceRefreshScan),
+    onSettled: () => {
+      setBalanceRefreshScan(null);
+      void queryClient.invalidateQueries({ queryKey: ["m-wallets"] });
+    },
+  });
+
   const hasActiveFilters = Boolean(applied.q.trim());
   const hasNonDefaultPageSize = applied.pageSize !== DEFAULT_PAGE_SIZE;
   const hasFilterChips = hasActiveFilters || hasNonDefaultPageSize;
@@ -124,19 +219,60 @@ export default function MerchantWallets() {
   if (portalGate) return portalGate;
 
   return (
-    <div>
-      <div className="flex flex-wrap items-start justify-between gap-4">
-        <div className="min-w-0 flex-1">
-          <h1 className="font-display text-2xl font-semibold text-white">
+    <div className="w-full">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div className="min-w-0">
+          <h1 className="font-display text-2xl font-semibold tracking-tight text-white">
             Wallets
           </h1>
+          <p className="mt-1.5 max-w-xl text-sm leading-relaxed text-white/50">
+            Deposit addresses and cached on-chain USDT. Refresh to update balances from the chain.
+          </p>
         </div>
-        <ListFilterToolbar
-          onOpenDrawer={() => setDrawerOpen(true)}
-          onReset={resetAll}
-          canReset={canReset}
-        />
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            disabled={refreshBalances.isPending}
+            onClick={() => refreshBalances.mutate()}
+            className="inline-flex h-10 items-center rounded-xl bg-sky-500 px-4 text-sm font-semibold text-white shadow-sm shadow-sky-950/40 transition hover:bg-sky-400 disabled:opacity-50"
+          >
+            {refreshBalances.isPending ? "Refreshing…" : "Refresh balances"}
+          </button>
+          <ListFilterToolbar
+            onOpenDrawer={() => setDrawerOpen(true)}
+            onReset={resetAll}
+            canReset={canReset}
+          />
+        </div>
       </div>
+
+      {refreshBalances.isError ? (
+        <p className="mt-4 rounded-xl border border-rose-400/25 bg-rose-500/10 px-3 py-2 text-sm text-rose-200">
+          {String(refreshBalances.error)}
+        </p>
+      ) : null}
+      {refreshBalances.isPending ? (
+        <p className="mt-4 rounded-xl border border-sky-400/20 bg-sky-500/10 px-3 py-2 text-sm text-sky-100/90">
+          {balanceRefreshScan && balanceRefreshScan.total > 0 ? (
+            <>
+              Scanning{" "}
+              <span className="font-mono font-semibold text-white">
+                {balanceRefreshScan.processed}/{balanceRefreshScan.total}
+              </span>
+            </>
+          ) : (
+            <>Starting balance refresh…</>
+          )}
+        </p>
+      ) : null}
+      {refreshBalances.isSuccess ? (
+        <p className="mt-4 rounded-xl border border-emerald-400/20 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-100/90">
+          Updated {refreshBalances.data?.ok ?? 0} of {refreshBalances.data?.total ?? 0}
+          {refreshBalances.data?.failed
+            ? ` · ${refreshBalances.data.failed} with errors`
+            : ""}
+        </p>
+      ) : null}
 
       {hasFilterChips ? (
         <ListActiveFiltersChips>
@@ -238,31 +374,42 @@ export default function MerchantWallets() {
         )}
       </ListFilterDrawer>
 
-      <div className="mt-10 space-y-4">
-        <div className="data-table-surface overflow-x-auto">
-          <table className="data-table min-w-[900px]">
+      <div className="mt-8 overflow-hidden rounded-2xl border border-white/[0.08] bg-[#0b0f1a]/80 shadow-[0_0_0_1px_rgba(255,255,255,0.03)_inset] ring-1 ring-black/20">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[920px] border-collapse text-left">
             <thead>
-              <tr>
-                <th>Address</th>
-                <th>Asset</th>
-                <th>Chain</th>
-                <th>External user</th>
-                <th>Payers</th>
-                <th>Success</th>
-                <th>Tx rows</th>
-                <th>Deposit scan</th>
-                <th>Created</th>
-                <th className="whitespace-nowrap">Actions</th>
+              <tr className="border-b border-white/10 bg-white/[0.03]">
+                <th className="px-4 py-3 text-[11px] font-semibold tracking-wide text-white/55 uppercase">
+                  Wallet
+                </th>
+                <th className="px-4 py-3 text-[11px] font-semibold tracking-wide text-white/55 uppercase">
+                  Rail
+                </th>
+                <th className="px-4 py-3 text-[11px] font-semibold tracking-wide text-white/55 uppercase">
+                  Balance
+                </th>
+                <th className="px-4 py-3 text-[11px] font-semibold tracking-wide text-white/55 uppercase">
+                  User
+                </th>
+                <th className="px-4 py-3 text-[11px] font-semibold tracking-wide text-white/55 uppercase">
+                  Activity
+                </th>
+                <th className="px-4 py-3 text-[11px] font-semibold tracking-wide text-white/55 uppercase">
+                  Scan
+                </th>
+                <th className="px-4 py-3 text-right text-[11px] font-semibold tracking-wide text-white/55 uppercase">
+                  Actions
+                </th>
               </tr>
             </thead>
             <tbody>
               {res.isLoading ? (
                 <tr>
-                  <td colSpan={10} className="!py-8">
+                  <td colSpan={7} className="px-4 py-10">
                     <BrandLoader
                       variant="inline"
                       title=""
-                      subtitle="Loading…"
+                      subtitle="Loading wallets…"
                     />
                   </td>
                 </tr>
@@ -270,10 +417,10 @@ export default function MerchantWallets() {
               {showEmpty ? (
                 <tr>
                   <td
-                    colSpan={10}
-                    className="!py-12 text-center text-sm text-white/45"
+                    colSpan={7}
+                    className="px-4 py-14 text-center text-sm text-white/45"
                   >
-                    No record found.
+                    No wallets in this environment yet.
                   </td>
                 </tr>
               ) : null}
@@ -282,63 +429,131 @@ export default function MerchantWallets() {
                   const txc = w.transaction_count ?? 0;
                   const scanLine =
                     environment !== "live"
-                      ? "— (sandbox)"
+                      ? "Sandbox"
                       : scanTtlMin <= 0
                         ? "Always on"
                         : txc > 0
-                          ? "Always on (has payments)"
+                          ? "Always on"
                           : !w.scan_expires_at
                             ? "Always on"
                             : w.deposit_scan_active
                               ? `Until ${formatLocalDateTime(w.scan_expires_at)}`
-                              : "Window ended";
+                              : "Ended";
                   const canRestart =
                     environment === "live" && scanTtlMin > 0 && txc === 0;
+                  const addr = String(w.address ?? "");
+                  const copied = copiedId === String(w.id);
                   return (
-                    <tr key={w.id}>
-                      <td>
-                        <div
-                          className="max-w-[min(320px,40vw)] font-mono text-xs text-white/75 break-all"
-                          title={w.address}
-                        >
-                          {w.address}
+                    <tr
+                      key={w.id}
+                      className="border-b border-white/[0.06] last:border-0 hover:bg-white/[0.025]"
+                    >
+                      <td className="px-4 py-3.5 align-middle">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <div className="min-w-0">
+                            <p
+                              className="font-mono text-[13px] font-medium tracking-tight text-white/90"
+                              title={addr}
+                            >
+                              {shortAddress(addr)}
+                            </p>
+                            <p className="mt-0.5 font-mono text-[10px] text-white/35">
+                              #{w.id}
+                              <span className="text-white/25"> · </span>
+                              {formatLocalDate(w.created_at)}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            className="shrink-0 rounded-lg border border-white/10 bg-white/[0.04] px-2 py-1 text-[10px] font-medium text-white/60 transition hover:border-white/20 hover:bg-white/[0.08] hover:text-white/85"
+                            title="Copy full address"
+                            onClick={() => {
+                              void copyToClipboard(addr).then((ok) => {
+                                if (!ok) return;
+                                setCopiedId(String(w.id));
+                                window.setTimeout(() => {
+                                  setCopiedId((cur) =>
+                                    cur === String(w.id) ? null : cur,
+                                  );
+                                }, 1200);
+                              });
+                            }}
+                          >
+                            {copied ? "Copied" : "Copy"}
+                          </button>
                         </div>
-                        <div
-                          className="mt-0.5 font-mono text-[10px] text-white/35"
-                          title={w.id}
+                      </td>
+                      <td className="px-4 py-3.5 align-middle whitespace-nowrap">
+                        <p className="text-sm font-medium text-white/90">
+                          {w.currency}
+                          <span className="text-white/40"> · </span>
+                          {w.network}
+                        </p>
+                        <p className="mt-0.5 font-mono text-[10px] uppercase tracking-wide text-white/40">
+                          {w.chain}
+                        </p>
+                      </td>
+                      <td className="px-4 py-3.5 align-middle whitespace-nowrap">
+                        {w.cached_balance_display ? (
+                          <p
+                            className={
+                              hasPositiveCachedBalance(w)
+                                ? "text-sm font-semibold tabular-nums text-emerald-300"
+                                : "text-sm font-medium tabular-nums text-white/80"
+                            }
+                          >
+                            {w.cached_balance_display}
+                          </p>
+                        ) : w.cached_balance_error ? (
+                          <p
+                            className="max-w-[9rem] truncate text-xs text-amber-200/85"
+                            title={w.cached_balance_error}
+                          >
+                            Probe error
+                          </p>
+                        ) : (
+                          <p className="text-sm text-white/35">—</p>
+                        )}
+                        <p className="mt-0.5 text-[10px] text-white/35">
+                          {w.cached_balance_updated_at
+                            ? formatLocalDateTime(w.cached_balance_updated_at)
+                            : "Not refreshed"}
+                        </p>
+                      </td>
+                      <td className="px-4 py-3.5 align-middle">
+                        <p
+                          className="max-w-[9rem] truncate font-mono text-xs text-white/75"
+                          title={w.external_user_id ?? undefined}
                         >
-                          {w.id}
+                          {w.external_user_id || "—"}
+                        </p>
+                      </td>
+                      <td className="px-4 py-3.5 align-middle whitespace-nowrap">
+                        <div className="flex items-center gap-3 font-mono text-[11px] tabular-nums text-white/55">
+                          <span title="Payers">
+                            <span className="text-white/35">P</span>{" "}
+                            {w.distinct_payer_users ?? 0}
+                          </span>
+                          <span title="Success deposits" className="text-emerald-200/80">
+                            <span className="text-emerald-200/40">S</span>{" "}
+                            {w.success_deposit_count ?? 0}
+                          </span>
+                          <span title="Tx rows">
+                            <span className="text-white/35">T</span> {txc}
+                          </span>
                         </div>
                       </td>
-                      <td className="whitespace-nowrap text-sm text-white/80">
-                        {w.currency}{" "}
-                        <span className="text-white/45">· {w.network}</span>
+                      <td className="px-4 py-3.5 align-middle">
+                        <p className="max-w-[8.5rem] truncate text-xs text-white/50" title={scanLine}>
+                          {scanLine}
+                        </p>
                       </td>
-                      <td className="font-mono text-xs text-white/65">
-                        {w.chain}
-                      </td>
-                      <td className="font-mono text-xs text-white/75">
-                        {w.external_user_id}
-                      </td>
-                      <td className="font-mono text-xs text-white/75">
-                        {w.distinct_payer_users ?? 0}
-                      </td>
-                      <td className="font-mono text-xs text-emerald-200/85">
-                        {w.success_deposit_count ?? 0}
-                      </td>
-                      <td className="font-mono text-xs text-white/65">{txc}</td>
-                      <td className="max-w-[200px] text-xs text-white/55">
-                        {scanLine}
-                      </td>
-                      <td className="text-xs text-white/45">
-                        {formatLocalDate(w.created_at)}
-                      </td>
-                      <td className="whitespace-nowrap">
-                        <div className="flex flex-col items-start gap-1.5">
+                      <td className="px-4 py-3.5 align-middle text-right whitespace-nowrap">
+                        <div className="inline-flex flex-col items-end gap-1.5">
                           <button
                             type="button"
                             onClick={() => setActivityWalletId(w.id)}
-                            className="rounded-lg border border-white/15 bg-white/5 px-2.5 py-1 text-xs text-white/80 hover:bg-white/10"
+                            className="rounded-lg border border-white/12 bg-white/[0.04] px-3 py-1.5 text-xs font-medium text-white/80 transition hover:bg-white/[0.08]"
                           >
                             Activity
                           </button>
@@ -347,7 +562,7 @@ export default function MerchantWallets() {
                               type="button"
                               disabled={reactivateScan.isPending}
                               onClick={() => reactivateScan.mutate(w.id)}
-                              className="rounded-lg border border-sky-500/35 bg-sky-500/15 px-2.5 py-1 text-xs font-medium text-sky-200/95 transition hover:border-sky-400/50 hover:bg-sky-500/25 disabled:opacity-50"
+                              className="rounded-lg border border-sky-500/35 bg-sky-500/15 px-2.5 py-1 text-xs font-medium text-sky-200/95 transition hover:bg-sky-500/25 disabled:opacity-50"
                             >
                               Restart scan
                             </button>
@@ -360,13 +575,15 @@ export default function MerchantWallets() {
             </tbody>
           </table>
         </div>
+      </div>
 
-        {MERCHANT_RESTART_DEPOSIT_SCAN_ENABLED && reactivateScan.isError ? (
-          <p className="text-sm text-rose-300/90">
-            {String(reactivateScan.error)}
-          </p>
-        ) : null}
+      {MERCHANT_RESTART_DEPOSIT_SCAN_ENABLED && reactivateScan.isError ? (
+        <p className="mt-3 text-sm text-rose-300/90">
+          {String(reactivateScan.error)}
+        </p>
+      ) : null}
 
+      <div className="mt-4">
         <ListPaginationBar
           page={page}
           setPage={setPage}

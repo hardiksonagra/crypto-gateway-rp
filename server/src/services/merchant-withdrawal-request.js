@@ -9,6 +9,10 @@ import {
 import { parseOptionalGatewayDepositAmount } from "../lib/gateway-expected-amount.js";
 import { prisma } from "../lib/prisma.js";
 import { computeMerchantBalances } from "./merchant-balance.js";
+import {
+  parseSimulateResult,
+  uniquifySandboxClientRef,
+} from "./payout/payout-test-refs.js";
 
 /** @typedef {{ chain: Chain, tokenDecimals: number }} WithdrawalRail */
 
@@ -141,6 +145,8 @@ function validateGrossAgainstMerchantPayoutLimits(
  *   rates: { payoutMdrPercent?: unknown },
  *   payoutPolicy?: { payoutMinAmountHuman?: unknown, payoutMaxAmountHuman?: unknown },
  *   clientReferenceId?: unknown,
+ *   forceFail?: unknown,
+ *   simulateResult?: unknown,
  *   source?: "portal" | "gateway_api",
  * }} p
  */
@@ -194,8 +200,35 @@ export async function createMerchantWithdrawalRequest(p) {
 
   const refRaw =
     p.clientReferenceId != null ? String(p.clientReferenceId).trim() : "";
-  const clientRef = refRaw.slice(0, 256);
-  if (clientRef) {
+  let clientRef = refRaw.slice(0, 256);
+  const isSandbox = String(p.environment) === String(MerchantGatewayEnv.sandbox);
+  const simulateResult = parseSimulateResult(p.simulateResult);
+
+  /**
+   * Sandbox: DB unique on (merchant, env, client_reference_id) still applies.
+   * Prefer `simulate_result` without a fixed id; if the same test id is reused,
+   * append a unique suffix (FAIL-TEST / SUCCESS-TEST prefix kept for outcome).
+   */
+  if (isSandbox) {
+    if (!clientRef && simulateResult) {
+      clientRef = uniquifySandboxClientRef(
+        simulateResult === "failed" ? "FAIL-TEST" : "SUCCESS-TEST",
+      );
+    } else if (clientRef) {
+      const exists = await prisma.withdrawal.findFirst({
+        where: {
+          merchantId: p.merchantId,
+          environment: p.environment,
+          clientReferenceId: clientRef,
+          ...ACTIVE,
+        },
+        select: { id: true },
+      });
+      if (exists) {
+        clientRef = uniquifySandboxClientRef(clientRef);
+      }
+    }
+  } else if (clientRef) {
     const exists = await prisma.withdrawal.findFirst({
       where: {
         merchantId: p.merchantId,
@@ -222,51 +255,86 @@ export async function createMerchantWithdrawalRequest(p) {
     policy.payoutMaxAmountHuman,
     rail.tokenDecimals,
   );
-  if (!bounds.ok) return bounds;
 
   const mdrP = Number(p.rates.payoutMdrPercent ?? 0);
   const mdrReferenceAtomic = feeAmountFromPercent(gross, mdrP);
 
-  const buckets = await computeMerchantBalances(p.merchantId, p.environment);
-  const bucket = buckets.find(
-    (b) =>
-      String(b.chain) === String(rail.chain) &&
-      b.token_symbol.toUpperCase() === USDT &&
-      b.token_decimals === rail.tokenDecimals,
-  );
-  const available = bucket ? BigInt(bucket.balance_raw) : 0n;
-  if (available < gross) {
-    return {
-      ok: false,
-      status: 400,
-      error: "insufficient_balance",
-      message: "Not enough settled balance for this gross payout.",
-    };
+  /** @type {string | null} */
+  let preFailReason = null;
+  if (!bounds.ok) {
+    const msg = bounds.message ? String(bounds.message) : "";
+    preFailReason = msg
+      ? `${bounds.error}: ${msg}`.slice(0, 2000)
+      : String(bounds.error);
+  }
+
+  /** Sandbox skips balance; live insufficient → same failed payout response as sandbox (not HTTP error JSON). */
+  if (!preFailReason && !isSandbox) {
+    const buckets = await computeMerchantBalances(p.merchantId, p.environment);
+    const bucket = buckets.find(
+      (b) =>
+        String(b.chain) === String(rail.chain) &&
+        b.token_symbol.toUpperCase() === USDT &&
+        b.token_decimals === rail.tokenDecimals,
+    );
+    const available = bucket ? BigInt(bucket.balance_raw) : 0n;
+    if (available < gross) {
+      preFailReason = "insufficient_balance: Not enough settled balance for this gross payout.";
+    }
   }
 
   const grossStr = gross.toString();
   const source = p.source === "gateway_api" ? "gateway_api" : "portal";
 
-  const row = await prisma.withdrawal.create({
-    data: {
-      merchantId: p.merchantId,
-      environment: p.environment,
-      chain: rail.chain,
-      tokenSymbol: USDT,
-      tokenDecimals: rail.tokenDecimals,
-      toAddress: to.toAddress,
-      amount: grossStr,
-      grossAmount: grossStr,
-      netAmount: grossStr,
-      mdrAmount: mdrReferenceAtomic.toString(),
-      settlementFeeAmount: "0",
-      mdrPercent: new Prisma.Decimal(String(mdrP)),
-      settlementRatePercent: new Prisma.Decimal("0"),
-      status: WithdrawalStatus.pending,
-      source,
-      ...(clientRef ? { clientReferenceId: clientRef } : {}),
-    },
-  });
+  /**
+   * @param {string} ref
+   * @param {{ status?: import("@prisma/client").WithdrawalStatus, failureReason?: string | null }} [extra]
+   */
+  async function insertWithRef(ref, extra = {}) {
+    return prisma.withdrawal.create({
+      data: {
+        merchantId: p.merchantId,
+        environment: p.environment,
+        chain: rail.chain,
+        tokenSymbol: USDT,
+        tokenDecimals: rail.tokenDecimals,
+        toAddress: to.toAddress,
+        amount: grossStr,
+        grossAmount: grossStr,
+        netAmount: grossStr,
+        mdrAmount: mdrReferenceAtomic.toString(),
+        settlementFeeAmount: "0",
+        mdrPercent: new Prisma.Decimal(String(mdrP)),
+        settlementRatePercent: new Prisma.Decimal("0"),
+        status: extra.status ?? WithdrawalStatus.processing,
+        failureReason: extra.failureReason ?? null,
+        source,
+        ...(ref ? { clientReferenceId: ref } : {}),
+      },
+    });
+  }
 
-  return { ok: true, withdrawal: row };
+  try {
+    if (preFailReason) {
+      const row = await insertWithRef(clientRef, {
+        status: WithdrawalStatus.failed,
+        failureReason: preFailReason,
+      });
+      return { ok: true, withdrawal: row };
+    }
+    const row = await insertWithRef(clientRef);
+    return { ok: true, withdrawal: row };
+  } catch (e) {
+    const code = /** @type {{ code?: string }} */ (e)?.code;
+    if (isSandbox && code === "P2002" && clientRef) {
+      const row = await insertWithRef(
+        uniquifySandboxClientRef(clientRef),
+        preFailReason
+          ? { status: WithdrawalStatus.failed, failureReason: preFailReason }
+          : {},
+      );
+      return { ok: true, withdrawal: row };
+    }
+    throw e;
+  }
 }

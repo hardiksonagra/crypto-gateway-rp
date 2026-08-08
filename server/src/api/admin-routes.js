@@ -2033,6 +2033,13 @@ router.get("/api/v1/admin/wallets", async (req, res) => {
     typeof req.query.environment === "string"
       ? req.query.environment.trim().toLowerCase()
       : "";
+  /** Always scope to one gateway env — query wins, else admin portal Live/Sandbox toggle. */
+  const listEnv =
+    environmentQ === "sandbox"
+      ? MerchantGatewayEnv.sandbox
+      : environmentQ === "live"
+        ? MerchantGatewayEnv.live
+        : await adminListViewerEnvironment(req);
   const from =
     typeof req.query.created_from === "string"
       ? new Date(req.query.created_from)
@@ -2059,6 +2066,7 @@ router.get("/api/v1/admin/wallets", async (req, res) => {
     : null;
   const where = {
     ...ACTIVE,
+    environment: listEnv,
     ...(merchantId
       ? walletMerchantClause
         ? { merchant: walletMerchantClause }
@@ -2102,14 +2110,6 @@ router.get("/api/v1/admin/wallets", async (req, res) => {
       ? { network: { equals: network, mode: "insensitive" } }
       : {}),
     ...(hasCreatedAt ? { createdAt: createdAtCond } : {}),
-    ...(environmentQ === "live" || environmentQ === "sandbox"
-      ? {
-          environment:
-            environmentQ === "live"
-              ? MerchantGatewayEnv.live
-              : MerchantGatewayEnv.sandbox,
-        }
-      : {}),
   };
 
   const uniqueAddressRaw = req.query.unique_address;
@@ -2179,6 +2179,7 @@ router.get("/api/v1/admin/wallets", async (req, res) => {
     total,
     unique_address: uniqueAddress,
     deposit_scan_ttl_minutes: ttlMin,
+    viewer_environment: listEnv,
     wallets: rows.map((w) => {
       const txCount = w._count.transactions;
       const exp = w.scanExpiresAt;

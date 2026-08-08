@@ -298,6 +298,17 @@ export const env = {
   sweepTronAutoCronMinutes: intEnv("SWEEP_TRON_AUTO_CRON_MINUTES", 30),
 
   /**
+   * Platform hot wallet private key for auto USDT·TRC20 payouts when merchant payout treasury is empty
+   * (or matches this key’s address). Hex, optional `0x` prefix.
+   */
+  payoutHotPrivateKeyTron: optional("PAYOUT_HOT_PRIVATE_KEY_TRON"),
+  /**
+   * Platform hot wallet private key for auto USDT·ERC20 payouts when merchant payout treasury is empty
+   * (or matches this key’s address). Hex, optional `0x` prefix.
+   */
+  payoutHotPrivateKeyEth: optional("PAYOUT_HOT_PRIVATE_KEY_ETH"),
+
+  /**
    * When true, allows POST /sandbox/simulate-deposit with the **live** API key too
    * (local dev only). Merchants should use their sandbox API key instead.
    */

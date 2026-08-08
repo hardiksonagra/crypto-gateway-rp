@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api } from "../../api";
 import { usePanelApiPrefix } from "../../hooks/usePanelApiPrefix.js";
+import { useMerchantPortalEnvironment } from "../../hooks/useMerchantPortalEnvironment.js";
 import ListPaginationBar, { DEFAULT_LIST_PAGE_SIZE } from "../../components/ListPaginationBar";
 import { BrandLoader } from "../../components/BrandLoader.js";
 import { resellerPartnerLabel, resellerPartnerTitle } from "../../lib/resellerPartnerLabel.js";
@@ -24,13 +25,14 @@ function hasPositiveCachedBalance(w) {
  * Bulk refresh can take minutes (1s spacing per wallet row). The API returns 202 immediately and
  * completes in the background; we poll status so the browser/proxy never holds one long request.
  *
+ * @param {string} apiPrefix `/api/v1/admin` or `/api/v1/rp`
  * @param {(p: { processed: number; total: number } | null) => void} [onScanProgress]
  * @returns {Promise<{ total: number, ok: number, failed: number }>}
  */
-async function startOrWaitForBalanceRefresh(onScanProgress) {
+async function startOrWaitForBalanceRefresh(apiPrefix, onScanProgress) {
   onScanProgress?.(null);
   try {
-    await api("/api/v1/admin/wallets/refresh-balances", { method: "POST", json: {} });
+    await api(`${apiPrefix}/wallets/refresh-balances`, { method: "POST", json: {} });
   } catch (e) {
     const st = e && typeof e === "object" && "status" in e ? Number(e.status) : NaN;
     const code = e && typeof e === "object" && "errorCode" in e ? String(e.errorCode) : "";
@@ -39,7 +41,7 @@ async function startOrWaitForBalanceRefresh(onScanProgress) {
   const maxPolls = 4800;
   for (let i = 0; i < maxPolls; i++) {
     await new Promise((r) => setTimeout(r, 750));
-    const s = await api("/api/v1/admin/wallets/refresh-balances/status");
+    const s = await api(`${apiPrefix}/wallets/refresh-balances/status`);
     const st = Number(s.scan_total ?? 0);
     if (st > 0) {
       onScanProgress?.({
@@ -67,6 +69,7 @@ async function startOrWaitForBalanceRefresh(onScanProgress) {
 /** All wallets: one row per gateway wallet (pool address); balances cached after full refresh. */
 export default function AdminWallets() {
   const { apiPrefix, isRp } = usePanelApiPrefix();
+  const { environment, portalEnvironmentKey } = useMerchantPortalEnvironment();
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_LIST_PAGE_SIZE);
@@ -75,21 +78,33 @@ export default function AdminWallets() {
     /** @type {{ processed: number; total: number } | null} */ (null),
   );
 
+  useEffect(() => {
+    setPage(1);
+  }, [portalEnvironmentKey]);
+
   const listQ = useQuery({
-    queryKey: [isRp ? "rp-wallets" : "admin-wallets", "simple", "unique-address", "live", page, pageSize],
+    queryKey: [
+      isRp ? "rp-wallets" : "admin-wallets",
+      "simple",
+      "unique-address",
+      portalEnvironmentKey,
+      page,
+      pageSize,
+    ],
     queryFn: () => {
       const p = new URLSearchParams({
         page: String(page),
         pageSize: String(pageSize),
         unique_address: "1",
-        environment: "live",
+        environment,
       });
       return api(`${apiPrefix}/wallets?${p}`);
     },
+    enabled: portalEnvironmentKey !== "pending",
   });
 
   const refreshMut = useMutation({
-    mutationFn: () => startOrWaitForBalanceRefresh(setBalanceRefreshScan),
+    mutationFn: () => startOrWaitForBalanceRefresh(apiPrefix, setBalanceRefreshScan),
     onSettled: () => {
       setBalanceRefreshScan(null);
       void queryClient.invalidateQueries({ queryKey: [isRp ? "rp-wallets" : "admin-wallets"] });
@@ -109,7 +124,6 @@ export default function AdminWallets() {
         <div className="min-w-0 flex-1">
           <h1 className="font-display text-2xl font-semibold text-white">All wallets</h1>
         </div>
-        {!isRp ? (
         <button
           type="button"
           disabled={refreshMut.isPending}
@@ -118,13 +132,12 @@ export default function AdminWallets() {
         >
           {refreshMut.isPending ? "Refreshing…" : "Refresh balances"}
         </button>
-        ) : null}
       </div>
 
-      {!isRp && refreshMut.isError ? (
+      {refreshMut.isError ? (
         <p className="mt-3 text-sm text-rose-400">{String(refreshMut.error)}</p>
       ) : null}
-      {!isRp && refreshMut.isPending ? (
+      {refreshMut.isPending ? (
         <p className="mt-3 text-sm text-sky-200/90">
           {balanceRefreshScan && balanceRefreshScan.total > 0 ? (
             <>
@@ -139,7 +152,7 @@ export default function AdminWallets() {
           )}
         </p>
       ) : null}
-      {!isRp && refreshMut.isSuccess ? (
+      {refreshMut.isSuccess ? (
         <p className="mt-3 text-sm text-emerald-200/90">
           Updated {refreshMut.data?.ok ?? 0} of {refreshMut.data?.total ?? 0} wallets
           {refreshMut.data?.failed ? ` (${refreshMut.data.failed} with errors or unsupported)` : ""}.
