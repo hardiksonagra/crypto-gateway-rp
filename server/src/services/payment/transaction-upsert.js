@@ -8,12 +8,12 @@
  * Duplicates: DB unique `tx_chain_log_unique` on `(chain, tx_hash, log_index)` plus upsert on that key
  * (TRON uses `log_index = -1` → one row per on-chain tx id on TRON).
  *
- * First on-chain credit for a checkout **updates** the existing `status: created` placeholder row
- * (same `id` as after `deposit-address`) when session + `gateway-created:*` hash match; further
- * transfers for the same session use new rows as before. Legacy raw underpaid upsert still inserts.
- * Underpaid closes the checkout: wallet returns to pool (no further session top-ups promoted to success).
- * Once a row is `underpaid`, later `upsertIncomingTransaction` calls for the same on-chain key no-op
- * (no field updates), like a frozen terminal row.
+ * Incoming credits bind **LIFO** to open `status: created` placeholders on the wallet (newest first).
+ * Already-`success` / terminal rows are not rewritten for a new on-chain hash. If no `created`
+ * placeholder remains, a **new** row is inserted (orphan success/pending) with a fresh reference —
+ * not attached to a prior success session. First credit for a checkout **updates** that placeholder
+ * in place (stable internal id). Underpaid closes that checkout. Same on-chain key already
+ * `underpaid` → no-op. Legacy raw underpaid upsert still inserts when needed.
  */
 import { Chain, MerchantGatewayEnv, TxStatus } from "@prisma/client";
 import {
@@ -43,6 +43,7 @@ import {
 import { releaseWalletAfterDepositSuccess } from "../wallet/wallet-service.js";
 import {
   depositSessionKeyForNewWalletTransaction,
+  newestOpenCreatedCheckoutForWallet,
   referenceTransactionIdForNewWalletTransaction,
 } from "../../lib/deposit-session-key.js";
 import { generateGatewayReferenceTransactionId } from "../../lib/gateway-reference-transaction-id.js";
@@ -127,6 +128,7 @@ export async function upsertIncomingTransaction(input) {
   let depositSessionKeyForCreate = null;
   let referenceTransactionIdForCreate = null;
   if (!hadRowBefore) {
+    // LIFO: newest open `created` only. No bind to prior success session.
     depositSessionKeyForCreate = await depositSessionKeyForNewWalletTransaction(
       walletInternalId,
       payerUserIdForCreate,
@@ -136,28 +138,17 @@ export async function upsertIncomingTransaction(input) {
         walletInternalId,
         payerUserIdForCreate,
       );
-    const missingKeysFromAssignment =
-      depositSessionKeyForCreate == null ||
-      referenceTransactionIdForCreate == null;
-    // Assignment helpers key off `wallet.assigned_user_id` + latest `wallet_assignment_events`.
-    // After hold expiry / pool release (or worker lag), that user link is null but the checkout
-    // placeholder row still holds `deposit_session_key` + `transaction_id` — recover from it so
-    // on-chain rows keep the same reference as `deposit-address` (avoids gateway GET 404).
-    if (prismaClientKnowsTxStatusCreated() && missingKeysFromAssignment) {
-      const fb = await prisma.transaction.findFirst({
-        where: {
-          walletId: walletInternalId,
-          chain: input.chain,
-          status: TxStatus.created,
-          txHash: { startsWith: "gateway-created:" },
-          ...ACTIVE,
-        },
-        orderBy: { id: "desc" },
-        select: {
-          depositSessionKey: true,
-          referenceTransactionId: true,
-        },
-      });
+    if (
+      (depositSessionKeyForCreate == null ||
+        referenceTransactionIdForCreate == null) &&
+      prismaClientKnowsTxStatusCreated()
+    ) {
+      // Payer filter may have missed; retry wallet-wide newest created.
+      const fb = await newestOpenCreatedCheckoutForWallet(
+        walletInternalId,
+        null,
+        { ignorePayerFilter: true },
+      );
       if (fb?.depositSessionKey) {
         depositSessionKeyForCreate =
           depositSessionKeyForCreate ?? fb.depositSessionKey;
@@ -166,14 +157,16 @@ export async function upsertIncomingTransaction(input) {
         referenceTransactionIdForCreate =
           referenceTransactionIdForCreate ?? fb.referenceTransactionId;
       }
-      if (fb) {
+      if (fb?.depositSessionKey) {
         logger.info("checkout_session_keys_recovered_from_placeholder", {
           wallet_id: walletInternalId,
           chain: input.chain,
+          lifo: true,
         });
       }
     }
     if (!referenceTransactionIdForCreate) {
+      // No open created → orphan on-chain credit (new success/pending row, fresh reference).
       referenceTransactionIdForCreate = generateGatewayReferenceTransactionId();
     }
   }
@@ -292,6 +285,7 @@ export async function upsertIncomingTransaction(input) {
       txHash: { startsWith: "gateway-created:" },
       ...ACTIVE,
     };
+    /** Newest open created first (LIFO) — never merge into an already-success row. */
     let ph =
       depositSessionKeyForCreate != null
         ? await prisma.transaction.findFirst({
@@ -299,14 +293,14 @@ export async function upsertIncomingTransaction(input) {
               ...placeholderWhere,
               depositSessionKey: depositSessionKeyForCreate,
             },
-            orderBy: { id: "desc" },
+            orderBy: [{ createdAt: "desc" }, { id: "desc" }],
             select: { id: true },
           })
         : null;
     if (!ph) {
       ph = await prisma.transaction.findFirst({
         where: placeholderWhere,
-        orderBy: { id: "desc" },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
         select: { id: true },
       });
     }

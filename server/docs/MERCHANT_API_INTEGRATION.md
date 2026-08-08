@@ -269,6 +269,8 @@ X-Webhook-Event: payment
 
 When later transfers bring a fixed-amount **session** total to the expected value, you receive another POST with `status: success` (for the transaction that completed the threshold); earlier `underpaid` rows for the same session may be updated to `success` in the database without another underpaid delivery.
 
+**Same wallet, multiple open checkouts:** each new on-chain credit is applied **LIFO** to the **newest** unpaid `created` placeholder on that wallet (it becomes `success` / `underpaid` / `pending`). Rows that are already **`success`** are not rewritten for a new chain hash. If **no** `created` placeholder remains, the credit is stored as a **new** ledger row (orphan success/pending) with a fresh reference — not attached to a prior paid checkout.
+
 Common body fields (success, underpaid, and failed): `transaction_id` (numeric gateway row id), **`reference_id`** and **`merchant_transaction_id`** (duplicate checkout reference string — same as **`reference_id` / `transaction_id`** on **`deposit-address` 200** and on **`GET …/gateway/transactions?transaction_id=…` 200**), flat `expected_amount_*` / `received_amount_*`, nested **`checkout`** / **`received`**, legacy `amount` / `amount_decimal` (= received), `tx_hash`, `chain`, `currency`, `network`, `token_symbol`, `wallet_address`, `confirmations`, `external_user_id`, `merchant_id`, `gateway_environment`. Atomic amounts are JSON strings (digits-only).
 
 ## II.4 New `deposit-address` while payment webhooks are stuck
