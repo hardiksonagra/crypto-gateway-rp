@@ -79,7 +79,8 @@ model ResellerPartner {
   /// Same as admin: global Users / Transactions / Wallets lists under `/rp` use this environment.
   portalEnvironment MerchantGatewayEnv @default(live) @map("portal_environment")
 
-  merchants Merchant[]
+  merchants   Merchant[]
+  swapConfigs RpMerchantSwapConfig[]
 
   @@index([deletedAt])
   @@map("reseller_partners")
@@ -147,10 +148,32 @@ model Merchant {
   walletAssignmentEvents WalletAssignmentEvent[]
   settlements   MerchantSettlement[]
   auditLogs     AuditLog[]
+  rpSwapConfigs RpMerchantSwapConfig[]
 
   @@index([deletedAt])
   @@index([resellerPartnerId])
   @@map("merchants")
+}
+
+/// RP portal: one TRON “swap to main wallet” target per merchant (min USDT threshold for later sweep action).
+model RpMerchantSwapConfig {
+  id                Int       @id @default(autoincrement())
+  resellerPartnerId Int       @map("reseller_partner_id")
+  resellerPartner   ResellerPartner @relation(fields: [resellerPartnerId], references: [id], onDelete: Cascade)
+  merchantId        Int       @map("merchant_id")
+  merchant          Merchant  @relation(fields: [merchantId], references: [id], onDelete: Cascade)
+  /// Destination TRON address (main wallet) for USDT·TRC20 consolidation.
+  tronAddress       String    @map("tron_address") @db.VarChar(128)
+  /// Min USDT (human decimal) before a wallet is eligible to sweep; e.g. "2000".
+  minAmountHuman    String    @default("0") @map("min_amount_human") @db.VarChar(128)
+  isActive          Boolean   @default(true) @map("is_active")
+  deletedAt         DateTime? @map("deleted_at")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
+
+  @@index([resellerPartnerId, deletedAt])
+  @@index([merchantId])
+  @@map("rp_merchant_swap_configs")
 }
 
 /// Admin-recorded settlement payout; `net_amount` reduces portal balance like a withdrawal.

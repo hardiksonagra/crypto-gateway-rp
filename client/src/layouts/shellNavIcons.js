@@ -70,6 +70,28 @@ export function IconSettlements({ className }) {
 }
 
 /** Outgoing payout / withdrawal */
+export function IconSwap({ className }) {
+  return (
+    <svg
+      className={className}
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M16 3h5v5" />
+      <path d="M8 21H3v-5" />
+      <path d="m21 3-9 9" />
+      <path d="m3 21 9-9" />
+    </svg>
+  );
+}
+
 export function IconPayout({ className }) {
   return (
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className={iconClass(className)} aria-hidden>

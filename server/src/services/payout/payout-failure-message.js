@@ -26,33 +26,36 @@ export function payoutFailureMessage(status, failureReason) {
     invalid_payout_max_config: "Merchant payout maximum is misconfigured.",
     merchant_not_found: "Merchant account was not found for this payout.",
     unsupported_payout_chain: "This payout chain is not supported.",
+    rp_swap_main_wallet_required:
+      "Set this merchant’s main wallet under RP → Swap first. Live TRON payouts only send from that wallet (not the platform hot wallet).",
     payout_hot_wallet_not_configured:
       "Platform payout hot wallet is not configured (PAYOUT_HOT_PRIVATE_KEY_*).",
     payout_hot_wallet_key_invalid: "Platform payout hot wallet private key is invalid.",
     payout_treasury_not_signable:
-      "Payout treasury address cannot be signed. Use the platform hot wallet address or a gateway USDT deposit wallet.",
+      "Payout from-address cannot be signed. RP → Swap main wallet must be one of this merchant’s gateway USDT·TRC20 deposit wallets.",
     invalid_payout_treasury: "Payout treasury address is invalid for this chain.",
     merchant_mnemonic_unavailable: "Merchant wallet mnemonic is unavailable for signing.",
     derived_address_mismatch: "Derived wallet address did not match the payout from-address.",
     INSUFFICIENT_USDT_ON_CHAIN:
       "From-wallet does not hold enough USDT on-chain for this payout.",
-    INSUFFICIENT_TRX_FOR_FEE: "From-wallet does not have enough TRX to pay network fees.",
+    INSUFFICIENT_TRX_FOR_FEE:
+      "Main wallet does not have enough TRX for network fees. Leave a little TRX there, or set a merchant TRX funder key / use SunSwap (needs a tiny TRX dust + spare USDT).",
     INSUFFICIENT_NATIVE_FOR_GAS: "From-wallet does not have enough ETH to pay gas.",
     TRX_FUNDER_REQUIRED:
-      "TRX fee top-up is required. Save a TRX funder private key under Gateway & webhooks, or set a USDT·TRC20 payout treasury (gateway deposit wallet).",
+      "TRX fee top-up is required. Fund the RP Swap main wallet with a little TRX (or USDT for SunSwap), or set a merchant TRX funder key.",
     MERCHANT_TRX_FUNDER_KEY_REQUIRED:
-      "TRX fee top-up is required. Save a TRX funder private key under Gateway & webhooks, or set a USDT·TRC20 payout treasury with TRX.",
+      "TRX fee top-up is required. Fund the RP Swap main wallet with a little TRX (or USDT for SunSwap), or set a merchant TRX funder key.",
     PAYOUT_TREASURY_NOT_SIGNABLE:
-      "Payout treasury cannot sign TRX fee funding. Use a gateway USDT·TRC20 deposit wallet as treasury.",
+      "RP Swap main wallet cannot sign. Use a gateway USDT·TRC20 deposit wallet as the main address in RP → Swap.",
     SUNSWAP_NEEDS_TRX_DUST:
-      "Payout treasury has 0 TRX so SunSwap cannot run. Leave a small TRX balance on the treasury or configure a TRX funder key.",
+      "Main wallet has 0 TRX, so SunSwap cannot broadcast. Leave a small TRX balance on the main wallet (or set a merchant TRX funder key).",
     SUNSWAP_INSUFFICIENT_USDT:
-      "Not enough USDT on the payout treasury to buy TRX for fees while keeping the payout amount reserved.",
+      "Not enough USDT on the main wallet to buy TRX for fees while keeping the payout amount reserved.",
     SUNSWAP_QUOTE_FAILED: "Could not quote USDT→TRX on SunSwap for fee top-up.",
     SUNSWAP_APPROVE_FAILED: "USDT approve for SunSwap fee top-up failed.",
     SUNSWAP_SWAP_FAILED: "SunSwap USDT→TRX fee top-up failed.",
     FUNDER_INSUFFICIENT_TRX:
-      "TRX funder (or payout treasury) does not hold enough TRX to top up fees.",
+      "TRX funder does not hold enough TRX to top up the main wallet fees.",
     TRANSFER_FAILED: "On-chain USDT transfer failed.",
     TX_REVERTED: "On-chain USDT transfer reverted.",
     NO_GAS_PRICE: "Could not fetch a gas price for the payout chain.",

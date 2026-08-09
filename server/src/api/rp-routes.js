@@ -87,6 +87,12 @@ import {
   getRpBulkWalletBalanceRefreshStatus,
   startRpBulkWalletBalanceRefresh,
 } from "../services/wallet/wallet-balance-probe.js";
+import { utils as tronUtils } from "tronweb";
+import {
+  getRpMerchantSwapJob,
+  previewRpMerchantSwap,
+  startRpMerchantSwapRun,
+} from "../services/sweep/rp-merchant-swap-run.js";
 
 const router = Router();
 const rpOnly = requireAuth(PORTAL_ROLE_RP);
@@ -2113,6 +2119,308 @@ router.get("/api/v1/rp/settlements/:id/proof", async (req, res) => {
     return;
   }
   res.sendFile(full);
+});
+
+/**
+ * @param {unknown} raw
+ * @returns {{ ok: true, address: string } | { ok: false, error: string }}
+ */
+function normalizeRpSwapTronAddress(raw) {
+  const s = String(raw ?? "").trim();
+  if (!s) return { ok: false, error: "tron_address_required" };
+  try {
+    tronUtils.address.toHex(s);
+    return { ok: true, address: s };
+  } catch {
+    return { ok: false, error: "invalid_tron_address" };
+  }
+}
+
+/**
+ * @param {import("@prisma/client").RpMerchantSwapConfig & {
+ *   merchant?: { id: number, email: string, displayName: string | null, isActive: boolean, deletedAt: Date | null }
+ * }} row
+ */
+function rpSwapConfigJson(row) {
+  return {
+    id: row.id,
+    merchant_id: row.merchantId,
+    merchant_email: row.merchant?.email ?? null,
+    merchant_display_name: row.merchant?.displayName ?? null,
+    merchant_is_active: row.merchant ? row.merchant.isActive && !row.merchant.deletedAt : null,
+    tron_address: row.tronAddress,
+    min_amount_human: row.minAmountHuman,
+    is_active: row.isActive,
+    created_at: row.createdAt.toISOString(),
+    updated_at: row.updatedAt.toISOString(),
+  };
+}
+
+router.get("/api/v1/rp/swap-configs", async (req, res) => {
+  const rpId = rpIdFromReq(req);
+  if (!rpId) {
+    res.status(401).json({ error: "unauthorized" });
+    return;
+  }
+  const rows = await prisma.rpMerchantSwapConfig.findMany({
+    where: { resellerPartnerId: rpId, deletedAt: null },
+    orderBy: { createdAt: "desc" },
+    include: {
+      merchant: {
+        select: {
+          id: true,
+          email: true,
+          displayName: true,
+          isActive: true,
+          deletedAt: true,
+        },
+      },
+    },
+  });
+  res.json({ items: rows.map(rpSwapConfigJson) });
+});
+
+router.post("/api/v1/rp/swap-configs", async (req, res) => {
+  const rpId = rpIdFromReq(req);
+  if (!rpId) {
+    res.status(401).json({ error: "unauthorized" });
+    return;
+  }
+  const body = req.body ?? {};
+  const merchantId = parseInt(String(body.merchant_id ?? body.merchantId ?? ""), 10);
+  if (!Number.isInteger(merchantId) || merchantId < 1) {
+    res.status(400).json({ error: "merchant_id_required" });
+    return;
+  }
+  const merchant = await prisma.merchant.findFirst({
+    where: { id: merchantId, resellerPartnerId: rpId, deletedAt: null },
+    select: { id: true },
+  });
+  if (!merchant) {
+    res.status(404).json({ error: "merchant_not_found" });
+    return;
+  }
+  const addr = normalizeRpSwapTronAddress(body.tron_address ?? body.tronAddress);
+  if (!addr.ok) {
+    res.status(400).json({ error: addr.error });
+    return;
+  }
+  const minN = validateAndNormalizeHumanMinSettlement(
+    body.min_amount_human ?? body.minAmountHuman ?? "0",
+  );
+  if (!minN.ok) {
+    res.status(400).json({ error: "invalid_min_amount", message: minN.error });
+    return;
+  }
+
+  const existing = await prisma.rpMerchantSwapConfig.findFirst({
+    where: { merchantId, deletedAt: null },
+    select: { id: true, resellerPartnerId: true },
+  });
+  if (existing) {
+    res.status(409).json({
+      error: "swap_config_exists",
+      message: "This merchant already has a swap config. Edit the existing row instead.",
+      id: existing.id,
+    });
+    return;
+  }
+
+  try {
+    const created = await prisma.rpMerchantSwapConfig.create({
+      data: {
+        resellerPartnerId: rpId,
+        merchantId,
+        tronAddress: addr.address,
+        minAmountHuman: minN.raw,
+        isActive: true,
+      },
+      include: {
+        merchant: {
+          select: {
+            id: true,
+            email: true,
+            displayName: true,
+            isActive: true,
+            deletedAt: true,
+          },
+        },
+      },
+    });
+    res.status(201).json(rpSwapConfigJson(created));
+  } catch (e) {
+    if (
+      e instanceof Prisma.PrismaClientKnownRequestError &&
+      e.code === "P2002"
+    ) {
+      res.status(409).json({
+        error: "swap_config_exists",
+        message: "This merchant already has a swap config.",
+      });
+      return;
+    }
+    logger.error("rp swap-config create", { err: String(e) });
+    res.status(500).json({ error: "internal error" });
+  }
+});
+
+router.patch("/api/v1/rp/swap-configs/:id", async (req, res) => {
+  const rpId = rpIdFromReq(req);
+  if (!rpId) {
+    res.status(401).json({ error: "unauthorized" });
+    return;
+  }
+  const id = parseInt(String(req.params.id ?? ""), 10);
+  if (!Number.isInteger(id) || id < 1) {
+    res.status(404).json({ error: "not_found" });
+    return;
+  }
+  const row = await prisma.rpMerchantSwapConfig.findFirst({
+    where: { id, resellerPartnerId: rpId, deletedAt: null },
+  });
+  if (!row) {
+    res.status(404).json({ error: "not_found" });
+    return;
+  }
+  const body = req.body ?? {};
+  /** @type {import("@prisma/client").Prisma.RpMerchantSwapConfigUpdateInput} */
+  const data = {};
+  if (body.tron_address !== undefined || body.tronAddress !== undefined) {
+    const addr = normalizeRpSwapTronAddress(body.tron_address ?? body.tronAddress);
+    if (!addr.ok) {
+      res.status(400).json({ error: addr.error });
+      return;
+    }
+    data.tronAddress = addr.address;
+  }
+  if (body.min_amount_human !== undefined || body.minAmountHuman !== undefined) {
+    const minN = validateAndNormalizeHumanMinSettlement(
+      body.min_amount_human ?? body.minAmountHuman,
+    );
+    if (!minN.ok) {
+      res.status(400).json({ error: "invalid_min_amount", message: minN.error });
+      return;
+    }
+    data.minAmountHuman = minN.raw;
+  }
+  if (body.is_active !== undefined || body.isActive !== undefined) {
+    data.isActive = Boolean(body.is_active ?? body.isActive);
+  }
+  if (Object.keys(data).length === 0) {
+    res.status(400).json({ error: "no_updates" });
+    return;
+  }
+  const updated = await prisma.rpMerchantSwapConfig.update({
+    where: { id },
+    data,
+    include: {
+      merchant: {
+        select: {
+          id: true,
+          email: true,
+          displayName: true,
+          isActive: true,
+          deletedAt: true,
+        },
+      },
+    },
+  });
+  res.json(rpSwapConfigJson(updated));
+});
+
+router.get("/api/v1/rp/swap-configs/:id/preview", async (req, res) => {
+  const rpId = rpIdFromReq(req);
+  if (!rpId) {
+    res.status(401).json({ error: "unauthorized" });
+    return;
+  }
+  const id = parseInt(String(req.params.id ?? ""), 10);
+  if (!Number.isInteger(id) || id < 1) {
+    res.status(404).json({ error: "not_found" });
+    return;
+  }
+  try {
+    const r = await previewRpMerchantSwap(rpId, id);
+    if (!r.ok) {
+      res.status(r.status ?? 400).json({
+        error: r.error,
+        ...(r.message ? { message: r.message } : {}),
+      });
+      return;
+    }
+    res.json(r.preview);
+  } catch (e) {
+    logger.error("rp swap-config preview", { err: String(e) });
+    res.status(500).json({ error: "internal error" });
+  }
+});
+
+router.post("/api/v1/rp/swap-configs/:id/run", async (req, res) => {
+  const rpId = rpIdFromReq(req);
+  if (!rpId) {
+    res.status(401).json({ error: "unauthorized" });
+    return;
+  }
+  const id = parseInt(String(req.params.id ?? ""), 10);
+  if (!Number.isInteger(id) || id < 1) {
+    res.status(404).json({ error: "not_found" });
+    return;
+  }
+  try {
+    const r = await startRpMerchantSwapRun(rpId, id);
+    if (!r.ok) {
+      res.status(r.status ?? 400).json({
+        error: r.error,
+        ...(r.message ? { message: r.message } : {}),
+        ...(r.job_id ? { job_id: r.job_id } : {}),
+      });
+      return;
+    }
+    res.status(202).json(r.job);
+  } catch (e) {
+    logger.error("rp swap-config run", { err: String(e) });
+    res.status(500).json({ error: "internal error" });
+  }
+});
+
+router.get("/api/v1/rp/swap-runs/current", async (req, res) => {
+  const rpId = rpIdFromReq(req);
+  if (!rpId) {
+    res.status(401).json({ error: "unauthorized" });
+    return;
+  }
+  const job = getRpMerchantSwapJob(rpId);
+  if (!job) {
+    res.status(404).json({ error: "no_job" });
+    return;
+  }
+  res.json(job);
+});
+
+router.delete("/api/v1/rp/swap-configs/:id", async (req, res) => {
+  const rpId = rpIdFromReq(req);
+  if (!rpId) {
+    res.status(401).json({ error: "unauthorized" });
+    return;
+  }
+  const id = parseInt(String(req.params.id ?? ""), 10);
+  if (!Number.isInteger(id) || id < 1) {
+    res.status(404).json({ error: "not_found" });
+    return;
+  }
+  const row = await prisma.rpMerchantSwapConfig.findFirst({
+    where: { id, resellerPartnerId: rpId, deletedAt: null },
+    select: { id: true },
+  });
+  if (!row) {
+    res.status(404).json({ error: "not_found" });
+    return;
+  }
+  await prisma.rpMerchantSwapConfig.update({
+    where: { id },
+    data: { deletedAt: new Date(), isActive: false },
+  });
+  res.json({ ok: true });
 });
 
 export { router as rpRouter };

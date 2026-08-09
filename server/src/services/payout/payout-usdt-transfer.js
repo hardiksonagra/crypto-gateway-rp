@@ -2,6 +2,7 @@ import { Chain } from "@prisma/client";
 import { Contract, JsonRpcProvider, Wallet as EthersWallet, ethers } from "ethers";
 import { utils as tronUtils } from "tronweb";
 import { chainToRpcUrl, chainToStaticNetwork } from "../../config/chains.js";
+import { formatAtomicAmountString } from "../../lib/format-atomic-amount.js";
 import { logger } from "../../lib/logger.js";
 import {
   acquireOutboundRpcSlot,
@@ -220,7 +221,7 @@ export async function transferTronUsdtAmount(p) {
     return {
       ok: false,
       error: "INSUFFICIENT_TRX_FOR_FEE",
-      detail: `Need ~${neededTrxSun} sun; have ${trxSun}`,
+      detail: `Need ~${formatAtomicAmountString(neededTrxSun, 6)} TRX; have ${formatAtomicAmountString(trxSun, 6)} TRX`,
     };
   }
 

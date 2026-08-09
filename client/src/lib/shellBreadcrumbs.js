@@ -123,6 +123,7 @@ export function buildRpBreadcrumbs(pathname, extras) {
     transactions: { label: "Transactions", to: "/rp/pay-ins" },
     payouts: { label: "Payout", to: "/rp/pay-outs" },
     settlements: { label: "Transactions settlements", to: "/rp/pay-in-settlements" },
+    swap: { label: "Swap", to: "/rp/swap" },
     "pay-in-settlements": { label: "Transactions settlements", to: "/rp/pay-in-settlements" },
     "pay-out-settlements": { label: "Payout settlements", to: "/rp/pay-out-settlements" },
     profile: { label: "Profile", to: "/rp/profile" },

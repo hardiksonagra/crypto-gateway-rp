@@ -2,6 +2,7 @@
  * Native TRX top-up from a known private key (merchant-configured only — no platform env fallback).
  */
 import { TronWeb } from "tronweb";
+import { formatAtomicAmountString } from "../../lib/format-atomic-amount.js";
 import { logger } from "../../lib/logger.js";
 import { acquireOutboundRpcSlot } from "../../lib/network-rpc-rate-limit.js";
 import {
@@ -41,7 +42,11 @@ function tronWebFromPrivateKeyHex(privateKeyHex) {
  *   | { ok: false, error: string, detail?: string, funder_address?: string }
  * >}
  */
-export async function sendTrxNativeTopUpFromPrivateKey(toAddress, amountSun, fromPrivateKeyHex) {
+export async function sendTrxNativeTopUpFromPrivateKey(
+  toAddress,
+  amountSun,
+  fromPrivateKeyHex,
+) {
   const pk = String(fromPrivateKeyHex ?? "").trim();
   if (!pk) {
     return { ok: false, error: "NO_FUNDER_KEY" };
@@ -61,11 +66,12 @@ export async function sendTrxNativeTopUpFromPrivateKey(toAddress, amountSun, fro
       needed_trx_sun: amountSun.toString(),
       reserve_sun: TRX_FUNDER_RESERVE_SUN.toString(),
     });
+    const needSun = amountSun + TRX_FUNDER_RESERVE_SUN;
     return {
       ok: false,
       error: "FUNDER_INSUFFICIENT_TRX",
       funder_address: from,
-      detail: `have ${bal} sun, need ${amountSun + TRX_FUNDER_RESERVE_SUN}`,
+      detail: `have ${formatAtomicAmountString(bal, 6)} TRX, need ${formatAtomicAmountString(needSun, 6)} TRX`,
     };
   }
 

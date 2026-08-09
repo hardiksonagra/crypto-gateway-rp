@@ -6,6 +6,7 @@ import { getMerchantWalletMnemonic } from "../../lib/merchant-mnemonic.js";
 import { resolveMerchantTronUsdtSweepFromSettings } from "../../lib/merchant-auto-swap-settings.js";
 import { parseWalletDbId } from "../../lib/parse-wallet-db-id.js";
 import { ACTIVE } from "../../lib/active-row.js";
+import { formatAtomicAmountString } from "../../lib/format-atomic-amount.js";
 import { prisma } from "../../lib/prisma.js";
 import { logger } from "../../lib/logger.js";
 import { acquireOutboundRpcSlot } from "../../lib/network-rpc-rate-limit.js";
@@ -256,7 +257,7 @@ export async function listTronUsdtSweepTargets() {
 
 /**
  * @param {string | number} walletId
- * @param {{ to_address?: string }} [opts] When `to_address` is set, send full USDT balance there. Otherwise send to the merchant’s USDT·TRC20 treasury from Gateway settings (no env master).
+ * @param {{ to_address?: string, trx_funder_private_key_hex?: string | null }} [opts] When `to_address` is set, send full USDT balance there. Otherwise send to the merchant’s USDT·TRC20 treasury from Gateway settings (no env master). Optional `trx_funder_private_key_hex` preferred for fee top-up.
  * @returns {Promise<{ ok: true, skipped?: boolean, reason?: string, tx_hash?: string, amount_atomic?: string, from_address?: string, to_address?: string } | { ok: false, error: string, detail?: string }>}
  */
 export async function sweepTronUsdtOne(walletId, opts = {}) {
@@ -305,7 +306,9 @@ export async function sweepTronUsdtOne(walletId, opts = {}) {
   if (toOverride) {
     recipient = toOverride;
   } else {
-    const dest = await resolveMerchantTronUsdtSweepFromSettings(wallet.merchantId);
+    const dest = await resolveMerchantTronUsdtSweepFromSettings(
+      wallet.merchantId,
+    );
     if (!dest.ok) {
       return {
         ok: false,
@@ -350,6 +353,12 @@ export async function sweepTronUsdtOne(walletId, opts = {}) {
     wallet,
     recipient,
     contractAddr,
+    {
+      preferredFunderPrivateKeyHex:
+        typeof opts.trx_funder_private_key_hex === "string"
+          ? opts.trx_funder_private_key_hex
+          : null,
+    },
   );
 }
 
@@ -440,11 +449,13 @@ export async function readTronUsdtBalanceAtomicForWallet(wallet, contractAddr) {
  * @param {{ id: string, address: string, derivationIndex: number, merchantId: number }} wallet
  * @param {string} recipient Base58 TRON receive address (historically sweep master; may be any valid recipient).
  * @param {string} contractAddr
+ * @param {{ preferredFunderPrivateKeyHex?: string | null }} [opts]
  */
 export async function sweepTronUsdtTransferFullBalanceFromDepositWallet(
   wallet,
   recipient,
   contractAddr,
+  opts = {},
 ) {
   const mnemonicPhrase = await getMerchantWalletMnemonic(wallet.merchantId);
   const pkHex = deriveTronPrivateKeyHex(wallet.derivationIndex, mnemonicPhrase);
@@ -501,6 +512,7 @@ export async function sweepTronUsdtTransferFullBalanceFromDepositWallet(
       currentTrxSun: trxSun,
       needyPrivateKeyHex: pkHex,
       reserveUsdtAtomic: null,
+      preferredFunderPrivateKeyHex: opts.preferredFunderPrivateKeyHex ?? null,
     });
     if (!funded.ok) {
       return {
@@ -511,7 +523,7 @@ export async function sweepTronUsdtTransferFullBalanceFromDepositWallet(
             : funded.error,
         detail:
           funded.detail ??
-          "This deposit wallet needs more TRX for network fees. Save a TRX funder key under Gateway & webhooks, or set a USDT·TRC20 payout treasury with TRX.",
+          "This deposit wallet needs more TRX for network fees. Use a signable main wallet for RP swap, or configure TRX funder / payout treasury.",
       };
     }
     await acquireOutboundRpcSlot("TRON");
@@ -529,7 +541,7 @@ export async function sweepTronUsdtTransferFullBalanceFromDepositWallet(
     return {
       ok: false,
       error: "INSUFFICIENT_TRX_FOR_FEE",
-      detail: `Need ~${neededTrxSun} sun (estimated for fees); have ${trxSun} after top-up attempts`,
+      detail: `Need ~${formatAtomicAmountString(neededTrxSun, 6)} TRX (estimated for fees); have ${formatAtomicAmountString(trxSun, 6)} TRX after top-up attempts`,
     };
   }
 

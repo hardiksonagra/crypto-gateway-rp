@@ -37,6 +37,7 @@ import RpLoginPage from "./pages/rp/RpLoginPage";
 import RpShell from "./layouts/RpShell";
 import RpMerchants from "./pages/rp/RpMerchants";
 import RpSettlements from "./pages/rp/RpSettlements";
+import RpSwap from "./pages/rp/RpSwap";
 
 /** Bookmarked `/admin/...` → `/control/...` */
 function RedirectAdminToControl() {
@@ -141,6 +142,7 @@ export default function App() {
         <Route path="pay-ins" element={<AdminTransactions />} />
         <Route path="pay-outs" element={<AdminTransactions />} />
         <Route path="transactions" element={<Navigate to="/rp/pay-ins" replace />} />
+        <Route path="swap" element={<RpSwap />} />
         <Route path="pay-in-settlements" element={<RpSettlements />} />
         <Route path="pay-out-settlements" element={<RpSettlements />} />
         <Route path="settlements" element={<Navigate to="/rp/pay-in-settlements" replace />} />

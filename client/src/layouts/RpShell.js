@@ -31,6 +31,7 @@ import {
   IconUsers,
   IconWallet,
   IconPayout,
+  IconSwap,
 } from "./shellNavIcons.js";
 
 function IconSun() {
@@ -85,6 +86,7 @@ const navGroups = [
   {
     label: "OPERATIONS",
     items: [
+      { to: "/rp/swap", label: "Swap", Icon: IconSwap },
       { to: "/rp/pay-in-settlements", label: "Transactions settlements", Icon: IconSettlements },
       { to: "/rp/pay-out-settlements", label: "Payout settlements", Icon: IconPayout },
     ],

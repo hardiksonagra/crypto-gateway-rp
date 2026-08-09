@@ -1,17 +1,18 @@
 /**
  * Merchant TRON fee funding:
- * 1) TRX funder private key (Settings → TRX for TRON fees)
- * 2) Else USDT·TRC20 payout treasury — native TRX send to needy, or SunSwap USDT→TRX on treasury itself
+ * 1) Preferred / merchant TRX funder private key
+ * 2) Else RP Swap main wallet — native TRX send to needy, or SunSwap USDT→TRX when needy is that main wallet
  */
 import { Chain } from "@prisma/client";
 import { utils as tronUtils } from "tronweb";
 import { ACTIVE } from "../../lib/active-row.js";
 import { logger } from "../../lib/logger.js";
-import {
-  effectivePayoutPolicyForRail,
-} from "../../lib/merchant-payout-rails-policy.js";
 import { getMerchantWalletMnemonic } from "../../lib/merchant-mnemonic.js";
-import { getMerchantTrxSweepFunderPrivateKeyHex } from "../../lib/merchant-trx-funder.js";
+import {
+  getMerchantTrxSweepFunderPrivateKeyHex,
+  normalizeTronPrivateKeyHex,
+} from "../../lib/merchant-trx-funder.js";
+import { getRpMerchantSwapMainTronAddress } from "../../lib/rp-merchant-swap-main.js";
 import { prisma } from "../../lib/prisma.js";
 import { deriveTronPrivateKeyHex } from "../wallet/tron-wallet.js";
 import {
@@ -79,9 +80,10 @@ async function resolveSignableTronUsdtWallet(merchantId, treasuryAddress) {
  *   currentTrxSun: bigint,
  *   needyPrivateKeyHex?: string | null,
  *   reserveUsdtAtomic?: bigint | null,
+ *   preferredFunderPrivateKeyHex?: string | null,
  * }} p
  * @returns {Promise<
- *   | { ok: true, method: "funder" | "treasury_send" | "treasury_sunswap" }
+ *   | { ok: true, method: "funder" | "preferred_funder" | "treasury_send" | "treasury_sunswap" }
  *   | { ok: false, error: string, detail?: string }
  * >}
  */
@@ -109,6 +111,35 @@ export async function ensureTrxForMerchantWallet(p) {
 
   const gap = needed - current + TRX_TOPUP_SEND_BUFFER_SUN;
 
+  if (p.preferredFunderPrivateKeyHex) {
+    try {
+      const preferredPk = normalizeTronPrivateKeyHex(p.preferredFunderPrivateKeyHex);
+      const top = await sendTrxNativeTopUpFromPrivateKey(needy, gap, preferredPk);
+      if (!top.ok) {
+        return {
+          ok: false,
+          error: top.error,
+          detail: top.detail ?? "Preferred TRX funder top-up failed",
+        };
+      }
+      await new Promise((r) => setTimeout(r, TRX_TOPUP_SETTLE_MS));
+      logger.info("merchant_trx_fee_funded", {
+        event: "merchant_trx_fee_funded",
+        method: "preferred_funder",
+        merchant_id: merchantId,
+        needy_address: needy,
+        trx_sun: gap.toString(),
+      });
+      return { ok: true, method: "preferred_funder" };
+    } catch (e) {
+      return {
+        ok: false,
+        error: "preferred_funder_key_invalid",
+        detail: String(e).slice(0, 300),
+      };
+    }
+  }
+
   const funderPk = await getMerchantTrxSweepFunderPrivateKeyHex(merchantId);
   if (funderPk) {
     const top = await sendTrxNativeTopUpFromPrivateKey(needy, gap, funderPk);
@@ -130,27 +161,14 @@ export async function ensureTrxForMerchantWallet(p) {
     return { ok: true, method: "funder" };
   }
 
-  const merch = await prisma.merchant.findFirst({
-    where: { id: merchantId, ...ACTIVE },
-    select: {
-      payoutMinAmountHuman: true,
-      payoutMaxAmountHuman: true,
-      payoutRailsPolicyJson: true,
-      payoutTreasuryAddressesJson: true,
-    },
-  });
-  if (!merch) {
-    return { ok: false, error: "merchant_not_found" };
-  }
-
-  const policy = effectivePayoutPolicyForRail(merch, "USDT|TRC20");
-  const treasuryAddr = String(policy.treasury ?? "").trim();
+  const swapMain = await getRpMerchantSwapMainTronAddress(merchantId);
+  const treasuryAddr = String(swapMain ?? "").trim();
   if (!treasuryAddr) {
     return {
       ok: false,
-      error: "TRX_FUNDER_REQUIRED",
+      error: "rp_swap_main_wallet_required",
       detail:
-        "No TRX funder private key and no USDT·TRC20 payout treasury. Save a TRX funder key under Gateway & webhooks, or set a payout treasury (gateway deposit wallet) under Payout defaults.",
+        "No TRX funder private key and no RP Swap main wallet. Set the merchant’s main wallet under RP → Swap first.",
     };
   }
 

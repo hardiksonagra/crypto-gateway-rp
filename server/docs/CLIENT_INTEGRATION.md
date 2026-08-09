@@ -241,7 +241,7 @@ POST /api/v1/gateway/payout
 GET  /api/v1/gateway/payout?client_reference_id={your_ref}
 ```
 
-Same gateway auth as deposits. Body: `chain` (`TRON` / `ETH`), `token_symbol` (`USDT`), `to_address`, `amount`, recommended `client_reference_id`. Within limits the gateway **auto-sends** USDT from the merchant treasury or platform hot wallet; **201** is usually already **`completed`** or **`failed`**. No payout webhooks — poll GET by `client_reference_id` if needed. Sandbox: use **`simulate_result`: `"success"` / `"failed"`** (ignored on live). Full reference: [MERCHANT_API_INTEGRATION.md — Part III](./MERCHANT_API_INTEGRATION.md#part-iii-payout).
+Same gateway auth as deposits. Body: `chain` (`TRON` / `ETH`), `token_symbol` (`USDT`), `to_address`, `amount`, recommended `client_reference_id`. Within limits the gateway **auto-sends** USDT — on **TRON**, **only** from the merchant’s **RP → Swap** main wallet (fails with `rp_swap_main_wallet_required` if unset; no hot-wallet fallback; TRX fees via funder or SunSwap on that wallet); **201** is usually already **`completed`** or **`failed`**. No payout webhooks — poll GET by `client_reference_id` if needed. Sandbox: use **`simulate_result`: `"success"` / `"failed"`** (ignored on live). Full reference: [MERCHANT_API_INTEGRATION.md — Part III](./MERCHANT_API_INTEGRATION.md#part-iii-payout).
 
 ---
 

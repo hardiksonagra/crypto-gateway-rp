@@ -6,6 +6,7 @@ import {
   effectivePayoutPolicyForRail,
   payoutRailKeyForChain,
 } from "../../lib/merchant-payout-rails-policy.js";
+import { getRpMerchantSwapMainTronAddress } from "../../lib/rp-merchant-swap-main.js";
 import { fillMissingWithdrawalNetworkFees } from "../payout-withdrawal-network-fee.js";
 import {
   transferEvmUsdtAmount,
@@ -133,10 +134,32 @@ export async function executeAutoPayout(withdrawalId, opts = {}) {
         ? effectivePayoutPolicyForRail(merchant, railKey)
         : { min: "0", max: "0", treasury: "" };
 
+    /**
+     * TRON: live USDT must leave only from the RP Swap main wallet — never platform hot /
+     * merchant payout-treasury fallback. RP must configure Swap first.
+     */
+    let treasuryAddress = policy.treasury;
+    if (row.chain === Chain.TRON) {
+      const swapMain = await getRpMerchantSwapMainTronAddress(row.merchantId);
+      if (!swapMain) {
+        const fresh = await patchWithdrawal(id, {
+          status: WithdrawalStatus.failed,
+          failureReason:
+            "rp_swap_main_wallet_required: Set the merchant’s main wallet under RP → Swap before TRON payouts can run.",
+        });
+        return {
+          ok: false,
+          error: "rp_swap_main_wallet_required",
+          withdrawal: fresh,
+        };
+      }
+      treasuryAddress = swapMain;
+    }
+
     const signer = await resolvePayoutSigner({
       merchantId: row.merchantId,
       chain: row.chain,
-      treasuryAddress: policy.treasury,
+      treasuryAddress,
     });
     if (!signer.ok) {
       const fresh = await patchWithdrawal(id, {

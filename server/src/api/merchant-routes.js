@@ -46,13 +46,9 @@ import {
   getMerchantBulkWalletBalanceRefreshStatus,
   startMerchantBulkWalletBalanceRefresh,
 } from "../services/wallet/wallet-balance-probe.js";
-import { normalizePayoutTreasuryAddressesJson } from "../lib/merchant-payout-settings.js";
-import { normalizePayoutRailsPolicyFromBody } from "../lib/merchant-payout-rails-policy.js";
 import {
   isValidFeePercent,
   parseFeePercent,
-  parseHumanMinSettlementToAtomic,
-  validateAndNormalizeHumanMinSettlement,
 } from "../lib/merchant-fee-math.js";
 import { buildAllPendingPreviews } from "../services/settlement-batch.js";
 import { buildPendingPayoutPreviewBuckets } from "../services/merchant-payout-preview.js";
@@ -79,11 +75,6 @@ import {
   mergeAutoSwapSettingsPayload,
   validateMerchantAutoSwapState,
 } from "../lib/merchant-auto-swap-settings.js";
-import {
-  encryptMerchantTrxSweepFunderKey,
-  normalizeTronPrivateKeyHex,
-  tronAddressFromPrivateKeyHex,
-} from "../lib/merchant-trx-funder.js";
 
 const CHAIN_SET = new Set(Object.values(Chain));
 
@@ -1327,137 +1318,53 @@ router.patch("/api/v1/merchant/settings", async (req, res) => {
     data.defaultNetwork = picked.network;
   }
 
-  const bodyTouchesAutoSwap =
-    body.auto_swap_enabled !== undefined ||
-    body.autoSwapEnabled !== undefined ||
-    body.auto_swap_settings !== undefined ||
-    body.autoSwapSettings !== undefined;
+  /** Treasury / auto-swap / TRX funder / payout rails — managed by RP/admin later, not merchant portal. */
+  const merchantForbiddenTreasuryKeys = [
+    "auto_swap_enabled",
+    "autoSwapEnabled",
+    "auto_swap_settings",
+    "autoSwapSettings",
+    "payout_rails_policy",
+    "payoutRailsPolicy",
+    "payout_min_amount_human",
+    "payout_max_amount_human",
+    "payout_treasury_addresses",
+    "payoutTreasuryAddresses",
+    "trx_sweep_funder_private_key",
+  ];
+  for (const k of merchantForbiddenTreasuryKeys) {
+    if (body[k] !== undefined) {
+      res.status(403).json({
+        error: "merchant_treasury_settings_forbidden",
+        message:
+          "Treasury, automatic swap, TRX funder, and payout rail defaults are not editable from the merchant portal.",
+      });
+      return;
+    }
+  }
 
-  const runAutoSwapValidation =
-    bodyTouchesAutoSwap || (railsChanged && existing.autoSwapEnabled === true);
-
-  if (runAutoSwapValidation) {
-    const rawSettings =
-      body.auto_swap_settings !== undefined
-        ? body.auto_swap_settings
-        : body.autoSwapSettings !== undefined
-          ? body.autoSwapSettings
-          : undefined;
+  // Keep existing auto-swap destinations valid when deposit rails shrink (no merchant edits).
+  if (railsChanged && existing.autoSwapEnabled === true) {
     const merged = mergeAutoSwapSettingsPayload(
-      rawSettings,
+      undefined,
       existing.autoSwapSettingsJson,
     );
-    const nextAutoEnabled =
-      body.auto_swap_enabled !== undefined
-        ? Boolean(body.auto_swap_enabled)
-        : body.autoSwapEnabled !== undefined
-          ? Boolean(body.autoSwapEnabled)
-          : existing.autoSwapEnabled;
-    const v = validateMerchantAutoSwapState(merged, nextSupported, nextAutoEnabled);
+    const v = validateMerchantAutoSwapState(
+      merged,
+      nextSupported,
+      existing.autoSwapEnabled,
+    );
     if (!v.ok) {
       res.status(400).json({
         error: v.error,
-        message: v.message ?? "Invalid auto-swap settings",
+        message:
+          v.message ??
+          "Supported rails changed in a way that breaks existing auto-swap settings. Contact your partner/admin.",
         ...(v.rail_key ? { rail_key: v.rail_key } : {}),
       });
       return;
     }
-    data.autoSwapEnabled = nextAutoEnabled;
     data.autoSwapSettingsJson = v.json;
-  }
-
-  const railsPolicyInBody =
-    body.payout_rails_policy !== undefined || body.payoutRailsPolicy !== undefined;
-
-  if (!railsPolicyInBody && body.payout_min_amount_human !== undefined) {
-    const n = validateAndNormalizeHumanMinSettlement(body.payout_min_amount_human);
-    if (!n.ok) {
-      res.status(400).json({ error: "invalid_payout_min_amount", message: n.error });
-      return;
-    }
-    data.payoutMinAmountHuman = n.raw;
-  }
-  if (!railsPolicyInBody && body.payout_max_amount_human !== undefined) {
-    const n = validateAndNormalizeHumanMinSettlement(body.payout_max_amount_human);
-    if (!n.ok) {
-      res.status(400).json({ error: "invalid_payout_max_amount", message: n.error });
-      return;
-    }
-    data.payoutMaxAmountHuman = n.raw;
-  }
-  if (
-    !railsPolicyInBody &&
-    (body.payout_treasury_addresses !== undefined ||
-      body.payoutTreasuryAddresses !== undefined)
-  ) {
-    const raw = body.payout_treasury_addresses ?? body.payoutTreasuryAddresses;
-    const tre = normalizePayoutTreasuryAddressesJson(raw);
-    if (!tre.ok) {
-      res.status(400).json({ error: tre.error });
-      return;
-    }
-    data.payoutTreasuryAddressesJson = tre.value;
-  }
-
-  if (railsPolicyInBody) {
-    const raw = body.payout_rails_policy ?? body.payoutRailsPolicy;
-    const v = normalizePayoutRailsPolicyFromBody(raw);
-    if (!v.ok) {
-      res.status(400).json({
-        error: v.error,
-        ...(v.message ? { message: v.message } : {}),
-      });
-      return;
-    }
-    data.payoutRailsPolicyJson = v.policy;
-    data.payoutTreasuryAddressesJson = v.treasuryDerived;
-  }
-
-  if (
-    !railsPolicyInBody &&
-    (body.payout_min_amount_human !== undefined ||
-      body.payout_max_amount_human !== undefined)
-  ) {
-    const effMinStr =
-      data.payoutMinAmountHuman ?? existing.payoutMinAmountHuman ?? "0";
-    const effMaxStr =
-      data.payoutMaxAmountHuman ?? existing.payoutMaxAmountHuman ?? "0";
-    const minAt = parseHumanMinSettlementToAtomic(effMinStr, 6);
-    const maxAt = parseHumanMinSettlementToAtomic(effMaxStr, 6);
-    if (
-      minAt.ok &&
-      maxAt.ok &&
-      maxAt.value > 0n &&
-      minAt.value > 0n &&
-      maxAt.value < minAt.value
-    ) {
-      res.status(400).json({
-        error: "payout_max_below_min",
-        message:
-          "Maximum payout must be greater than or equal to minimum (when both are set).",
-      });
-      return;
-    }
-  }
-
-  if (body.trx_sweep_funder_private_key !== undefined) {
-    const raw = body.trx_sweep_funder_private_key;
-    if (raw === null || raw === "") {
-      data.trxSweepFunderPrivateKeyCipher = null;
-    } else {
-      let hex;
-      try {
-        hex = normalizeTronPrivateKeyHex(String(raw));
-        tronAddressFromPrivateKeyHex(hex);
-      } catch {
-        res.status(400).json({
-          error: "invalid_tron_private_key_hex",
-          message: "TRX funder key must be 64 hex characters (optionally prefixed with 0x).",
-        });
-        return;
-      }
-      data.trxSweepFunderPrivateKeyCipher = encryptMerchantTrxSweepFunderKey(hex);
-    }
   }
 
   if (Object.keys(data).length === 0) {
