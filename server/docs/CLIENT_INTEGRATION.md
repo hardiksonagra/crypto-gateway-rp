@@ -21,9 +21,9 @@ Share your **HTTPS base URL** (e.g. `https://payments.example.com`) with integra
 
 1. Merchant configures **callback URL**, **supported chains**, and **supported currency/network rails** in the portal (`/m/settings`).
 2. Integrator calls `**POST /api/v1/gateway/deposit-address`** with gateway auth (`X-Token` + `X-Merchant-Id`, or legacy `api_key`) and `external_user_id`, and optionally `currency` + `network`, optional **`amount`** (fixed checkout total), optional **`transaction_id`** (your order id), optional **`redirect_url`** (optional HTTPS return URL stored and echoed on **200**).
-3. Response includes `address`, `chain`, `currency`, `network`, **`transaction_id`** and **`reference_id`** (same checkout reference — your optional request `transaction_id` or gateway-generated). When `amount` was sent, the response also includes **`expected_amount_decimal`** / **`expected_amount_atomic`** for display. Each call also creates a **`transactions` row** with `status: "created"` (placeholder, `amount` 0) — with or without optional `amount` — using that same reference; poll status with **`GET /api/v1/gateway/transactions?transaction_id=…`** (gateway auth headers; single row JSON). Same customer + rail is idempotent for the **wallet**; each call can start a new **checkout session** when the pool refreshes the assignment. For **another rail** for the same end user, call **`deposit-address` again** with the same **`external_user_id`** and the desired **`currency`** / **`network`**.
+3. Response includes `address`, `chain`, `currency`, `network`, **`transaction_id`** and **`reference_id`** (same checkout reference — your optional request `transaction_id` or gateway-generated). When `amount` was sent, the response also includes **`expected_amount_decimal`** / **`expected_amount_atomic`** for display. A successful call normally creates a **`transactions` row** with `status: "created"` (placeholder, `amount` 0) — with or without optional `amount` — using that same reference; poll with **`GET /api/v1/gateway/transactions?transaction_id=…`** (gateway auth headers; single row JSON). **Reuse:** if the same end-user + rail already has an open **`created`** placeholder and this call matches it (same optional merchant **`transaction_id`** when sent, and the same expected amount), the gateway **returns that checkout** and refreshes timers instead of inserting another row. Same customer + rail is idempotent for the **wallet**. For **another rail** for the same end user, call **`deposit-address` again** with the same **`external_user_id`** and the desired **`currency`** / **`network`** (unless a per-user **cooldown** returns **`429 deposit_address_cooldown`** — see [Part II §II.1](./MERCHANT_API_INTEGRATION.md#ii1-get-or-create-deposit-address)).
 4. User sends crypto to the shown address on the **correct network** (show **amount due** from the response when you passed `amount`).
-5. When confirmations pass, the gateway POSTs to the merchant **callback URL** with **`X-Webhook-Event: payment`** and JSON **`status`** (`success`, `underpaid`, etc.). If you used a fixed **`amount`** and the first on-chain credit is **below** the expected session total, **`status` is `underpaid`** first; when the **combined** session total reaches the expected amount, another POST with **`status: success`** follows (see [MERCHANT_API_INTEGRATION.md — Part II §II.3](./MERCHANT_API_INTEGRATION.md#ii3-payment-webhooks-x-webhook-event-payment)). **Payouts** do not use webhooks — poll **`GET /api/v1/gateway/payout?client_reference_id=…`** ([Part III §III.2](./MERCHANT_API_INTEGRATION.md#iii2-get-payout-status)).
+5. When confirmations pass, the gateway POSTs to the merchant **callback URL** with **`X-Webhook-Event: payment`** and JSON **`status`** (`success`, `underpaid`, etc.). Credits on a wallet with multiple open checkouts apply **LIFO** to the newest unpaid **`created`** placeholder. If you used a fixed **`amount`** and the first on-chain credit is **below** the expected session total, **`status` is `underpaid`** first; when the **combined** session total reaches the expected amount, another POST with **`status: success`** follows (see [MERCHANT_API_INTEGRATION.md — Part II §II.3](./MERCHANT_API_INTEGRATION.md#ii3-payment-webhooks-x-webhook-event-payment)). **Payouts** do not use webhooks — **`POST /api/v1/gateway/payout`** auto-sends within limits (201 often already `completed` / `failed`); otherwise poll **`GET /api/v1/gateway/payout?client_reference_id=…`** ([Part III](./MERCHANT_API_INTEGRATION.md#part-iii-payout)).
 
 ---
 
@@ -88,7 +88,7 @@ Content-Type: application/json
 | `redirect_url`     | string | No        | Optional HTTPS URL stored with the session and echoed on **200**.                                                                                                                  |
 | (headers)          |        | Preferred | `X-Token`, `X-Merchant-Id` — see [MERCHANT_API_INTEGRATION.md — Part I §I.3.1](./MERCHANT_API_INTEGRATION.md#i31-recommended-x-token-secret-not-in-the-json-body).                                                                                                       |
 
-**200** — includes `transaction_id`, `reference_id`, `deposit_scan_expires_at`, `deposit_scan_ttl_minutes`, `reservation_expires_at`, `redirect_url`, `gateway_environment`, and wallet fields. When `amount` was valid, also `expected_amount_atomic` and `expected_amount_decimal`.
+**200** — includes `transaction_id`, `reference_id`, `deposit_scan_expires_at`, `deposit_scan_ttl_minutes`, `reservation_expires_at`, `redirect_url`, `gateway_environment`, and wallet fields. When `amount` was valid, also `expected_amount_atomic` and `expected_amount_decimal`. Open **`created`** checkouts may be **reused** when `transaction_id` / `amount` match (see [MERCHANT_API_INTEGRATION.md — Part II §II.1](./MERCHANT_API_INTEGRATION.md#ii1-get-or-create-deposit-address)).
 
 ```json
 {
@@ -121,6 +121,7 @@ Content-Type: application/json
 | `unsupported_currency_network`  | 400  | Unknown pair.                                                       |
 | `amount_invalid` (and related)  | 400  | Bad optional `amount`.                                              |
 | `amount_not_supported_for_rail` | 400  | `amount` set for a rail without decimal rules.                      |
+| `deposit_address_cooldown`      | 429  | Same merchant + `external_user_id` + environment called too soon; body includes `retry_after_seconds`. |
 | Missing fields                  | 400  | `external_user_id` required (and gateway auth).                     |
 
 ---
@@ -155,7 +156,7 @@ GET /api/v1/gateway/transactions?transaction_id={checkout_reference}
 
 The merchant **callback URL** receives **`POST`** requests for **pay-ins (deposits)** only, with **`X-Webhook-Event: payment`**. For **payout** status, use **`GET /api/v1/gateway/payout?client_reference_id=…`** — see [MERCHANT_API_INTEGRATION.md — Part III §III.2](./MERCHANT_API_INTEGRATION.md#iii2-get-payout-status).
 
-For deposits, JSON **`status`** is `success`, `underpaid`, `pending`, or `failed`. Full field list and retries: [MERCHANT_API_INTEGRATION.md — Part II §II.3](./MERCHANT_API_INTEGRATION.md#ii3-payment-webhooks-x-webhook-event-payment).
+For deposits, JSON **`status`** is `success`, `underpaid`, `pending`, or `failed`. Multiple open checkouts on one wallet: new credits apply **LIFO** to the newest unpaid `created` placeholder. Full field list and retries: [MERCHANT_API_INTEGRATION.md — Part II §II.3](./MERCHANT_API_INTEGRATION.md#ii3-payment-webhooks-x-webhook-event-payment).
 
 Every payment body includes **`expected_amount_atomic`**, **`expected_amount_decimal`**, **`received_amount_atomic`**, and **`received_amount_decimal`**.
 
@@ -233,7 +234,18 @@ X-Webhook-Event: payment
 
 ---
 
-## 7. Default development credentials
+## 7. Payout (summary)
+
+```http
+POST /api/v1/gateway/payout
+GET  /api/v1/gateway/payout?client_reference_id={your_ref}
+```
+
+Same gateway auth as deposits. Body: `chain` (`TRON` / `ETH`), `token_symbol` (`USDT`), `to_address`, `amount`, recommended `client_reference_id`. Within limits the gateway **auto-sends** USDT from the merchant treasury or platform hot wallet; **201** is usually already **`completed`** or **`failed`**. No payout webhooks — poll GET by `client_reference_id` if needed. Sandbox: use **`simulate_result`: `"success"` / `"failed"`** (ignored on live). Full reference: [MERCHANT_API_INTEGRATION.md — Part III](./MERCHANT_API_INTEGRATION.md#part-iii-payout).
+
+---
+
+## 8. Default development credentials
 
 After migration + seed (see operator runbook):
 
@@ -248,21 +260,23 @@ After migration + seed (see operator runbook):
 
 ---
 
-## 8. Portal routes (human UI)
+## 9. Portal routes (human UI)
 
-| Audience | Base path | Use                                                          |
-| -------- | --------- | ------------------------------------------------------------ |
-| Admin    | `/admin`  | Merchants CRUD, all users & transactions, dashboard.         |
-| Merchant | `/m`      | Dashboard, own users & txs, withdraw (EVM native), settings. |
+| Audience         | Base path | Use                                                                 |
+| ---------------- | --------- | ------------------------------------------------------------------- |
+| Admin            | `/admin`  | Merchants CRUD, reseller partners, wallets, settlements, settings.  |
+| Merchant         | `/m`      | Dashboard, users, pay-ins, payouts/settlements, wallets, settings.  |
+| Reseller partner | `/rp`     | Partner login, assigned merchants, pay-ins / pay-outs / settlements.|
 
-REST for the SPA (Bearer JWT after `POST /api/v1/auth/login`):
+REST for the SPA (Bearer JWT after login — merchant/admin `POST /api/v1/auth/login`, RP uses the RP login route):
 
 - `GET /api/v1/auth/me`
-- Admin: `/api/v1/admin/`\*
+- Admin: `/api/v1/admin/*`
 - Merchant: `/api/v1/merchant/*`
+- Reseller partner: `/api/v1/rp/*`
 
 ---
 
-## 9. Versioning
+## 10. Versioning
 
 Integrators should target `**/api/v1/...`\*\* prefixes. Breaking changes will bump the major version or be announced in advance.

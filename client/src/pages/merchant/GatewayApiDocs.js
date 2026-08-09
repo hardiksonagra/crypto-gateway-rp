@@ -1,9 +1,10 @@
 /**
  * In-app reference for integrators: `/api/v1/gateway/*` and webhooks.
  * Kept in sync with server gateway-routes, callback-service, optional fixed
- * `amount` / underpaid flow, unified gateway key behaviour,
- * `transaction_id` / `reference_id` on deposit-address responses,
- * `GET /gateway/transactions`, `POST /gateway/payout`, `GET /gateway/payout` (poll), payment webhook shapes,
+ * `amount` / underpaid flow, checkout reuse + LIFO credits + deposit cooldown,
+ * unified gateway key behaviour, `transaction_id` / `reference_id` on
+ * deposit-address responses, `GET /gateway/transactions`, auto-send
+ * `POST /gateway/payout` + `GET /gateway/payout` (poll), payment webhook shapes,
  * and `DOC`-backed examples.
  * Hosted checkout (`payment_link` / `payment-session`) is intentionally not
  * documented here — use `deposit-address` response fields only.
@@ -535,11 +536,22 @@ X-Token: <base64 from buildXToken on canonical JSON of:
           Get or create a deposit wallet for an end user. Same merchant +{" "}
           <span className="font-mono">external_user_id</span> + same{" "}
           <span className="font-mono">currency</span>/
-          <span className="font-mono">network</span> returns the same address.
-          Each call can start a new checkout session (new{" "}
-          <span className="font-mono">deposit_session_key</span> / placeholder
-          row); optional <span className="font-mono">amount</span> applies only
-          to that session.
+          <span className="font-mono">network</span> returns the same address.{" "}
+          <strong className="text-white/70">Reuse:</strong> if that user+rail
+          already has an open <span className="font-mono">created</span>{" "}
+          placeholder and this call matches it (same optional merchant{" "}
+          <span className="font-mono">transaction_id</span> when you send one,
+          and the same expected amount — both omitted/open, or the same atomic
+          total), the gateway returns that checkout’s{" "}
+          <span className="font-mono">transaction_id</span> /{" "}
+          <span className="font-mono">reference_id</span>, refreshes hold/scan
+          timers, and does <strong className="text-white/70">not</strong> insert
+          another placeholder. A different{" "}
+          <span className="font-mono">transaction_id</span> or{" "}
+          <span className="font-mono">amount</span>, or no open{" "}
+          <span className="font-mono">created</span> row, starts a new checkout
+          session. Optional <span className="font-mono">amount</span> applies
+          only to that session.
         </p>
         <p className="mt-3 text-xs font-medium text-white/45">
           Headers (recommended — no secret in JSON)
@@ -648,11 +660,12 @@ X-Token: <base64 from buildXToken on canonical JSON of body>
 }`}</Pre>
         <p className="mt-2 text-xs text-white/45">
           <span className="font-mono">expected_amount_*</span> appears only when
-          you sent a valid <span className="font-mono">amount</span>. Every call
-          also writes a placeholder <span className="font-mono">transactions</span>{" "}
-          row with <span className="font-mono">status: &quot;created&quot;</span>{" "}
-          (even without <span className="font-mono">amount</span>), so you can
-          track it using the returned{" "}
+          you sent a valid <span className="font-mono">amount</span>. A successful
+          call normally writes a placeholder{" "}
+          <span className="font-mono">transactions</span> row with{" "}
+          <span className="font-mono">status: &quot;created&quot;</span> (even
+          without <span className="font-mono">amount</span>), unless an open
+          matching checkout is reused (see above). Track it with the returned{" "}
           <span className="font-mono">reference_id</span> (or{" "}
           <span className="font-mono">transaction_id</span>) on{" "}
           <span className="font-mono">
@@ -678,6 +691,13 @@ X-Token: <base64 from buildXToken on canonical JSON of body>
           <span className="font-mono">amount_not_supported_for_rail</span>,
           etc.); <span className="font-mono">401 invalid_x_token</span>;{" "}
           <span className="font-mono">403 rail_not_enabled_for_merchant</span>;{" "}
+          <span className="font-mono">429 deposit_address_cooldown</span> when
+          another successful call for the same merchant +{" "}
+          <span className="font-mono">external_user_id</span> + environment was
+          too recent (body includes{" "}
+          <span className="font-mono">retry_after_seconds</span>; tunable via{" "}
+          <span className="font-mono">GATEWAY_DEPOSIT_ADDRESS_COOLDOWN_SEC</span>
+          );{" "}
           <span className="font-mono">
             500 merchant_default_pair_misconfigured
           </span>{" "}
@@ -862,7 +882,9 @@ X-Token: <base64 from buildXToken>
   "created_at": "${DOC.txCreatedAt}",
   "updated_at": "${DOC.txUpdatedAt}"
 }`}</Pre>
-        <p className="mt-3 text-xs font-medium text-white/45">Failed (sandbox / live test) — same shape</p>
+        <p className="mt-3 text-xs font-medium text-white/45">
+          Failed (sandbox simulation) — same shape
+        </p>
         <Pre>{`{
   "id": ${DOC.payoutRowId},
   "environment": "sandbox",
@@ -1048,7 +1070,18 @@ X-Token: <base64 from buildXToken on canonical JSON of:
           </span>
           ). Retries until <span className="font-mono">2xx</span>. Dedupe with{" "}
           <span className="font-mono">tx_hash</span> + chain +{" "}
-          <span className="font-mono">wallet_id</span>. Numeric{" "}
+          <span className="font-mono">wallet_id</span>.{" "}
+          <strong className="text-white/70">Same wallet, multiple open
+          checkouts:</strong> each new on-chain credit applies{" "}
+          <span className="font-mono">LIFO</span> to the newest unpaid{" "}
+          <span className="font-mono">created</span> placeholder (becomes{" "}
+          <span className="font-mono">success</span> /{" "}
+          <span className="font-mono">underpaid</span> /{" "}
+          <span className="font-mono">pending</span>). Rows already{" "}
+          <span className="font-mono">success</span> are not rewritten for a new
+          chain hash; if no <span className="font-mono">created</span>{" "}
+          placeholder remains, the credit is stored as a new ledger row (orphan)
+          with a fresh reference. Numeric{" "}
           <span className="font-mono">transaction_id</span> is the gateway row
           id; string <span className="font-mono">merchant_transaction_id</span> /{" "}
           <span className="font-mono">reference_id</span> are the checkout

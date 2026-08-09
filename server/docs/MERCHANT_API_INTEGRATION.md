@@ -19,7 +19,7 @@ The API key is **not** the same as the login JWT. End users of your product shou
 | ---- | ----- | ------------- |
 | **Part I** | **Supported currency & gateway setup** | Portal login (JWT), Settings (chains, rails, callback URL), gateway API key / `X-Token`, rail reference table, **`GET …/supported-currency`**. |
 | **Part II** | **Pay-in (deposits)** | **`POST …/deposit-address`**, **`GET …/gateway/transactions`**, **payment** webhooks (`X-Webhook-Event: payment`). |
-| **Part III** | **Payout** | **`POST …/gateway/payout`**, **`GET …/gateway/payout`** (poll status by **`client_reference_id`**). No payout webhooks — callback URL is for **deposits only**. |
+| **Part III** | **Payout** | **`POST …/gateway/payout`** (auto-sends USDT in-request when possible), **`GET …/gateway/payout`** (poll by **`client_reference_id`**). Sandbox: **`simulate_result`**. No payout webhooks — callback URL is for **deposits only**. |
 
 ---
 
@@ -281,7 +281,9 @@ If a **payment** webhook (`status` **success**, **underpaid**, or **failed**) ha
 
 # Part III: Payout
 
-USDT payouts on **TRON (TRC20)** or **Ethereum (ERC20)** via the gateway API. **There are no payout webhooks** — after **`POST …/gateway/payout`**, poll **`GET …/gateway/payout?client_reference_id=…`** for terminal status (`completed` / `failed`).
+USDT payouts on **TRON (TRC20)** or **Ethereum (ERC20)** via the gateway API. **There are no payout webhooks** — after **`POST …/gateway/payout`**, use the **201** body and/or poll **`GET …/gateway/payout?client_reference_id=…`** for terminal status (`completed` / `failed`).
+
+**Auto-send:** Within merchant min/max limits and with a funded treasury (or platform hot wallet), the gateway **executes the on-chain transfer in the same request**. The **201** body is usually already **`completed`** (with `tx_hash`) or **`failed`** (with `failure_reason` / `message`). If the send is still in flight or a leftover row was queued, you may briefly see **`pending`** / **`processing`** — poll **§III.2**. Maintenance cron (`crypto-gateway-cron-maintenance`) also drains leftover **`pending`** payouts and fails stuck **`processing`** rows without a `tx_hash`.
 
 ## III.1 Create payout
 
@@ -297,13 +299,17 @@ Content-Type: application/json
 | `chain`                 | Yes      | `TRON` for USDT·TRC20, or `ETH` / `ETHEREUM` for USDT·ERC20. |
 | `token_symbol`          | Typical  | `USDT` (only USDT payouts are supported today). |
 | `to_address`            | Yes      | Destination address (TRON base58 or EVM checksummed hex). |
-| `amount`                | Yes      | Payout amount in human decimal form (same conventions as deposit `amount` where applicable). This full amount is debited from portal balance and is what the recipient should receive on-chain. The gateway payout response does not include RP billing (`mdr`) fields — only amounts and on-chain `network_fee_*` when known. |
+| `amount`                | Yes      | Gross USDT in human decimal form (same conventions as deposit `amount` where applicable). This full amount is debited from portal balance and is what the recipient should receive on-chain. The gateway payout response does not include RP billing (`mdr`) fields — only amounts and on-chain `network_fee_*` when known. |
 | `client_reference_id`   | Recommended | Your idempotency / correlation string (max 256 chars); unique per merchant + environment when set. **Required for `GET …/gateway/payout`** status polling — lookups use this query param only. |
 | `gateway_environment`   | No       | Omit to use portal Live/Sandbox (**§I.2**). |
+| `simulate_result`       | Sandbox only | `"success"` / `"failed"` (aliases: `completed`, `fail`, …). Forces a simulated outcome with **no** on-chain transfer. **Ignored on live** (live always attempts a real send). Prefer this over reusing fixed test ids. |
+| `force_fail`            | Sandbox only | `true` / `"1"` — same as simulated failure. **Ignored on live.** |
 
-**201** — JSON body matches **`GET …/gateway/payout`** (single payout object): numeric `id`, `environment`, `chain`, `token_symbol`, `token_decimals`, `to_address`, gross/net amounts (atomic strings + decimals; **net equals gross** — full send), `network_fee_*` / `network_fee_fetched_at` (native TRX or ETH gas once `tx_hash` exists and the fee is resolved; otherwise `null`). This endpoint **does not** return `mdr_*`, `mdr_percent`, or settlement-fee fields. Also `status` (`pending`, `processing`, …), `tx_hash`, `failure_reason`, `client_reference_id`, `source`, timestamps.
+**201** — JSON body matches **`GET …/gateway/payout`** (single payout object): numeric `id`, `environment`, `chain`, `token_symbol`, `token_decimals`, `to_address`, gross/net amounts (atomic strings + decimals; **net equals gross** — full send), `network_fee_*` / `network_fee_fetched_at` (native TRX or ETH gas once `tx_hash` exists and the fee is resolved; otherwise `null`). This endpoint **does not** return `mdr_*`, `mdr_percent`, or settlement-fee fields. Also `status` (usually **`completed`** or **`failed`** after auto-send; otherwise `pending` / `processing`), `tx_hash`, `failure_reason`, optional human `message`, `client_reference_id`, `source` (`gateway_api`), timestamps.
 
-Common errors: **`403 rail_not_enabled_for_merchant`**, **`403 chain_disabled_for_platform`**, **`400 unsupported_chain`**, **`409 payout_already_pending`**, **`400 insufficient_balance`**, **`400 below_merchant_payout_minimum`**, **`409 client_reference_exists`**, auth errors as in **§II.1** table.
+**Sandbox:** All payouts are simulated (no chain). Use **`simulate_result`** for a reliable success/fail every time. Reused `client_reference_id` values on sandbox may get an auto suffix so the DB unique constraint still holds; response shape matches live.
+
+Common errors: **`403 rail_not_enabled_for_merchant`**, **`403 chain_disabled_for_platform`**, **`400 unsupported_chain`**, **`409 payout_already_pending`**, **`400 insufficient_balance`**, **`400 below_merchant_payout_minimum`**, **`400 above_merchant_payout_maximum`**, **`409 client_reference_exists`**, auth errors as in **§II.1** table.
 
 Only **one** payout may be **`pending`** or **`processing`** per merchant + environment at a time.
 
@@ -321,6 +327,8 @@ GET /api/v1/gateway/payout?client_reference_id={your_ref}
 
 **400** — **`client_reference_id_required`** if the query is missing or empty.
 
+The merchant **callback URL is not used for payouts** — poll this route (or rely on the **201** terminal status after auto-send).
+
 ---
 
 ## Integration checklist
@@ -329,7 +337,7 @@ GET /api/v1/gateway/payout?client_reference_id={your_ref}
 2. Store **`api_key`** from admin onboarding in server-side secrets; note your **`id`** from `GET /api/v1/auth/me` for `X-Merchant-Id` when using header auth — **Part I §I.3**.
 3. Call **`GET …/supported-currency`** to confirm allowed **`pairs`** — **Part I §I.5**.
 4. **Pay-in:** On checkout, call **`deposit-address`** (**Part II §II.1**) with `external_user_id` and optionally `currency` / `network`, optional **`amount`**, optional **`transaction_id`** / **`redirect_url`**, using **`X-Token`** (recommended) or legacy **`api_key`**. Persist **`reference_id`**. Handle **payment** webhooks (**§II.3**).
-5. **Payout:** Call **`POST …/gateway/payout`** (**§III.1**) with **`client_reference_id`**; poll **`GET …/gateway/payout`** (**§III.2**) until **`status`** is **`completed`** or **`failed`**.
+5. **Payout:** Call **`POST …/gateway/payout`** (**§III.1**) with **`client_reference_id`**. Expect auto-send — **201** is often already **`completed`** / **`failed`**. If status is still **`pending`** / **`processing`**, poll **`GET …/gateway/payout`** (**§III.2**). In sandbox, use **`simulate_result`**.
 6. On your callback URL, handle **`X-Webhook-Event: payment`** only (**§II.3**); return **2xx**. Payouts are **not** POSTed to this URL.
 
 ---
