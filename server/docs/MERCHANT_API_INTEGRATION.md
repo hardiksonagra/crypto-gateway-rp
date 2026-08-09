@@ -285,6 +285,8 @@ USDT payouts on **TRON (TRC20)** or **Ethereum (ERC20)** via the gateway API. **
 
 **Auto-send:** Within merchant min/max limits and with a funded treasury (or platform hot wallet), the gateway **executes the on-chain transfer in the same request**. The **201** body is usually already **`completed`** (with `tx_hash`) or **`failed`** (with `failure_reason` / `message`). If the send is still in flight or a leftover row was queued, you may briefly see **`pending`** / **`processing`** — poll **§III.2**. Maintenance cron (`crypto-gateway-cron-maintenance`) also drains leftover **`pending`** payouts and fails stuck **`processing`** rows without a `tx_hash`.
 
+**TRON fee TRX (merchant treasury):** If the from-wallet needs more TRX for energy/bandwidth, the gateway first uses the merchant **TRX funder** private key (portal → Gateway & webhooks). If that key is unset, it falls back to the **USDT·TRC20 payout treasury**: native TRX send from treasury → deposit wallet, or on the treasury itself a **SunSwap V2 USDT→TRX** buy (payout amount is reserved so fee-swap does not spend principal). A tiny TRX balance must already exist on the treasury for the first SunSwap approve/swap to broadcast.
+
 ## III.1 Create payout
 
 ```http

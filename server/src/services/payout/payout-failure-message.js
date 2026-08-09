@@ -39,7 +39,20 @@ export function payoutFailureMessage(status, failureReason) {
     INSUFFICIENT_TRX_FOR_FEE: "From-wallet does not have enough TRX to pay network fees.",
     INSUFFICIENT_NATIVE_FOR_GAS: "From-wallet does not have enough ETH to pay gas.",
     TRX_FUNDER_REQUIRED:
-      "TRX fee top-up is required but no TRX funder key is configured.",
+      "TRX fee top-up is required. Save a TRX funder private key under Gateway & webhooks, or set a USDT·TRC20 payout treasury (gateway deposit wallet).",
+    MERCHANT_TRX_FUNDER_KEY_REQUIRED:
+      "TRX fee top-up is required. Save a TRX funder private key under Gateway & webhooks, or set a USDT·TRC20 payout treasury with TRX.",
+    PAYOUT_TREASURY_NOT_SIGNABLE:
+      "Payout treasury cannot sign TRX fee funding. Use a gateway USDT·TRC20 deposit wallet as treasury.",
+    SUNSWAP_NEEDS_TRX_DUST:
+      "Payout treasury has 0 TRX so SunSwap cannot run. Leave a small TRX balance on the treasury or configure a TRX funder key.",
+    SUNSWAP_INSUFFICIENT_USDT:
+      "Not enough USDT on the payout treasury to buy TRX for fees while keeping the payout amount reserved.",
+    SUNSWAP_QUOTE_FAILED: "Could not quote USDT→TRX on SunSwap for fee top-up.",
+    SUNSWAP_APPROVE_FAILED: "USDT approve for SunSwap fee top-up failed.",
+    SUNSWAP_SWAP_FAILED: "SunSwap USDT→TRX fee top-up failed.",
+    FUNDER_INSUFFICIENT_TRX:
+      "TRX funder (or payout treasury) does not hold enough TRX to top up fees.",
     TRANSFER_FAILED: "On-chain USDT transfer failed.",
     TX_REVERTED: "On-chain USDT transfer reverted.",
     NO_GAS_PRICE: "Could not fetch a gas price for the payout chain.",

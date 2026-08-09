@@ -6,14 +6,9 @@ import { ACTIVE } from "../../lib/active-row.js";
 import { logger } from "../../lib/logger.js";
 import { prisma } from "../../lib/prisma.js";
 import { resolveMerchantTronUsdtSweepFromSettings } from "../../lib/merchant-auto-swap-settings.js";
-import { getMerchantTrxSweepFunderPrivateKeyHex } from "../../lib/merchant-trx-funder.js";
-import {
-  sendTrxNativeTopUpFromPrivateKey,
-  TRX_TOPUP_SETTLE_MS,
-  TRX_TOPUP_SEND_BUFFER_SUN,
-} from "./tron-trx-topup.js";
 import { acquireOutboundRpcSlot } from "../../lib/network-rpc-rate-limit.js";
 import { deriveTronPrivateKeyHex } from "../wallet/tron-wallet.js";
+import { ensureTrxForMerchantWallet } from "./merchant-trx-fee-funding.js";
 import {
   createTronWebFromPrivateKeyHex,
   estimateTrxSunRequiredForTrc20Transfer,
@@ -28,10 +23,6 @@ function tronAddrEq(a, b) {
   } catch {
     return a === b;
   }
-}
-
-function sleep(ms) {
-  return new Promise((r) => setTimeout(r, ms));
 }
 
 /**
@@ -103,8 +94,6 @@ export async function sweepTronUsdtOneWithAutoTopUp(
     return { status: "skipped", reason: "zero_usdt" };
   }
 
-  const merchantTrxFunderPk = await getMerchantTrxSweepFunderPrivateKeyHex(wallet.merchantId);
-
   const mnemonicPhrase = await getMerchantWalletMnemonic(wallet.merchantId);
   const pkHex = deriveTronPrivateKeyHex(wallet.derivationIndex, mnemonicPhrase);
   const depositTw = createTronWebFromPrivateKeyHex(pkHex);
@@ -121,12 +110,17 @@ export async function sweepTronUsdtOneWithAutoTopUp(
   let trxSun = BigInt(await depositTw.trx.getBalance(wallet.address));
 
   if (trxSun < neededTrxSun) {
-    const gap = neededTrxSun - trxSun;
-    const sendSun = gap + TRX_TOPUP_SEND_BUFFER_SUN;
-
-    if (!String(merchantTrxFunderPk ?? "").trim()) {
-      logger.warn("tron_auto_sweep_need_trx_no_merchant_funder", {
-        event: "tron_auto_sweep_need_trx_no_merchant_funder",
+    const funded = await ensureTrxForMerchantWallet({
+      merchantId: wallet.merchantId,
+      needyAddress: wallet.address,
+      neededTrxSun,
+      currentTrxSun: trxSun,
+      needyPrivateKeyHex: pkHex,
+      reserveUsdtAtomic: null,
+    });
+    if (!funded.ok) {
+      logger.warn("tron_auto_sweep_trx_funding_failed", {
+        event: "tron_auto_sweep_trx_funding_failed",
         at: new Date().toISOString(),
         wallet_id: wallet.id,
         merchant_id: wallet.merchantId,
@@ -134,44 +128,29 @@ export async function sweepTronUsdtOneWithAutoTopUp(
         trx_sun_have: trxSun.toString(),
         trx_sun_need_estimated: neededTrxSun.toString(),
         usdt_atomic: usdtAtomic.toString(),
+        error: funded.error,
+        detail: funded.detail,
       });
       return {
         status: "failed",
-        error: "MERCHANT_TRX_FUNDER_KEY_REQUIRED",
-        detail:
-          "Deposit wallet needs more TRX for fees. Save your TRX funder private key under Gateway & webhooks (platform env is not used).",
+        error:
+          funded.error === "TRX_FUNDER_REQUIRED"
+            ? "MERCHANT_TRX_FUNDER_KEY_REQUIRED"
+            : funded.error,
+        detail: funded.detail,
       };
     }
-
-    const top = await sendTrxNativeTopUpFromPrivateKey(
-      wallet.address,
-      sendSun,
-      merchantTrxFunderPk,
-    );
-    if (!top.ok) {
-      logger.error("tron_auto_sweep_trx_topup_failed", {
-        event: "tron_auto_sweep_trx_topup_failed",
-        at: new Date().toISOString(),
-        wallet_id: wallet.id,
-        deposit_address: wallet.address,
-        error: top.error,
-        detail: top.detail,
-      });
-      return { status: "failed", error: top.error, detail: top.detail };
-    }
-
-    await sleep(TRX_TOPUP_SETTLE_MS);
 
     await acquireOutboundRpcSlot("TRON");
     trxSun = BigInt(await depositTw.trx.getBalance(wallet.address));
 
     logger.info("tron_auto_sweep_trx_balance_after_topup", {
       event: "tron_auto_sweep_trx_balance_after_topup",
+      method: funded.method,
       at: new Date().toISOString(),
       wallet_id: wallet.id,
       deposit_address: wallet.address,
       trx_sun: trxSun.toString(),
-      topup_tx: top.tx_hash,
     });
   }
 

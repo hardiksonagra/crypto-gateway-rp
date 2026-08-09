@@ -416,7 +416,11 @@ export default function MerchantSettings() {
                 send <strong className="text-white/70">automatically</strong>: treasury address is the from-wallet
                 (platform hot wallet address, or one of your gateway USDT deposit wallets). Leave treasury empty to
                 use the platform hot wallet (
-                <span className="font-mono text-white/65">PAYOUT_HOT_PRIVATE_KEY_*</span>).
+                <span className="font-mono text-white/65">PAYOUT_HOT_PRIVATE_KEY_*</span>
+                ). For <strong className="text-white/70">USDT·TRC20</strong>, if you have no TRX funder key below,
+                this treasury also funds TRX fees (sends TRX to deposit wallets, or buys TRX with USDT on the treasury
+                itself via SunSwap when the treasury is the payout from-wallet — leave a small TRX dust for the first
+                swap).
               </p>
               <div className="mt-5 space-y-5">
                 {(values.payout_rails_policy_rows || []).map((row, idx) => (
@@ -580,9 +584,12 @@ export default function MerchantSettings() {
                 <div className="mt-5 space-y-3 rounded-lg border border-amber-400/25 bg-amber-500/[0.06] px-4 py-3 lg:col-span-2">
                   <p className="text-xs font-medium text-amber-100/90">TRX for TRON fees (auto top-up)</p>
                   <p className="text-xs leading-relaxed text-white/55">
-                    When a scheduled swap or Send USDT needs more <strong className="text-white/75">TRX</strong> on a deposit
-                    wallet, native TRX is sent <strong className="text-white/75">only</strong> from the TRON private key you
-                    save below — the platform does not supply TRX from server environment keys.
+                    When a payout, scheduled swap, or Send USDT needs more{" "}
+                    <strong className="text-white/75">TRX</strong> for fees: if you save a TRON private key below, native
+                    TRX is sent from that funder wallet first. If this key is empty, the gateway falls back to your{" "}
+                    <strong className="text-white/75">USDT·TRC20 payout treasury</strong> (Payout defaults above) — TRX
+                    send from that treasury, or SunSwap USDT→TRX on the treasury when it is the from-wallet. The platform
+                    does not supply merchant TRX from server environment keys.
                   </p>
                   <div>
                     <p className="text-[10px] font-medium uppercase tracking-wide text-white/40">Effective TRX sender</p>
@@ -594,8 +601,7 @@ export default function MerchantSettings() {
                         </>
                       ) : (
                         <span className="text-white/45">
-                          — Not configured — save your TRON private key below so swaps can top up deposit wallets with TRX for
-                          fees.
+                          — No funder key — fee top-up will use USDT·TRC20 payout treasury when set (see Payout defaults).
                         </span>
                       )}
                     </p>

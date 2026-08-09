@@ -7,16 +7,14 @@ import {
   acquireOutboundRpcSlot,
   evmRpcBudgetKey,
 } from "../../lib/network-rpc-rate-limit.js";
-import {
-  getMerchantTrxSweepFunderPrivateKeyHex,
-  normalizeTronPrivateKeyHex,
-} from "../../lib/merchant-trx-funder.js";
+import { normalizeTronPrivateKeyHex } from "../../lib/merchant-trx-funder.js";
 import { env } from "../../config/env.js";
 import {
   createTronWebFromPrivateKeyHex,
   estimateTrxSunRequiredForTrc20Transfer,
   pickUsdtTrc20Contract,
 } from "../sweep/tron-usdt-sweep.js";
+import { ensureTrxForMerchantWallet } from "../sweep/merchant-trx-fee-funding.js";
 import {
   sendTrxNativeTopUpFromPrivateKey,
   TRX_TOPUP_SETTLE_MS,
@@ -158,36 +156,55 @@ export async function transferTronUsdtAmount(p) {
   let trxSun = BigInt(await tw.trx.getBalance(p.fromAddress));
 
   for (let attempt = 0; trxSun < neededTrxSun && attempt < 4; attempt += 1) {
-    let funderPk = null;
     if (p.merchantIdForTrxTopup != null) {
-      funderPk = await getMerchantTrxSweepFunderPrivateKeyHex(p.merchantIdForTrxTopup);
-    }
-    if (!funderPk && p.allowPlatformTrxFunder && env.sweepTrxFunderPrivateKey) {
-      try {
-        funderPk = normalizeTronPrivateKeyHex(env.sweepTrxFunderPrivateKey);
-      } catch {
-        funderPk = null;
+      const funded = await ensureTrxForMerchantWallet({
+        merchantId: p.merchantIdForTrxTopup,
+        needyAddress: p.fromAddress,
+        neededTrxSun,
+        currentTrxSun: trxSun,
+        needyPrivateKeyHex: pkHex,
+        reserveUsdtAtomic: amount,
+      });
+      if (!funded.ok) {
+        return {
+          ok: false,
+          error: funded.error,
+          detail: funded.detail ?? "TRX fee funding failed",
+        };
       }
+    } else {
+      let funderPk = null;
+      if (p.allowPlatformTrxFunder && env.sweepTrxFunderPrivateKey) {
+        try {
+          funderPk = normalizeTronPrivateKeyHex(env.sweepTrxFunderPrivateKey);
+        } catch {
+          funderPk = null;
+        }
+      }
+      if (!funderPk) {
+        return {
+          ok: false,
+          error: "TRX_FUNDER_REQUIRED",
+          detail:
+            "From-address needs TRX for fees. Configure SWEEP_TRX_FUNDER_PRIVATE_KEY for the platform hot wallet, or use a merchant payout treasury with a TRX funder key.",
+        };
+      }
+      const gap = neededTrxSun - trxSun;
+      const sendSun = gap + TRX_TOPUP_SEND_BUFFER_SUN;
+      const top = await sendTrxNativeTopUpFromPrivateKey(
+        p.fromAddress,
+        sendSun,
+        funderPk,
+      );
+      if (!top.ok) {
+        return {
+          ok: false,
+          error: top.error,
+          detail: top.detail ?? "TRX top-up failed",
+        };
+      }
+      await new Promise((r) => setTimeout(r, TRX_TOPUP_SETTLE_MS));
     }
-    if (!funderPk) {
-      return {
-        ok: false,
-        error: "TRX_FUNDER_REQUIRED",
-        detail:
-          "From-address needs TRX for fees. Configure merchant TRX funder or SWEEP_TRX_FUNDER_PRIVATE_KEY.",
-      };
-    }
-    const gap = neededTrxSun - trxSun;
-    const sendSun = gap + TRX_TOPUP_SEND_BUFFER_SUN;
-    const top = await sendTrxNativeTopUpFromPrivateKey(p.fromAddress, sendSun, funderPk);
-    if (!top.ok) {
-      return {
-        ok: false,
-        error: top.error,
-        detail: top.detail ?? "TRX top-up failed",
-      };
-    }
-    await new Promise((r) => setTimeout(r, TRX_TOPUP_SETTLE_MS));
     await acquireOutboundRpcSlot("TRON");
     trxSun = BigInt(await tw.trx.getBalance(p.fromAddress));
     neededTrxSun = await estimateTrxSunRequiredForTrc20Transfer(

@@ -4,7 +4,6 @@ import { utils as tronUtils } from "tronweb";
 import { getTrc20Contracts } from "../../config/env.js";
 import { getMerchantWalletMnemonic } from "../../lib/merchant-mnemonic.js";
 import { resolveMerchantTronUsdtSweepFromSettings } from "../../lib/merchant-auto-swap-settings.js";
-import { getMerchantTrxSweepFunderPrivateKeyHex } from "../../lib/merchant-trx-funder.js";
 import { parseWalletDbId } from "../../lib/parse-wallet-db-id.js";
 import { ACTIVE } from "../../lib/active-row.js";
 import { prisma } from "../../lib/prisma.js";
@@ -15,11 +14,7 @@ import {
   getTronProgApiKeyHeaders,
 } from "../../lib/tron-node-client.js";
 import { deriveTronPrivateKeyHex } from "../wallet/tron-wallet.js";
-import {
-  sendTrxNativeTopUpFromPrivateKey,
-  TRX_TOPUP_SETTLE_MS,
-  TRX_TOPUP_SEND_BUFFER_SUN,
-} from "./tron-trx-topup.js";
+import { ensureTrxForMerchantWallet } from "./merchant-trx-fee-funding.js";
 
 /** Minimal ERC20 ABI for balance + transfer (TRC20). TronWeb ≥6 expects `stateMutability` on each function. */
 const TRC20_ABI = [
@@ -499,26 +494,26 @@ export async function sweepTronUsdtTransferFullBalanceFromDepositWallet(
   let trxSun = BigInt(await tw.trx.getBalance(wallet.address));
 
   for (let attempt = 0; trxSun < neededTrxSun && attempt < 4; attempt += 1) {
-    const merchantPk = await getMerchantTrxSweepFunderPrivateKeyHex(wallet.merchantId);
-    if (!merchantPk) {
+    const funded = await ensureTrxForMerchantWallet({
+      merchantId: wallet.merchantId,
+      needyAddress: wallet.address,
+      neededTrxSun,
+      currentTrxSun: trxSun,
+      needyPrivateKeyHex: pkHex,
+      reserveUsdtAtomic: null,
+    });
+    if (!funded.ok) {
       return {
         ok: false,
-        error: "MERCHANT_TRX_FUNDER_KEY_REQUIRED",
+        error:
+          funded.error === "TRX_FUNDER_REQUIRED"
+            ? "MERCHANT_TRX_FUNDER_KEY_REQUIRED"
+            : funded.error,
         detail:
-          "This deposit wallet needs more TRX for network fees. Add your TRX funder private key under Gateway & webhooks → TRX for TRON fees (platform env is not used).",
+          funded.detail ??
+          "This deposit wallet needs more TRX for network fees. Save a TRX funder key under Gateway & webhooks, or set a USDT·TRC20 payout treasury with TRX.",
       };
     }
-    const gap = neededTrxSun - trxSun;
-    const sendSun = gap + TRX_TOPUP_SEND_BUFFER_SUN;
-    const top = await sendTrxNativeTopUpFromPrivateKey(wallet.address, sendSun, merchantPk);
-    if (!top.ok) {
-      return {
-        ok: false,
-        error: top.error,
-        detail: top.detail ?? "TRX top-up failed",
-      };
-    }
-    await new Promise((r) => setTimeout(r, TRX_TOPUP_SETTLE_MS));
     await acquireOutboundRpcSlot("TRON");
     trxSun = BigInt(await tw.trx.getBalance(wallet.address));
     neededTrxSun = await estimateTrxSunRequiredForTrc20Transfer(
