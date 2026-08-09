@@ -16,8 +16,8 @@ import { TRX_TOPUP_SETTLE_MS } from "./tron-trx-topup.js";
 /** SunSwap V2 router (UniswapV2Router02 fork) — TRON mainnet. */
 export const SUNSWAP_V2_ROUTER = "TNJVzGqKBWkJxJB5XYSqGAwUTV15U24pPq";
 
-/** Wrapped TRX (WTRX) — TRON mainnet. */
-export const WTRX_TRC20 = "TNUC9AbjGYUdXi9QgzxD6QeBnw3bx3BfMh";
+/** Wrapped TRX (WTRX) — TRON mainnet (SunSwap / official WTRX). */
+export const WTRX_TRC20 = "TNUC9Qb1rRpS5CbWLmNMxXBjyFoydXjWFR";
 
 /** Default max slippage vs `getAmountsIn` quote (basis points). */
 const DEFAULT_SLIPPAGE_BPS = 200n;
