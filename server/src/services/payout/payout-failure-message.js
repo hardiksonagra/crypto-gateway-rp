@@ -1,4 +1,41 @@
 /**
+ * Turn noisy chain/RPC detail into short operator-facing text.
+ *
+ * @param {string} detail
+ * @returns {string | null} Human text, or null to omit the raw detail.
+ */
+function humanizeFailureDetail(detail) {
+  const d = String(detail ?? "").trim();
+  if (!d) return null;
+  const lower = d.toLowerCase();
+
+  if (
+    lower.includes("not enough energy") ||
+    lower.includes("out of energy") ||
+    lower.includes("curinvokeenergylimit") ||
+    lower.includes("penaltyenergy") ||
+    lower.includes("usedenergy") ||
+    /\bsstore\b/i.test(d)
+  ) {
+    return "The main wallet does not have enough TRX energy to run this step. Add more TRX to the RP Swap main wallet, or set a merchant TRX funder key, then retry.";
+  }
+  if (
+    lower.includes("not enough bandwidth") ||
+    lower.includes("account resource insufficient") ||
+    (lower.includes("bandwidth") && lower.includes("insufficient"))
+  ) {
+    return "The main wallet does not have enough TRX bandwidth. Add more TRX to the RP Swap main wallet, or set a merchant TRX funder key, then retry.";
+  }
+  if (lower.includes("contract validate error") && lower.includes("balance")) {
+    return "On-chain balance check failed for this step.";
+  }
+
+  // Keep short, already-readable details; drop raw Error dumps.
+  if (/^error:\s*/i.test(d) || d.length > 180) return null;
+  return d;
+}
+
+/**
  * Human-readable payout failure message for gateway responses (sandbox + live).
  *
  * @param {string | null | undefined} status
@@ -12,6 +49,7 @@ export function payoutFailureMessage(status, failureReason) {
 
   const code = r.includes(":") ? r.slice(0, r.indexOf(":")).trim() : r;
   const detail = r.includes(":") ? r.slice(r.indexOf(":") + 1).trim() : "";
+  const humanDetail = humanizeFailureDetail(detail);
 
   /** @type {Record<string, string>} */
   const byCode = {
@@ -52,7 +90,7 @@ export function payoutFailureMessage(status, failureReason) {
     SUNSWAP_INSUFFICIENT_USDT:
       "Not enough USDT on the main wallet to buy TRX for fees while keeping the payout amount reserved.",
     SUNSWAP_QUOTE_FAILED: "Could not quote USDT→TRX on SunSwap for fee top-up.",
-    SUNSWAP_APPROVE_FAILED: "USDT approve for SunSwap fee top-up failed.",
+    SUNSWAP_APPROVE_FAILED: "Could not approve USDT for SunSwap fee top-up.",
     SUNSWAP_SWAP_FAILED: "SunSwap USDT→TRX fee top-up failed.",
     FUNDER_INSUFFICIENT_TRX:
       "TRX funder does not hold enough TRX to top up the main wallet fees.",
@@ -66,9 +104,23 @@ export function payoutFailureMessage(status, failureReason) {
   };
 
   const base = byCode[code] ?? byCode[r] ?? null;
-  if (base && detail && !base.includes(detail)) {
-    return `${base} (${detail})`;
+  // Energy/bandwidth details already include the fix — prefer that over appending raw RPC text.
+  if (
+    humanDetail &&
+    (code === "SUNSWAP_APPROVE_FAILED" ||
+      code === "SUNSWAP_SWAP_FAILED" ||
+      code === "TRANSFER_FAILED" ||
+      code === "TX_REVERTED")
+  ) {
+    const lower = humanDetail.toLowerCase();
+    if (lower.includes("energy") || lower.includes("bandwidth")) {
+      return humanDetail;
+    }
+  }
+  if (base && humanDetail && !base.includes(humanDetail)) {
+    return `${base} ${humanDetail}`;
   }
   if (base) return base;
+  if (humanDetail) return humanDetail;
   return r;
 }
